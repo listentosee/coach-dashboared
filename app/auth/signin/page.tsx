@@ -1,53 +1,76 @@
 "use client"
 
 import { useState } from "react"
-import { signIn } from "next-auth/react"
+import { supabase } from "@/lib/supabaseClient"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GraduationCap } from "lucide-react"
 
-export default function SignIn() {
-  const [isLoading, setIsLoading] = useState(false)
+export default function AuthPage() {
+  const [isSignUp, setIsSignUp] = useState(false)
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
 
-  const handleSignIn = async () => {
-    try {
-      setIsLoading(true)
-      setError(null)
-
-      // Use the direct approach without redirects first
-      const result = await signIn("airtable", { redirect: false })
-
-      if (result?.error) {
-        setError(result.error)
-        console.error("Sign-in error:", result.error)
-      } else if (result?.url) {
-        window.location.href = result.url
-      }
-    } catch (err) {
-      console.error("Sign-in exception:", err)
-      setError("An unexpected error occurred")
-    } finally {
-      setIsLoading(false)
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+    if (isSignUp) {
+      const { error } = await supabase.auth.signUp({ email, password })
+      if (error) setError(error.message)
+      else setSuccess("Check your email for a confirmation link.")
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) setError(error.message)
+      else setSuccess("Signed in successfully!")
     }
+    setLoading(false)
   }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40">
-      <Card className="mx-auto max-w-md">
-        <CardHeader className="space-y-1 text-center">
-          <div className="flex justify-center mb-4">
-            <GraduationCap className="h-12 w-12" />
-          </div>
-          <CardTitle className="text-2xl">Cyber Coach Dashboard</CardTitle>
-          <CardDescription>Sign in with your AirTable account</CardDescription>
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle className="text-2xl text-center">
+            {isSignUp ? "Sign Up" : "Sign In"} as Coach
+          </CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col items-center space-y-4">
-          {error && <div className="w-full p-3 text-sm bg-red-100 text-red-800 rounded-md">Error: {error}</div>}
-
-          <Button onClick={handleSignIn} disabled={isLoading} className="w-full">
-            {isLoading ? "Signing in..." : "Sign in with AirTable"}
-          </Button>
+        <CardContent>
+          <form onSubmit={handleAuth} className="space-y-4">
+            <Input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required
+            />
+            <Input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+            />
+            {error && <div className="text-red-600">{error}</div>}
+            {success && <div className="text-green-600">{success}</div>}
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "Loading..." : isSignUp ? "Sign Up" : "Sign In"}
+            </Button>
+          </form>
+          <div className="mt-4 text-center">
+            <Button
+              variant="link"
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-blue-600"
+              type="button"
+            >
+              {isSignUp ? "Already have an account? Sign In" : "Don't have an account? Sign Up"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

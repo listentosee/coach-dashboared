@@ -1,30 +1,176 @@
-# Coach Dashboard Project - Architecture & Tech Stack Reference
+# Coaches Dashboard
 
-## 1. Airtable as Primary Data Source
-- Airtable is used for flexible data modeling, automations, and integrations (e.g., Make.com, Zapier).
-- The Coach record ID is the key for access control and filtering across related tables.
+A comprehensive web application for managing cybersecurity competition competitors and teams, built with Next.js 14, Supabase, and modern web technologies.
 
-## 2. Automated Coach Auth Record Creation
-- When a new Coach record is created in Airtable, an automation triggers a webhook to the Next.js app.
-- The webhook endpoint creates a corresponding authentication record in the app (e.g., in Supabase Auth), linking the Airtable Coach record ID.
-- This keeps authentication and Airtable data in sync, and can be used to send invites or set up passwords.
+## Features
 
-## 3. Tech Stack: shadcn/ui and Tailwind
-- The UI uses Next.js and shadcn/ui, which is built on top of Tailwind CSS.
-- Tailwind is a required dependency for shadcn/ui and is already included in the project (see `tailwind.config.ts`).
+### 🏆 **Competitor Management**
+- Add and manage competitors with secure profile completion links
+- Track competitor status (pending, active, inactive)
+- FERPA-compliant data isolation between coaches
+- Secure token-based profile updates
 
-## 4. Stack Summary
-- **Frontend/UI:** Next.js + shadcn/ui (with Tailwind CSS)
-- **Auth:** Supabase Auth (or a custom system, but Supabase is recommended for easy integration)
-- **Data:** Airtable (accessed via Personal Access Token from the backend)
-- **Automations:** Airtable Automations + Webhooks to Next.js API routes
+### 👥 **Team Management**
+- Create and manage competition teams
+- Automatic team size validation (max 6 members)
+- Team member assignment and tracking
+- Team status management (forming, active, archived)
 
-## 5. Recommended Next Steps
-1. Set up Supabase Auth (or your chosen auth system) for coach authentication.
-2. Create a Next.js API route to receive Airtable automation webhooks for new Coach records.
-3. In the webhook handler, create a new auth user (if not already present) and link the Airtable Coach record ID.
-4. In your app, when a coach logs in, use their linked Airtable Coach record ID to filter all data access.
+### 📊 **Dashboard & Analytics**
+- Real-time dashboard with competitor and team statistics
+- Activity logging and audit trails
+- Performance tracking capabilities
+- Search and filtering functionality
 
----
+### 🔐 **Security & Compliance**
+- Row-level security (RLS) policies
+- FERPA-compliant data handling
+- Secure authentication with Supabase Auth
+- Comprehensive audit logging
 
-Refer to this section for architectural decisions and integration patterns as you build and scale the project.
+## Tech Stack
+
+- **Frontend**: Next.js 14 (App Router), React 18+, TypeScript
+- **UI Components**: shadcn/ui, Radix UI primitives
+- **Styling**: Tailwind CSS 3.4+
+- **Backend**: Supabase (PostgreSQL, Auth, Storage, Realtime)
+- **Hosting**: Vercel (Serverless Functions)
+- **External Services**: Monday.com API, Adobe Sign, Game Platform API
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+ 
+- npm or pnpm
+- Supabase account and project
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd coach-dashboared
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   # or
+   pnpm install
+   ```
+
+3. **Environment Setup**
+   Create a `.env.local` file with your Supabase credentials:
+   ```bash
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+   NEXT_PUBLIC_APP_URL=http://localhost:3000
+   ```
+
+4. **Database Setup**
+   The database schema has been designed according to the architecture document. 
+   Ensure your Supabase project has the required tables and RLS policies.
+
+5. **Run the development server**
+   ```bash
+   npm run dev
+   # or
+   pnpm dev
+   ```
+
+6. **Open your browser**
+   Navigate to [http://localhost:3000](http://localhost:3000)
+
+## Project Structure
+
+```
+/app
+├── (auth)                    # Authentication pages
+│   ├── login/               # Coach login
+│   └── register/            # Coach registration
+├── (public)                 # Public pages
+│   └── update-profile/      # Competitor profile updates
+├── dashboard/               # Main dashboard
+│   ├── (coach)             # Coach-specific pages
+│   │   ├── competitors/    # Competitor management
+│   │   ├── teams/          # Team management
+│   │   └── activity/       # Activity logs
+│   └── (admin)             # Admin pages (future)
+├── api/                     # API routes
+│   ├── competitors/         # Competitor API endpoints
+│   ├── teams/              # Team API endpoints
+│   └── integrations/       # External service integrations
+└── layout.tsx              # Root layout
+
+/components
+├── ui/                      # Reusable UI components
+├── dashboard/               # Dashboard-specific components
+├── admin/                   # Admin components (future)
+└── shared/                  # Shared components
+
+/lib
+├── auth/                    # Authentication services
+├── api/                     # API utilities
+├── integrations/            # External service integrations
+├── utils/                   # Utility functions
+└── types/                   # TypeScript type definitions
+```
+
+## Usage
+
+### For Coaches
+
+1. **Registration**: Create an account with your school information
+2. **Login**: Access your personalized dashboard
+3. **Add Competitors**: Create competitor profiles with secure update links
+4. **Manage Teams**: Organize competitors into competition teams
+5. **Track Progress**: Monitor competitor and team performance
+
+### For Competitors
+
+1. **Receive Link**: Get a secure profile completion link from your coach
+2. **Complete Profile**: Fill out required information and agreements
+3. **Stay Updated**: Keep your information current
+
+## Development
+
+### Available Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
+
+### Code Style
+
+- TypeScript for type safety
+- ESLint for code quality
+- Prettier for code formatting
+- Tailwind CSS for styling
+
+## Architecture
+
+This project follows the architecture outlined in `docs/Coaches Dashboard Architecture.md`, which includes:
+
+- **Security-first design** with FERPA compliance
+- **Scalable architecture** using serverless functions
+- **Real-time capabilities** with Supabase Realtime
+- **Integration-ready** for external services
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## License
+
+This project is proprietary and confidential.
+
+## Support
+
+For questions or support, please refer to the architecture documentation or contact the development team.

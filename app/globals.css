@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 84% 4.9%;
+    --foreground: 210 40% 98%;
+    
+    --card: 222 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    
+    --popover: 222 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 84% 4.9%;
+    
+    --secondary: 217 32% 17%;
+    --secondary-foreground: 210 40% 98%;
+    
+    --muted: 217 32% 17%;
+    --muted-foreground: 215 20% 65%;
+    
+    --accent: 217 32% 17%;
+    --accent-foreground: 210 40% 98%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    
+    --border: 217 32% 17%;
+    --input: 217 32% 17%;
+    --ring: 217 91% 60%;
+    
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Custom MetaCTF-inspired colors */
+.bg-meta-dark {
+  background-color: #0f172a; /* Dark blue background */
+}
+
+.bg-meta-card {
+  background-color: #1e293b; /* Slightly lighter card background */
+}
+
+.bg-meta-accent {
+  background-color: #3b82f6; /* Blue accent */
+}
+
+.text-meta-light {
+  color: #f8fafc; /* Light text */
+}
+
+.text-meta-muted {
+  color: #94a3b8; /* Muted text */
+}
+
+.border-meta-border {
+  border-color: #334155; /* Border color */
+}

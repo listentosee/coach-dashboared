@@ -10,11 +10,6 @@ export async function middleware(req: NextRequest) {
 
   // Protect dashboard routes
   if (req.nextUrl.pathname.startsWith('/dashboard')) {
-    // Allow access to profile edit page for new coaches
-    if (req.nextUrl.pathname === '/dashboard/profile/edit') {
-      return res;
-    }
-    
     if (!session) {
       return NextResponse.redirect(new URL('/auth/login', req.url));
     }

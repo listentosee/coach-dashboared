@@ -36,6 +36,8 @@ interface DashboardStats {
   pendingCompetitors: number;
 }
 
+export const dynamic = 'force-dynamic';
+
 export default function DashboardPage() {
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [stats, setStats] = useState<DashboardStats>({

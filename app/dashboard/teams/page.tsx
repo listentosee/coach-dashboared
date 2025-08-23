@@ -176,6 +176,8 @@ function DroppableTeam({ team, teamMembers, onDeleteTeam, onRemoveMember }: {
   );
 }
 
+export const dynamic = 'force-dynamic';
+
 export default function TeamsPage() {
   const [unassignedCompetitors, setUnassignedCompetitors] = useState<Competitor[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);

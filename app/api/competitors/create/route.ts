@@ -68,7 +68,8 @@ export async function POST(request: NextRequest) {
     console.log('Competitor created successfully:', competitor);
 
     // Generate profile update link
-    const profileUpdateUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/update-profile/${competitor.profile_update_token}`;
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${process.env.VERCEL_URL}` || 'http://localhost:3000';
+    const profileUpdateUrl = `${baseUrl}/update-profile/${competitor.profile_update_token}`;
 
     // Log activity
     await supabase

@@ -28,8 +28,16 @@ export async function POST(
       return NextResponse.json({ error: 'Competitor not found or access denied' }, { status: 404 });
     }
 
-    // Generate new profile update token
-    const newToken = randomBytes(32).toString('hex');
+    // Generate new profile update token using database function
+    const { data: tokenData, error: tokenError } = await supabase
+      .rpc('generate_profile_update_token');
+
+    if (tokenError) {
+      console.error('Error generating token:', tokenError);
+      return NextResponse.json({ error: 'Failed to generate token' }, { status: 500 });
+    }
+
+    const newToken = tokenData;
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30); // 30 days from now
 
@@ -62,8 +70,9 @@ export async function POST(
         }
       });
 
-    // Generate the new profile update URL
-    const profileUpdateUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/update-profile/${newToken}`;
+    // Generate the new profile update URL  
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${process.env.VERCEL_URL}` || 'http://localhost:3000';
+    const profileUpdateUrl = `${baseUrl}/update-profile/${newToken}`;
 
     return NextResponse.json({
       message: 'Profile update link regenerated successfully',

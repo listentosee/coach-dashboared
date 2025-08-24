@@ -1,7 +1,14 @@
 -- Add missing RLS policies for competitor profile updates and activity logging
 
--- 1. Allow competitors to UPDATE their own profile using secret token
--- This policy allows authenticated users to update competitors where they have a valid profile_update_token
+-- 1. Allow competitors to READ their own profile using secret token
+CREATE POLICY "Competitors can read own profile with token" ON "public"."competitors"
+    FOR SELECT TO "authenticated"
+    USING (
+        "profile_update_token" IS NOT NULL 
+        AND "profile_update_token_expires" > NOW()
+    );
+
+-- 2. Allow competitors to UPDATE their own profile using secret token
 CREATE POLICY "Competitors can update own profile with token" ON "public"."competitors"
     FOR UPDATE TO "authenticated"
     USING (

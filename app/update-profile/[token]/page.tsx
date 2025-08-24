@@ -51,8 +51,6 @@ export default function UpdateProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [regeneratedLink, setRegeneratedLink] = useState<string | null>(null);
-  const [showLinkModal, setShowLinkModal] = useState(false);
 
   const form = useForm<z.infer<typeof profileUpdateSchema>>({
     resolver: zodResolver(profileUpdateSchema),
@@ -125,8 +123,6 @@ export default function UpdateProfilePage() {
       setError(error.message);
     }
   };
-
-
 
   if (isLoading) {
     return (
@@ -204,7 +200,6 @@ export default function UpdateProfilePage() {
                               <SelectItem value="11">11th Grade</SelectItem>
                               <SelectItem value="12">12th Grade</SelectItem>
                               <SelectItem value="college">College</SelectItem>
-                            </SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -229,7 +224,6 @@ export default function UpdateProfilePage() {
                               <SelectItem value="female">Female</SelectItem>
                               <SelectItem value="other">Other</SelectItem>
                               <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
-                            </SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -238,74 +232,154 @@ export default function UpdateProfilePage() {
                     />
                   </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="race"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-meta-light">Race *</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
-                              <SelectValue placeholder="Select race" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="bg-meta-card border-meta-border text-meta-light">
-                            <SelectItem value="white">White</SelectItem>
-                            <SelectItem value="black">Black or African American</SelectItem>
-                            <SelectItem value="hispanic">Hispanic or Latino</SelectItem>
-                            <SelectItem value="asian">Asian</SelectItem>
-                            <SelectItem value="native">Native American</SelectItem>
-                            <SelectItem value="pacific">Pacific Islander</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="race"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-meta-light">Race *</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
+                                <SelectValue placeholder="Select race" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent className="bg-meta-card border-meta-border text-meta-light">
+                              <SelectItem value="white">White</SelectItem>
+                              <SelectItem value="black">Black or African American</SelectItem>
+                              <SelectItem value="hispanic">Hispanic or Latino</SelectItem>
+                              <SelectItem value="asian">Asian</SelectItem>
+                              <SelectItem value="native">Native American</SelectItem>
+                              <SelectItem value="pacific">Pacific Islander</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                  <FormField
-                    control={form.control}
-                    name="ethnicity"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-meta-light">Ethnicity *</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                    <FormField
+                      control={form.control}
+                      name="ethnicity"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-meta-light">Ethnicity *</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
+                                <SelectValue placeholder="Select ethnicity" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent className="bg-meta-card border-meta-border text-meta-light">
+                              <SelectItem value="not_hispanic">Not Hispanic or Latino</SelectItem>
+                              <SelectItem value="hispanic">Hispanic or Latino</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="years_competing"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-meta-light">Years Competing</FormLabel>
                           <FormControl>
-                            <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
-                              <SelectValue placeholder="Select ethnicity" />
-                            </SelectTrigger>
+                            <Input 
+                              {...field}
+                              onChange={(e) => field.onChange(e.target.value === '' ? undefined : parseInt(e.target.value, 10) || 0)}
+                              type="number" 
+                              min="0"
+                              max="20"
+                              placeholder="0" 
+                              className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
+                            />
                           </FormControl>
-                          <SelectContent className="bg-meta-card border-meta-border text-meta-light">
-                            <SelectItem value="not_hispanic">Not Hispanic or Latino</SelectItem>
-                            <SelectItem value="hispanic">Hispanic or Latino</SelectItem>
-                          </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="level_of_technology"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-meta-light">Level of Technology *</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
+                                <SelectValue placeholder="Select level" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent className="bg-meta-card border-meta-border text-meta-light">
+                              <SelectItem value="beginner">Beginner</SelectItem>
+                              <SelectItem value="intermediate">Intermediate</SelectItem>
+                              <SelectItem value="advanced">Advanced</SelectItem>
+                              <SelectItem value="expert">Expert</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                {/* Participant Agreement */}
+                <div className="space-y-4">
+                  <h2 className="text-xl font-semibold text-meta-light">Participant Agreement</h2>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-meta-light">Participant Agreement...</span>
+                    <X className="h-4 w-4 text-meta-muted" />
+                  </div>
+                  <p className="text-sm text-red-400">
+                    You must sign the above agreement to obtain a game code. Note: It may take an hour or two for the system to reflect completion of your signed agreement.
+                  </p>
+                </div>
+
+                {/* Parent/Guardian Information */}
+                <div className="space-y-4">
+                  <h2 className="text-xl font-semibold text-meta-light">Parent/Guardian Information</h2>
+                  
                   <FormField
                     control={form.control}
-                    name="years_competing"
+                    name="parent_name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-meta-light">Years Competing</FormLabel>
+                        <FormLabel className="text-meta-light">Parent/Guardian Name *</FormLabel>
                         <FormControl>
                           <Input 
                             {...field}
-                            onChange={(e) => field.onChange(e.target.value === '' ? undefined : parseInt(e.target.value, 10) || 0)}
-                            type="number" 
-                            min="0"
-                            max="20"
-                            placeholder="0" 
+                            placeholder="Enter parent or guardian name" 
+                            className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                        <p className="text-sm text-meta-muted mt-1">
+                          A parent or guardian name and email is required. This is a legal parent or guardian over 18 years of age who is legally qualified to sign a liability release form for your participation.
+                        </p>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="parent_email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-meta-light">Parent/Guardian Email *</FormLabel>
+                        <FormControl>
+                          <Input 
+                            {...field}
+                            type="email" 
+                            placeholder="Enter parent or guardian email" 
                             className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
                           />
                         </FormControl>
@@ -313,189 +387,110 @@ export default function UpdateProfilePage() {
                       </FormItem>
                     )}
                   />
-
-                  <FormField
-                    control={form.control}
-                    name="level_of_technology"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-meta-light">Level of Technology *</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
-                              <SelectValue placeholder="Select level" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="bg-meta-card border-meta-border text-meta-light">
-                            <SelectItem value="beginner">Beginner</SelectItem>
-                            <SelectItem value="intermediate">Intermediate</SelectItem>
-                            <SelectItem value="advanced">Advanced</SelectItem>
-                            <SelectItem value="expert">Expert</SelectItem>
-                          </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                 </div>
-              </div>
 
-              {/* Participant Agreement */}
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold text-meta-light">Participant Agreement</h2>
-                <div className="flex items-center space-x-2">
-                  <span className="text-meta-light">Participant Agreemen...</span>
-                  <X className="h-4 w-4 text-meta-muted" />
+                {/* Game Resources */}
+                <div className="space-y-4">
+                  <h2 className="text-xl font-semibold text-meta-light">GAME RESOURCES</h2>
+                  <div className="flex space-x-4">
+                    <Button type="button" variant="outline" className="border-meta-border text-meta-light hover:bg-meta-accent hover:text-white">
+                      Survey URL
+                      <X className="h-4 w-4 ml-2" />
+                    </Button>
+                    <Button type="button" variant="outline" className="border-meta-border text-meta-light hover:bg-meta-accent hover:text-white">
+                      Certificate URL
+                      <X className="h-4 w-4 ml-2" />
+                    </Button>
+                  </div>
                 </div>
-                <p className="text-sm text-red-400">
-                  You must sign the above agreement to obtain a game code. Note: It may take an hour or two for the system to reflect completion of your signed agreement.
-                </p>
-              </div>
 
-              {/* Parent/Guardian Information */}
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold text-meta-light">Parent/Guardian Information</h2>
-                
-                <FormField
-                  control={form.control}
-                  name="parent_name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-meta-light">Parent/Guardian Name *</FormLabel>
-                      <FormControl>
-                        <Input 
-                          {...field}
-                          placeholder="Enter parent or guardian name" 
-                          className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                      <p className="text-sm text-meta-muted mt-1">
-                        A parent or guardian name and email is required. This is a legal parent or guardian over 18 years of age who is legally qualified to sign a liability release form for your participation.
+                {/* Competition Type */}
+                <div className="space-y-4">
+                  <h2 className="text-xl font-semibold text-meta-light">Prepare for the competition</h2>
+                  <div className="grid grid-cols-2 gap-8">
+                    <div>
+                      <h3 className="font-medium mb-2 text-meta-light">Mayors Cup Main Event:</h3>
+                      <p className="text-sm text-meta-muted">
+                        The main competition for the Mayor's Cup. Work with your friends to compete for the top of the leaderboard.
                       </p>
-                    </FormItem>
-                  )}
-                />
+                    </div>
+                    
+                    <FormField
+                      control={form.control}
+                      name="competition_type"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-meta-light">Select Competition Type</FormLabel>
+                          <FormControl>
+                            <RadioGroup 
+                              onValueChange={field.onChange} 
+                              value={field.value}
+                              className="mt-2"
+                            >
+                              <div className="space-y-2">
+                                <div className="flex items-center space-x-2">
+                                  <RadioGroupItem value="trove" id="trove" />
+                                  <Label htmlFor="trove" className="text-meta-light">Trove</Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <RadioGroupItem value="gymnasium" id="gymnasium" />
+                                  <Label htmlFor="gymnasium" className="text-meta-light">Gymnasium</Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <RadioGroupItem value="mayors_cup" id="mayors_cup" />
+                                  <Label htmlFor="mayors_cup" className="text-meta-light">Mayors Cup Main Event</Label>
+                                </div>
+                              </div>
+                            </RadioGroup>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
 
-                <FormField
-                  control={form.control}
-                  name="parent_email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-meta-light">Parent/Guardian Email *</FormLabel>
-                      <FormControl>
-                        <Input 
-                          {...field}
-                          type="email" 
-                          placeholder="Enter parent or guardian email" 
-                          className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+                {/* Topic Overview */}
+                <div className="space-y-4">
+                  <h2 className="text-xl font-semibold text-meta-light">Topic Overview</h2>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <h3 className="font-medium text-meta-light">Open Source Intelligence</h3>
+                      <p className="text-meta-muted">Gathering information from publicly available sources</p>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-meta-light">Cryptography</h3>
+                      <p className="text-meta-muted">Encryption, decryption, and secure communication</p>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-meta-light">Linux</h3>
+                      <p className="text-meta-muted">Command line operations and system administration</p>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-meta-light">Log Analysis</h3>
+                      <p className="text-meta-muted">Examining system logs for security insights</p>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-meta-light">Network Traffic Analysis</h3>
+                      <p className="text-meta-muted">Monitoring and analyzing network communications</p>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-meta-light">Web Application Security</h3>
+                      <p className="text-meta-muted">Identifying and exploiting web vulnerabilities</p>
+                    </div>
+                  </div>
+                </div>
 
-              {/* Game Resources */}
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold text-meta-light">GAME RESOURCES</h2>
-                <div className="flex space-x-4">
-                  <Button type="button" variant="outline" className="border-meta-border text-meta-light hover:bg-meta-accent hover:text-white">
-                    Survey URL
-                    <X className="h-4 w-4 ml-2" />
+                {/* Submit and Cancel Buttons */}
+                <div className="flex justify-center space-x-4">
+                  <Button type="button" variant="outline" size="lg" onClick={() => window.close()} className="border-meta-border text-meta-light hover:bg-meta-accent hover:text-white">
+                    Cancel
                   </Button>
-                  <Button type="button" variant="outline" className="border-meta-border text-meta-light hover:bg-meta-accent hover:text-white">
-                    Certificate URL
-                    <X className="h-4 w-4 ml-2" />
+                  <Button type="submit" size="lg" className="bg-meta-accent hover:bg-blue-600">
+                    Update Profile
                   </Button>
                 </div>
-              </div>
-
-              {/* Competition Type */}
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold text-meta-light">Prepare for the competition</h2>
-                <div className="grid grid-cols-2 gap-8">
-                  <div>
-                    <h3 className="font-medium mb-2 text-meta-light">Mayors Cup Main Event:</h3>
-                    <p className="text-sm text-meta-muted">
-                      The main competition for the Mayor's Cup. Work with your friends to compete for the top of the leaderboard.
-                    </p>
-                  </div>
-                  
-                  <FormField
-                    control={form.control}
-                    name="competition_type"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-meta-light">Select Competition Type</FormLabel>
-                        <FormControl>
-                          <RadioGroup 
-                            onValueChange={field.onChange} 
-                            value={field.value}
-                            className="mt-2"
-                          >
-                            <div className="space-y-2">
-                              <div className="flex items-center space-x-2">
-                                <RadioGroupItem value="trove" id="trove" />
-                                <Label htmlFor="trove" className="text-meta-light">Trove</Label>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <RadioGroupItem value="gymnasium" id="gymnasium" />
-                                <Label htmlFor="gymnasium" className="text-meta-light">Gymnasium</Label>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <RadioGroupItem value="mayors_cup" id="mayors_cup" />
-                                <Label htmlFor="mayors_cup" className="text-meta-light">Mayors Cup Main Event</Label>
-                              </div>
-                            </div>
-                          </RadioGroup>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </div>
-
-              {/* Topic Overview */}
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold text-meta-light">Topic Overview</h2>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <h3 className="font-medium text-meta-light">Open Source Intelligence</h3>
-                    <p className="text-meta-muted">Gathering information from publicly available sources</p>
-                  </div>
-                  <div>
-                    <h3 className="font-medium text-meta-light">Cryptography</h3>
-                    <p className="text-meta-muted">Encryption, decryption, and secure communication</p>
-                  </div>
-                  <div>
-                    <h3 className="font-medium text-meta-light">Linux</h3>
-                    <p className="text-meta-muted">Command line operations and system administration</p>
-                  </div>
-                  <div>
-                    <h3 className="font-medium text-meta-light">Log Analysis</h3>
-                    <p className="text-meta-muted">Examining system logs for security insights</p>
-                  </div>
-                  <div>
-                    <h3 className="font-medium text-meta-light">Network Traffic Analysis</h3>
-                    <p className="text-meta-muted">Monitoring and analyzing network communications</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Submit and Cancel Buttons */}
-              <div className="flex justify-center space-x-4">
-                <Button type="button" variant="outline" size="lg" onClick={() => window.close()} className="border-meta-border text-meta-light hover:bg-meta-accent hover:text-white">
-                  Cancel
-                </Button>
-                <Button type="submit" size="lg" className="bg-meta-accent hover:bg-blue-600">
-                  Update Profile
-                </Button>
-              </div>
-            </form>
+              </form>
             </Form>
           </CardContent>
         </Card>

@@ -74,6 +74,7 @@ export default function UpdateProfilePage() {
       ethnicity: '',
       years_competing: undefined,
       level_of_technology: '',
+      is_18_or_over: false,
       parent_name: '',
       parent_email: '',
       competition_type: 'mayors_cup',

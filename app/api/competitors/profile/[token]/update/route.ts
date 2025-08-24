@@ -59,6 +59,8 @@ export async function PUT(
         parent_name: validatedData.parent_name,
         parent_email: validatedData.parent_email,
         updated_at: new Date().toISOString(),
+        // Set status to 'profile updated' since all required fields are now filled
+        status: 'profile updated'
       })
       .eq('id', existingCompetitor.id)
       .select()

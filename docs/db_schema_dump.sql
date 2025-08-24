@@ -67,8 +67,8 @@ CREATE EXTENSION IF NOT EXISTS "wrappers" WITH SCHEMA "extensions";
 
 CREATE TYPE "public"."competitor_status" AS ENUM (
     'pending',
-    'active',
-    'inactive'
+    'profile updated',
+    'complete'
 );
 
 
@@ -107,18 +107,6 @@ $$;
 
 
 ALTER FUNCTION "public"."check_team_size"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."generate_profile_update_token"() RETURNS "text"
-    LANGUAGE "plpgsql"
-    AS $$
-BEGIN
-    RETURN encode(gen_random_bytes(32), 'hex');
-END;
-$$;
-
-
-ALTER FUNCTION "public"."generate_profile_update_token"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
@@ -185,6 +173,19 @@ $$;
 ALTER FUNCTION "public"."set_profile_update_token_with_expiry"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."update_competitor_status"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    NEW.status = calculate_competitor_status(NEW.id)::competitor_status_new;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_competitor_status"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -245,7 +246,8 @@ CREATE TABLE IF NOT EXISTS "public"."competitors" (
     "game_platform_synced_at" timestamp with time zone,
     "status" "public"."competitor_status" DEFAULT 'pending'::"public"."competitor_status",
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "is_active" boolean DEFAULT true
 );
 
 
@@ -900,12 +902,6 @@ GRANT ALL ON FUNCTION "public"."check_team_size"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."generate_profile_update_token"() TO "anon";
-GRANT ALL ON FUNCTION "public"."generate_profile_update_token"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."generate_profile_update_token"() TO "service_role";
-
-
-
 GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "anon";
 GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "service_role";
@@ -915,6 +911,12 @@ GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."set_profile_update_token_with_expiry"() TO "anon";
 GRANT ALL ON FUNCTION "public"."set_profile_update_token_with_expiry"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_profile_update_token_with_expiry"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_competitor_status"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_competitor_status"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_competitor_status"() TO "service_role";
 
 
 

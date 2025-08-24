@@ -14,7 +14,7 @@ interface Competitor {
   first_name: string;
   last_name: string;
   grade?: string;
-  status: 'pending' | 'profile_complete' | 'complete';
+  status: 'pending' | 'profile updated' | 'complete';
   media_release_signed: boolean;
   media_release_date?: string;
   participation_agreement_signed: boolean;
@@ -77,6 +77,7 @@ export default function DashboardPage() {
         ...comp,
         media_release_signed: comp.media_release_signed || false,
         participation_agreement_signed: comp.participation_agreement_signed || false,
+        is_active: comp.is_active !== undefined ? comp.is_active : true, // Default to true if not set
       }));
 
       setCompetitors(transformedCompetitors);
@@ -148,7 +149,7 @@ export default function DashboardPage() {
     switch (status) {
       case 'complete':
         return 'bg-green-100 text-green-800';
-      case 'profile_complete':
+      case 'profile updated':
         return 'bg-blue-100 text-blue-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
@@ -194,9 +195,40 @@ export default function DashboardPage() {
     console.log('Register competitor:', competitorId);
   };
 
-  const handleDisable = (competitorId: string) => {
-    // TODO: Implement disable functionality
-    console.log('Disable competitor:', competitorId);
+  const handleDisable = async (competitorId: string) => {
+    try {
+      const competitor = competitors.find(c => c.id === competitorId);
+      if (!competitor) return;
+
+      const newActiveState = !competitor.is_active;
+      
+      // Optimistic update
+      setCompetitors(prev => prev.map(c => 
+        c.id === competitorId 
+          ? { ...c, is_active: newActiveState }
+          : c
+      ));
+
+      // API call to update database
+      const response = await fetch(`/api/competitors/${competitorId}/toggle-active`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: newActiveState }),
+      });
+
+      if (!response.ok) {
+        // Revert on error
+        setCompetitors(prev => prev.map(c => 
+          c.id === competitorId 
+            ? { ...c, is_active: !newActiveState }
+            : c
+        ));
+        throw new Error('Failed to update competitor status');
+      }
+    } catch (error: any) {
+      console.error('Error toggling competitor status:', error);
+      alert('Failed to update competitor status: ' + error.message);
+    }
   };
 
   const assignTeam = async (competitorId: string, teamId: string | undefined) => {
@@ -355,7 +387,7 @@ export default function DashboardPage() {
               {filteredCompetitors.map((competitor) => (
                 <div
                   key={competitor.id}
-                  className="flex items-center justify-between p-2 border border-meta-border rounded-lg hover:bg-meta-dark transition-colors"
+                  className={`flex items-center justify-between p-2 border border-meta-border rounded-lg hover:bg-meta-dark transition-colors ${!competitor.is_active ? 'opacity-50' : ''}`}
                 >
                   <div className="flex-1">
                     <div className="flex items-center space-x-3">
@@ -447,10 +479,10 @@ export default function DashboardPage() {
                     </button>
                     <button
                       onClick={() => handleDisable(competitor.id)}
-                      title="Disable Competitor"
-                      className="text-meta-light hover:text-meta-accent p-1"
+                      title={competitor.is_active ? "Disable Competitor" : "Enable Competitor"}
+                      className={`p-1 ${competitor.is_active ? 'text-meta-light hover:text-meta-accent' : 'text-red-500 hover:text-red-600'}`}
                     >
-                      <Ban className="h-4 w-4" />
+                      {competitor.is_active ? <Ban className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>

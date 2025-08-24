@@ -14,7 +14,7 @@ interface Competitor {
   first_name: string;
   last_name: string;
   grade?: string;
-  status: 'pending' | 'active' | 'inactive';
+  status: 'pending' | 'profile_complete' | 'complete';
   media_release_signed: boolean;
   media_release_date?: string;
   participation_agreement_signed: boolean;
@@ -27,6 +27,7 @@ interface Competitor {
   profile_update_token?: string;
   profile_update_token_expires?: string;
   created_at: string;
+  is_active: boolean;
 }
 
 interface DashboardStats {
@@ -92,7 +93,7 @@ export default function DashboardPage() {
 
       // Calculate stats
       const totalCompetitors = transformedCompetitors.length;
-      const activeCompetitors = transformedCompetitors.filter(c => c.status === 'active').length;
+      const activeCompetitors = transformedCompetitors.filter(c => c.status === 'complete').length;
       const pendingCompetitors = transformedCompetitors.filter(c => c.status === 'pending').length;
 
       // Fetch teams count
@@ -145,12 +146,12 @@ export default function DashboardPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active':
+      case 'complete':
         return 'bg-green-100 text-green-800';
+      case 'profile_complete':
+        return 'bg-blue-100 text-blue-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
-      case 'inactive':
-        return 'bg-gray-100 text-gray-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -374,10 +375,10 @@ export default function DashboardPage() {
                   <div className="flex items-center space-x-4 pr-5">
                     {/* Status Indicators */}
                     <div className="flex items-center space-x-2">
-                      <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.media_release_signed ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+                      <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.media_release_date ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
                         Media Release
                       </div>
-                      <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.participation_agreement_signed ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+                      <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.participation_agreement_date ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
                         Agreement
                       </div>
                       <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.game_platform_synced_at ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>

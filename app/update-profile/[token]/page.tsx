@@ -10,8 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { X } from 'lucide-react';
 
 const profileUpdateSchema = z.object({
@@ -23,9 +24,18 @@ const profileUpdateSchema = z.object({
   ethnicity: z.string().min(1, 'Ethnicity is required'),
   years_competing: z.number().min(0).max(20).optional(),
   level_of_technology: z.string().min(1, 'Level of technology is required'),
-  parent_name: z.string().min(1, 'Parent/Guardian name is required'),
-  parent_email: z.string().email('Valid email is required'),
+  is_18_or_over: z.boolean(),
+  parent_name: z.string().optional(),
+  parent_email: z.string().email('Valid email is required').optional(),
   competition_type: z.enum(['trove', 'gymnasium', 'mayors_cup']),
+}).refine((data) => {
+  if (!data.is_18_or_over) {
+    return data.parent_name && data.parent_email;
+  }
+  return true;
+}, {
+  message: "Parent/Guardian information is required for participants under 18",
+  path: ["parent_name"]
 });
 
 interface CompetitorProfile {
@@ -38,6 +48,7 @@ interface CompetitorProfile {
   ethnicity?: string;
   years_competing?: string;
   level_of_technology?: string;
+  is_18_or_over?: boolean;
   parent_name?: string;
   parent_email?: string;
   profile_update_token: string;
@@ -90,6 +101,7 @@ export default function UpdateProfilePage() {
           ethnicity: data.profile.ethnicity || '',
           years_competing: data.profile.years_competing ? parseInt(data.profile.years_competing.toString(), 10) : undefined,
           level_of_technology: data.profile.level_of_technology || '',
+          is_18_or_over: data.profile.is_18_or_over || false,
           parent_name: data.profile.parent_name || '',
           parent_email: data.profile.parent_email || '',
           competition_type: 'mayors_cup',
@@ -332,6 +344,32 @@ export default function UpdateProfilePage() {
                   </div>
                 </div>
 
+                {/* 18+ Status */}
+                <div className="space-y-4">
+                  <h2 className="text-xl font-semibold text-meta-light">Age Verification</h2>
+                  
+                  <FormField
+                    control={form.control}
+                    name="is_18_or_over"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between rounded-lg border border-meta-border p-4 bg-meta-card">
+                        <div className="space-y-0.5">
+                          <FormLabel className="text-meta-light">18 or Over</FormLabel>
+                          <FormDescription className="text-meta-muted">
+                            Are you 18 years of age or older?
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
                 {/* Participant Agreement */}
                 <div className="space-y-4">
                   <h2 className="text-xl font-semibold text-meta-light">Participant Agreement</h2>
@@ -345,49 +383,51 @@ export default function UpdateProfilePage() {
                 </div>
 
                 {/* Parent/Guardian Information */}
-                <div className="space-y-4">
-                  <h2 className="text-xl font-semibold text-meta-light">Parent/Guardian Information</h2>
-                  
-                  <FormField
-                    control={form.control}
-                    name="parent_name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-meta-light">Parent/Guardian Name *</FormLabel>
-                        <FormControl>
-                          <Input 
-                            {...field}
-                            placeholder="Enter parent or guardian name" 
-                            className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                        <p className="text-sm text-meta-muted mt-1">
-                          A parent or guardian name and email is required. This is a legal parent or guardian over 18 years of age who is legally qualified to sign a liability release form for your participation.
-                        </p>
-                      </FormItem>
-                    )}
-                  />
+                {!form.watch('is_18_or_over') && (
+                  <div className="space-y-4">
+                    <h2 className="text-xl font-semibold text-meta-light">Parent/Guardian Information</h2>
+                    
+                    <FormField
+                      control={form.control}
+                      name="parent_name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-meta-light">Parent/Guardian Name *</FormLabel>
+                          <FormControl>
+                            <Input 
+                              {...field}
+                              placeholder="Enter parent or guardian name" 
+                              className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                          <p className="text-sm text-meta-muted mt-1">
+                            A parent or guardian name and email is required for participants under 18 years of age.
+                          </p>
+                        </FormItem>
+                      )}
+                    />
 
-                  <FormField
-                    control={form.control}
-                    name="parent_email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-meta-light">Parent/Guardian Email *</FormLabel>
-                        <FormControl>
-                          <Input 
-                            {...field}
-                            type="email" 
-                            placeholder="Enter parent or guardian email" 
-                            className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                    <FormField
+                      control={form.control}
+                      name="parent_email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-meta-light">Parent/Guardian Email *</FormLabel>
+                          <FormControl>
+                            <Input 
+                              {...field}
+                              type="email" 
+                              placeholder="Enter parent or guardian email" 
+                              className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                )}
 
                 {/* Game Resources */}
                 <div className="space-y-4">

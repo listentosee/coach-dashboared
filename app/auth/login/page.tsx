@@ -2,27 +2,40 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { supabase } from '@/lib/supabase/client';
 
+const loginSchema = z.object({
+  email: z.string().email('Please enter a valid email address'),
+  password: z.string().min(1, 'Password is required'),
+});
+
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const form = useForm<z.infer<typeof loginSchema>>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+    },
+  });
+
+  const onSubmit = async (values: z.infer<typeof loginSchema>) => {
     setIsLoading(true);
     setError('');
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword(values);
       if (error) throw error;
       router.push('/dashboard');
     } catch (error: any) {
@@ -46,56 +59,65 @@ export default function LoginPage() {
             </Link>
           </p>
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div>
-              <Label htmlFor="email" className="sr-only">
-                Email address
-              </Label>
-              <Input
-                id="email"
+        <Form {...form}>
+          <form className="mt-8 space-y-6" onSubmit={form.handleSubmit(onSubmit)}>
+            <div className="rounded-md shadow-sm space-y-4">
+              <FormField
+                control={form.control}
                 name="email"
-                type="email"
-                autoComplete="email"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-meta-border placeholder-meta-muted text-meta-light bg-meta-card rounded-t-md focus:outline-none focus:ring-meta-accent focus:border-meta-accent focus:z-10 sm:text-sm"
-                placeholder="Email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="sr-only">Email address</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="email"
+                        autoComplete="email"
+                        className="appearance-none relative block w-full px-3 py-2 border border-meta-border placeholder-meta-muted text-meta-light bg-meta-card rounded-md focus:outline-none focus:ring-meta-accent focus:border-meta-accent focus:z-10 sm:text-sm"
+                        placeholder="Email address"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-            <div>
-              <Label htmlFor="password" className="sr-only">
-                Password
-              </Label>
-              <Input
-                id="password"
+              
+              <FormField
+                control={form.control}
                 name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-meta-border placeholder-meta-muted text-meta-light bg-meta-card rounded-b-md focus:outline-none focus:ring-meta-accent focus:border-meta-accent focus:z-10 sm:text-sm"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="sr-only">Password</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="password"
+                        autoComplete="current-password"
+                        className="appearance-none relative block w-full px-3 py-2 border border-meta-border placeholder-meta-muted text-meta-light bg-meta-card rounded-md focus:outline-none focus:ring-meta-accent focus:border-meta-accent focus:z-10 sm:text-sm"
+                        placeholder="Password"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
-          </div>
 
-          {error && (
-            <div className="text-red-400 text-sm text-center">{error}</div>
-          )}
+            {error && (
+              <div className="text-red-400 text-sm text-center">{error}</div>
+            )}
 
-          <div>
-            <Button
-              type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-meta-accent hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-meta-accent"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Signing in...' : 'Sign in'}
-            </Button>
-          </div>
-        </form>
+            <div>
+              <Button
+                type="submit"
+                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-meta-accent hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-meta-accent"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Signing in...' : 'Sign in'}
+              </Button>
+            </div>
+          </form>
+        </Form>
       </div>
     </div>
   );

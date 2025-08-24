@@ -22,15 +22,15 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Edit } from 'lucide-react';
 
 const editFormSchema = z.object({
-  email_personal: z.string().email('Invalid email').optional().or(z.literal('')),
-  email_school: z.string().email('Invalid email').optional().or(z.literal('')),
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
   last_name: z.string().min(2, 'Last name must be at least 2 characters'),
+  email_personal: z.string().email('Invalid email').optional().or(z.literal('')),
+  email_school: z.string().email('Invalid email').optional().or(z.literal('')),
   is_18_or_over: z.boolean(),
   grade: z.string().optional(),
 });
@@ -60,6 +60,7 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
   // Update form when competitor changes
   useEffect(() => {
     if (competitor) {
+      console.log('Competitor data for form:', competitor);
       form.reset({
         email_personal: competitor.email_personal || '',
         email_school: competitor.email_school || '',
@@ -73,6 +74,7 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
 
   async function onSubmit(values: z.infer<typeof editFormSchema>) {
     setIsSubmitting(true);
+    
     try {
       const response = await fetch(`/api/competitors/${competitor.id}/update`, {
         method: 'PUT',
@@ -140,6 +142,7 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
                 />
               </div>
 
+              {/* Email fields - always required */}
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -173,6 +176,27 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
+                  name="is_18_or_over"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-gray-700">18 or older</FormLabel>
+                      <FormControl>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                            className="h-4 w-4 border-gray-300"
+                          />
+                          <span className="text-sm text-gray-600">Yes, competitor is 18 or older</span>
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={form.control}
                   name="grade"
                   render={({ field }) => (
                     <FormItem>
@@ -195,28 +219,9 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
                     </FormItem>
                   )}
                 />
-
-                <FormField
-                  control={form.control}
-                  name="is_18_or_over"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-lg border border-gray-300 p-4 bg-white">
-                      <div className="space-y-0.5">
-                        <FormLabel className="text-gray-700">18 or Over</FormLabel>
-                        <FormDescription className="text-gray-600">
-                          Confirm if the competitor is 18 years or older
-                        </FormDescription>
-                      </div>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
               </div>
+
+
             </div>
 
             {/* Form Actions */}

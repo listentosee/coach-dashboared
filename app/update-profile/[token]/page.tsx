@@ -15,28 +15,30 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { X } from 'lucide-react';
 
-const profileUpdateSchema = z.object({
-  first_name: z.string().min(2, 'First name must be at least 2 characters'),
-  last_name: z.string().min(2, 'Last name must be at least 2 characters'),
-  grade: z.string().min(1, 'Grade is required'),
-  gender: z.string().min(1, 'Gender is required'),
-  race: z.string().min(1, 'Race is required'),
-  ethnicity: z.string().min(1, 'Ethnicity is required'),
-  years_competing: z.number().min(0).max(20).optional(),
-  level_of_technology: z.string().min(1, 'Level of technology is required'),
-  is_18_or_over: z.boolean(),
-  parent_name: z.string().optional(),
-  parent_email: z.string().email('Valid email is required').optional(),
-  competition_type: z.enum(['trove', 'gymnasium', 'mayors_cup']),
-}).refine((data) => {
-  if (!data.is_18_or_over) {
-    return data.parent_name && data.parent_email;
+// Dynamic schema based on user age
+const createProfileUpdateSchema = (is18OrOver: boolean) => {
+  const baseSchema = {
+    first_name: z.string().min(2, 'First name must be at least 2 characters'),
+    last_name: z.string().min(2, 'Last name must be at least 2 characters'),
+    grade: z.string().min(1, 'Grade is required'),
+    gender: z.string().min(1, 'Gender is required'),
+    race: z.string().min(1, 'Race is required'),
+    ethnicity: z.string().min(1, 'Ethnicity is required'),
+    years_competing: z.number().min(0).max(20).optional(),
+    level_of_technology: z.string().min(1, 'Level of technology is required'),
+    competition_type: z.enum(['trove', 'gymnasium', 'mayors_cup']),
+  };
+
+  if (!is18OrOver) {
+    return z.object({
+      ...baseSchema,
+      parent_name: z.string().min(1, 'Parent/Guardian name is required'),
+      parent_email: z.string().email('Valid email is required'),
+    });
   }
-  return true;
-}, {
-  message: "Parent/Guardian information is required for participants under 18",
-  path: ["parent_name"]
-});
+
+  return z.object(baseSchema);
+};
 
 interface CompetitorProfile {
   id: string;
@@ -63,8 +65,10 @@ export default function UpdateProfilePage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  const form = useForm<z.infer<typeof profileUpdateSchema>>({
-    resolver: zodResolver(profileUpdateSchema),
+  const [schema, setSchema] = useState<z.ZodSchema | null>(null);
+  
+  const form = useForm({
+    resolver: schema ? zodResolver(schema) : undefined,
     defaultValues: {
       first_name: '',
       last_name: '',
@@ -72,12 +76,11 @@ export default function UpdateProfilePage() {
       gender: '',
       race: '',
       ethnicity: '',
-      years_competing: undefined,
+      years_competing: undefined as number | undefined,
       level_of_technology: '',
-      is_18_or_over: false,
       parent_name: '',
       parent_email: '',
-      competition_type: 'mayors_cup',
+      competition_type: 'mayors_cup' as const,
     },
   });
 
@@ -92,6 +95,10 @@ export default function UpdateProfilePage() {
         const data = await response.json();
         setProfile(data.profile);
         
+        // Set schema based on user age
+        const userSchema = createProfileUpdateSchema(data.profile.is_18_or_over || false);
+        setSchema(userSchema);
+        
         // Pre-fill form with existing data
         form.reset({
           first_name: data.profile.first_name || '',
@@ -102,7 +109,6 @@ export default function UpdateProfilePage() {
           ethnicity: data.profile.ethnicity || '',
           years_competing: data.profile.years_competing ? parseInt(data.profile.years_competing.toString(), 10) : undefined,
           level_of_technology: data.profile.level_of_technology || '',
-          is_18_or_over: data.profile.is_18_or_over || false,
           parent_name: data.profile.parent_name || '',
           parent_email: data.profile.parent_email || '',
           competition_type: 'mayors_cup',
@@ -119,20 +125,36 @@ export default function UpdateProfilePage() {
     }
   }, [params.token, form]);
 
-  const onSubmit = async (values: z.infer<typeof profileUpdateSchema>) => {
+  const onSubmit = async (values: any) => {
+    console.log('Form submitted with values:', values);
+    
+    // Only send fields that are in the current schema
+    const submissionData = { ...values };
+    if (profile?.is_18_or_over) {
+      delete submissionData.parent_name;
+      delete submissionData.parent_email;
+    }
+    
     try {
       const response = await fetch(`/api/competitors/profile/${params.token}/update`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+        body: JSON.stringify(submissionData),
       });
 
+      console.log('Response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error('Failed to update profile');
+        const errorData = await response.json();
+        console.error('API error:', errorData);
+        throw new Error(errorData.error || 'Failed to update profile');
       }
 
+      const result = await response.json();
+      console.log('Success response:', result);
       setSuccess(true);
     } catch (error: any) {
+      console.error('Submission error:', error);
       setError(error.message);
     }
   };
@@ -189,7 +211,9 @@ export default function UpdateProfilePage() {
         <Card className="bg-meta-card border-meta-border">
           <CardContent className="p-8">
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+              <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
+                console.error('Form validation errors:', errors);
+              })} className="space-y-8">
                 {/* Personal Information */}
                 <div className="space-y-4">
                   <h2 className="text-xl font-semibold text-meta-light">Personal Information</h2>
@@ -345,31 +369,7 @@ export default function UpdateProfilePage() {
                   </div>
                 </div>
 
-                {/* 18+ Status */}
-                <div className="space-y-4">
-                  <h2 className="text-xl font-semibold text-meta-light">Age Verification</h2>
-                  
-                  <FormField
-                    control={form.control}
-                    name="is_18_or_over"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border border-meta-border p-4 bg-meta-card">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-meta-light">18 or Over</FormLabel>
-                          <FormDescription className="text-meta-muted">
-                            Are you 18 years of age or older?
-                          </FormDescription>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                </div>
+
 
                 {/* Participant Agreement */}
                 <div className="space-y-4">
@@ -384,7 +384,7 @@ export default function UpdateProfilePage() {
                 </div>
 
                 {/* Parent/Guardian Information */}
-                {!form.watch('is_18_or_over') && (
+                {profile && !profile.is_18_or_over && (
                   <div className="space-y-4">
                     <h2 className="text-xl font-semibold text-meta-light">Parent/Guardian Information</h2>
                     

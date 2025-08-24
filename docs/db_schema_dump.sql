@@ -109,6 +109,18 @@ $$;
 ALTER FUNCTION "public"."check_team_size"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."generate_profile_update_token"() RETURNS "text"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    RETURN encode(gen_random_bytes(32), 'hex');
+END;
+$$;
+
+
+ALTER FUNCTION "public"."generate_profile_update_token"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -282,10 +294,13 @@ CREATE TABLE IF NOT EXISTS "public"."teams" (
 ALTER TABLE "public"."teams" OWNER TO "postgres";
 
 
-CREATE OR REPLACE VIEW "public"."comp_team_view" WITH ("security_invoker"='on') AS
+CREATE OR REPLACE VIEW "public"."comp_team_view" AS
  SELECT "c"."id",
     "c"."first_name",
     "c"."last_name",
+    "c"."email_personal",
+    "c"."email_school",
+    "c"."is_18_or_over",
     "c"."grade",
     "c"."status",
     "c"."media_release_signed",
@@ -297,6 +312,7 @@ CREATE OR REPLACE VIEW "public"."comp_team_view" WITH ("security_invoker"='on') 
     "c"."profile_update_token",
     "c"."profile_update_token_expires",
     "c"."created_at",
+    "c"."is_active",
     "t"."id" AS "team_id",
     "t"."name" AS "team_name",
     "tm"."position" AS "team_position"
@@ -899,6 +915,12 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 GRANT ALL ON FUNCTION "public"."check_team_size"() TO "anon";
 GRANT ALL ON FUNCTION "public"."check_team_size"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."check_team_size"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."generate_profile_update_token"() TO "anon";
+GRANT ALL ON FUNCTION "public"."generate_profile_update_token"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."generate_profile_update_token"() TO "service_role";
 
 
 

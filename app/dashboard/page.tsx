@@ -13,6 +13,9 @@ interface Competitor {
   id: string;
   first_name: string;
   last_name: string;
+  email_personal?: string;
+  email_school?: string;
+  is_18_or_over?: boolean;
   grade?: string;
   status: 'pending' | 'profile updated' | 'complete';
   media_release_signed: boolean;
@@ -407,9 +410,12 @@ export default function DashboardPage() {
                   <div className="flex items-center space-x-4 pr-5">
                     {/* Status Indicators */}
                     <div className="flex items-center space-x-2">
-                      <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.media_release_date ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-                        Media Release
-                      </div>
+                      {/* Only show Media Release for competitors under 18 */}
+                      {!competitor.is_18_or_over && (
+                        <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.media_release_date ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+                          Media Release
+                        </div>
+                      )}
                       <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.participation_agreement_date ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
                         Agreement
                       </div>

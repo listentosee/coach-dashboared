@@ -11,18 +11,9 @@ const ProfileUpdateSchema = z.object({
   ethnicity: z.string().min(1, 'Ethnicity is required'),
   years_competing: z.number().min(0).max(20).optional(),
   level_of_technology: z.string().min(1, 'Level of technology is required'),
-  is_18_or_over: z.boolean(),
   parent_name: z.string().optional(),
   parent_email: z.string().email('Valid email is required').optional(),
   competition_type: z.enum(['trove', 'gymnasium', 'mayors_cup']),
-}).refine((data) => {
-  if (!data.is_18_or_over) {
-    return data.parent_name && data.parent_email;
-  }
-  return true;
-}, {
-  message: "Parent/Guardian information is required for participants under 18",
-  path: ["parent_name"]
 });
 
 export async function PUT(
@@ -65,7 +56,6 @@ export async function PUT(
         ethnicity: validatedData.ethnicity,
         years_competing: validatedData.years_competing || null,
         level_of_technology: validatedData.level_of_technology,
-        is_18_or_over: validatedData.is_18_or_over,
         parent_name: validatedData.parent_name || null,
         parent_email: validatedData.parent_email || null,
         updated_at: new Date().toISOString(),

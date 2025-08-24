@@ -10,12 +10,6 @@ const UpdateCompetitorSchema = z.object({
   last_name: z.string().min(2, 'Last name must be at least 2 characters'),
   is_18_or_over: z.boolean(),
   grade: z.string().optional(),
-  practice_gym_only: z.boolean(),
-  media_release_sent: z.boolean(),
-  media_release_signed: z.boolean(),
-  participation_agreement_sent: z.boolean(),
-  participation_agreement_signed: z.boolean(),
-  download_media_release: z.boolean(),
 });
 
 export async function PUT(
@@ -57,8 +51,6 @@ export async function PUT(
         last_name: validatedData.last_name,
         is_18_or_over: validatedData.is_18_or_over,
         grade: validatedData.grade || null,
-        media_release_signed: validatedData.media_release_signed,
-        participation_agreement_signed: validatedData.participation_agreement_signed,
         updated_at: new Date().toISOString(),
       })
       .eq('id', params.id)

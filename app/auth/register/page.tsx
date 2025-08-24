@@ -94,7 +94,7 @@ export default function RegisterPage() {
           data: {
             role: 'coach',
             monday_coach_id: coachProfile?.mondayId || '',
-            name: coachProfile?.name || '',
+            name: coachProfile?.fullName || '',
             school_name: coachProfile?.schoolName || '',
             division: coachProfile?.division || '',
             region: coachProfile?.region || ''
@@ -109,7 +109,7 @@ export default function RegisterPage() {
         const { error: profileError } = await supabase.from('profiles').insert({
           id: data.user.id,
           email: email!,
-          full_name: coachProfile?.name || '',
+          full_name: coachProfile?.fullName || '',
           first_name: coachProfile?.firstName || '',
           last_name: coachProfile?.lastName || '',
           school_name: coachProfile?.schoolName || '',
@@ -174,58 +174,91 @@ export default function RegisterPage() {
         </div>
         
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div>
-              <Label htmlFor="email" className="sr-only">
-                Email address
-              </Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-meta-border placeholder-meta-muted text-meta-light bg-meta-card rounded-t-md focus:outline-none focus:ring-meta-accent focus:border-meta-accent focus:z-10 sm:text-sm"
-                placeholder="Email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
+          {/* Email Verification Step */}
+          {!emailVerified ? (
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="email" className="block text-sm font-medium text-meta-light mb-2">
+                  Email address
+                </Label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  className="appearance-none relative block w-full px-3 py-2 border border-meta-border placeholder-meta-muted text-meta-light bg-meta-card rounded-md focus:outline-none focus:ring-meta-accent focus:border-meta-accent focus:z-10 sm:text-sm"
+                  placeholder="Enter your email address"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              
+              <Button
+                type="button"
+                onClick={verifyEmail}
+                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-meta-accent hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-meta-accent"
+                disabled={isLoading || !email}
+              >
+                {isLoading ? 'Verifying...' : 'Verify Email with Monday.com'}
+              </Button>
             </div>
-            <div>
-              <Label htmlFor="password" className="sr-only">
-                Password
-              </Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-meta-border placeholder-meta-muted text-meta-light bg-meta-card rounded-b-md focus:outline-none focus:ring-meta-accent focus:border-meta-accent focus:z-10 sm:text-sm"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
+          ) : (
+            /* Account Creation Step */
+            <div className="space-y-4">
+              <div className="bg-green-900/20 border border-green-600/50 rounded-md p-4">
+                <p className="text-green-400 text-sm">
+                  ✓ Email verified! Coach: {coachProfile?.name} from {coachProfile?.schoolName}
+                </p>
+              </div>
+              
+              <div>
+                <Label htmlFor="password" className="block text-sm font-medium text-meta-light mb-2">
+                  Password
+                </Label>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  className="appearance-none relative block w-full px-3 py-2 border border-meta-border placeholder-meta-muted text-meta-light bg-meta-card rounded-md focus:outline-none focus:ring-meta-accent focus:border-meta-accent focus:z-10 sm:text-sm"
+                  placeholder="Create a password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="confirmPassword" className="block text-sm font-medium text-meta-light mb-2">
+                  Confirm Password
+                </Label>
+                <Input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  className="appearance-none relative block w-full px-3 py-2 border border-meta-border placeholder-meta-muted text-meta-light bg-meta-card rounded-md focus:outline-none focus:ring-meta-accent focus:border-meta-accent focus:z-10 sm:text-sm"
+                  placeholder="Confirm your password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </div>
+              
+              <Button
+                type="submit"
+                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-meta-accent hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-meta-accent"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Creating account...' : 'Create Account'}
+              </Button>
             </div>
-          </div>
+          )}
 
           {error && (
             <div className="text-red-400 text-sm text-center">{error}</div>
           )}
-
-          {success && (
-            <div className="text-green-400 text-sm text-center">{success}</div>
-          )}
-
-          <div>
-            <Button
-              type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-meta-accent hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-meta-accent"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Creating account...' : 'Create account'}
-            </Button>
-          </div>
         </form>
       </div>
     </div>

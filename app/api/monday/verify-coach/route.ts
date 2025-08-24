@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
       exists: true, 
       isApproved: true,
       coach: {
+        mondayId: coach.id,
         email: coach.email,
         fullName: coach.fullName,
         firstName: coach.firstName,

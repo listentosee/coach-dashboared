@@ -7,10 +7,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Label } from '@/components/ui/label';
 import { X } from 'lucide-react';
 
 const profileUpdateSchema = z.object({
@@ -125,6 +126,8 @@ export default function UpdateProfilePage() {
     }
   };
 
+
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -176,106 +179,165 @@ export default function UpdateProfilePage() {
 
         <Card className="bg-meta-card border-meta-border">
           <CardContent className="p-8">
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              {/* Personal Information */}
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold text-meta-light">Personal Information</h2>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="grade" className="text-meta-light">Grade *</Label>
-                    <Select onValueChange={(value) => form.setValue('grade', value)} value={form.watch('grade')}>
-                      <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
-                        <SelectValue placeholder="Select grade" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-meta-card border-meta-border">
-                        <SelectItem value="9">9th Grade</SelectItem>
-                        <SelectItem value="10">10th Grade</SelectItem>
-                        <SelectItem value="11">11th Grade</SelectItem>
-                        <SelectItem value="12">12th Grade</SelectItem>
-                        <SelectItem value="college">College</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+                {/* Personal Information */}
+                <div className="space-y-4">
+                  <h2 className="text-xl font-semibold text-meta-light">Personal Information</h2>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="grade"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-meta-light">Grade *</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
+                                <SelectValue placeholder="Select grade" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent className="bg-meta-card border-meta-border text-meta-light">
+                              <SelectItem value="9">9th Grade</SelectItem>
+                              <SelectItem value="10">10th Grade</SelectItem>
+                              <SelectItem value="11">11th Grade</SelectItem>
+                              <SelectItem value="12">12th Grade</SelectItem>
+                              <SelectItem value="college">College</SelectItem>
+                            </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                  <div>
-                    <Label htmlFor="gender" className="text-meta-light">Gender *</Label>
-                    <Select onValueChange={(value) => form.setValue('gender', value)} value={form.watch('gender')}>
-                      <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
-                        <SelectValue placeholder="Select gender" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-meta-card border-meta-border">
-                        <SelectItem value="male">Male</SelectItem>
-                        <SelectItem value="female">Female</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                        <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="race" className="text-meta-light">Race *</Label>
-                    <Select onValueChange={(value) => form.setValue('race', value)} value={form.watch('race')}>
-                      <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
-                        <SelectValue placeholder="Select race" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-meta-card border-meta-border">
-                        <SelectItem value="white">White</SelectItem>
-                        <SelectItem value="black">Black or African American</SelectItem>
-                        <SelectItem value="hispanic">Hispanic or Latino</SelectItem>
-                        <SelectItem value="asian">Asian</SelectItem>
-                        <SelectItem value="native">Native American</SelectItem>
-                        <SelectItem value="pacific">Pacific Islander</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="ethnicity" className="text-meta-light">Ethnicity *</Label>
-                    <Select onValueChange={(value) => form.setValue('ethnicity', value)} value={form.watch('ethnicity')}>
-                      <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
-                        <SelectValue placeholder="Select ethnicity" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-meta-card border-meta-border">
-                        <SelectItem value="not_hispanic">Not Hispanic or Latino</SelectItem>
-                        <SelectItem value="hispanic">Hispanic or Latino</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="years_competing" className="text-meta-light">Years Competing</Label>
-                    <Input 
-                      {...form.register('years_competing', { 
-                        setValueAs: (value) => value === '' ? undefined : parseInt(value, 10) || 0
-                      })}
-                      type="number" 
-                      min="0"
-                      max="20"
-                      placeholder="0" 
-                      className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
+                    <FormField
+                      control={form.control}
+                      name="gender"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-meta-light">Gender *</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
+                                <SelectValue placeholder="Select gender" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent className="bg-meta-card border-meta-border text-meta-light">
+                              <SelectItem value="male">Male</SelectItem>
+                              <SelectItem value="female">Female</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                              <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
+                            </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
                   </div>
 
-                  <div>
-                    <Label htmlFor="level_of_technology" className="text-meta-light">Level of Technology *</Label>
-                    <Select onValueChange={(value) => form.setValue('level_of_technology', value)} value={form.watch('level_of_technology')}>
-                      <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
-                        <SelectValue placeholder="Select level" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-meta-card border-meta-border">
-                        <SelectItem value="beginner">Beginner</SelectItem>
-                        <SelectItem value="intermediate">Intermediate</SelectItem>
-                        <SelectItem value="advanced">Advanced</SelectItem>
-                        <SelectItem value="expert">Expert</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="race"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-meta-light">Race *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
+                              <SelectValue placeholder="Select race" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="bg-meta-card border-meta-border text-meta-light">
+                            <SelectItem value="white">White</SelectItem>
+                            <SelectItem value="black">Black or African American</SelectItem>
+                            <SelectItem value="hispanic">Hispanic or Latino</SelectItem>
+                            <SelectItem value="asian">Asian</SelectItem>
+                            <SelectItem value="native">Native American</SelectItem>
+                            <SelectItem value="pacific">Pacific Islander</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="ethnicity"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-meta-light">Ethnicity *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
+                              <SelectValue placeholder="Select ethnicity" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="bg-meta-card border-meta-border text-meta-light">
+                            <SelectItem value="not_hispanic">Not Hispanic or Latino</SelectItem>
+                            <SelectItem value="hispanic">Hispanic or Latino</SelectItem>
+                          </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="years_competing"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-meta-light">Years Competing</FormLabel>
+                        <FormControl>
+                          <Input 
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value === '' ? undefined : parseInt(e.target.value, 10) || 0)}
+                            type="number" 
+                            min="0"
+                            max="20"
+                            placeholder="0" 
+                            className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="level_of_technology"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-meta-light">Level of Technology *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
+                              <SelectValue placeholder="Select level" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="bg-meta-card border-meta-border text-meta-light">
+                            <SelectItem value="beginner">Beginner</SelectItem>
+                            <SelectItem value="intermediate">Intermediate</SelectItem>
+                            <SelectItem value="advanced">Advanced</SelectItem>
+                            <SelectItem value="expert">Expert</SelectItem>
+                          </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </div>
 
@@ -295,27 +357,45 @@ export default function UpdateProfilePage() {
               <div className="space-y-4">
                 <h2 className="text-xl font-semibold text-meta-light">Parent/Guardian Information</h2>
                 
-                <div>
-                  <Label htmlFor="parent_name" className="text-meta-light">Parent/Guardian Name *</Label>
-                  <Input 
-                    {...form.register('parent_name')}
-                    placeholder="Enter parent or guardian name" 
-                    className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
-                  />
-                  <p className="text-sm text-meta-muted mt-1">
-                    A parent or guardian name and email is required. This is a legal parent or guardian over 18 years of age who is legally qualified to sign a liability release form for your participation.
-                  </p>
-                </div>
+                <FormField
+                  control={form.control}
+                  name="parent_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-meta-light">Parent/Guardian Name *</FormLabel>
+                      <FormControl>
+                        <Input 
+                          {...field}
+                          placeholder="Enter parent or guardian name" 
+                          className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                      <p className="text-sm text-meta-muted mt-1">
+                        A parent or guardian name and email is required. This is a legal parent or guardian over 18 years of age who is legally qualified to sign a liability release form for your participation.
+                      </p>
+                    </FormItem>
+                  )}
+                />
 
-                <div>
-                  <Label htmlFor="parent_email" className="text-meta-light">Parent/Guardian Email *</Label>
-                  <Input 
-                    {...form.register('parent_email')}
-                    type="email" 
-                    placeholder="Enter parent or guardian email" 
-                    className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
-                  />
-                </div>
+                <FormField
+                  control={form.control}
+                  name="parent_email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-meta-light">Parent/Guardian Email *</FormLabel>
+                      <FormControl>
+                        <Input 
+                          {...field}
+                          type="email" 
+                          placeholder="Enter parent or guardian email" 
+                          className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
               {/* Game Resources */}
@@ -344,29 +424,38 @@ export default function UpdateProfilePage() {
                     </p>
                   </div>
                   
-                  <div>
-                    <Label className="text-meta-light">Select Competition Type</Label>
-                    <RadioGroup 
-                      onValueChange={(value) => form.setValue('competition_type', value as any)} 
-                      value={form.watch('competition_type')}
-                      className="mt-2"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="trove" id="trove" />
-                          <Label htmlFor="trove" className="text-meta-light">Trove</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="gymnasium" id="gymnasium" />
-                          <Label htmlFor="gymnasium" className="text-meta-light">Gymnasium</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="mayors_cup" id="mayors_cup" />
-                          <Label htmlFor="mayors_cup" className="text-meta-light">Mayors Cup Main Event</Label>
-                        </div>
-                      </div>
-                    </RadioGroup>
-                  </div>
+                  <FormField
+                    control={form.control}
+                    name="competition_type"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-meta-light">Select Competition Type</FormLabel>
+                        <FormControl>
+                          <RadioGroup 
+                            onValueChange={field.onChange} 
+                            value={field.value}
+                            className="mt-2"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="trove" id="trove" />
+                                <Label htmlFor="trove" className="text-meta-light">Trove</Label>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="gymnasium" id="gymnasium" />
+                                <Label htmlFor="gymnasium" className="text-meta-light">Gymnasium</Label>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="mayors_cup" id="mayors_cup" />
+                                <Label htmlFor="mayors_cup" className="text-meta-light">Mayors Cup Main Event</Label>
+                              </div>
+                            </div>
+                          </RadioGroup>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </div>
 
@@ -407,6 +496,7 @@ export default function UpdateProfilePage() {
                 </Button>
               </div>
             </form>
+            </Form>
           </CardContent>
         </Card>
       </div>

@@ -94,6 +94,74 @@ CREATE TYPE "public"."user_role" AS ENUM (
 ALTER TYPE "public"."user_role" OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."calculate_competitor_status"("competitor_id" "uuid") RETURNS "text"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    competitor_record RECORD;
+    has_profile_data BOOLEAN;
+    has_required_forms BOOLEAN;
+BEGIN
+    -- Get competitor data
+    SELECT 
+        is_18_or_over,
+        email_personal,
+        email_school,
+        grade,
+        gender,
+        race,
+        ethnicity,
+        level_of_technology,
+        years_competing,
+        media_release_date,
+        participation_agreement_date
+    INTO competitor_record
+    FROM competitors 
+    WHERE id = competitor_id;
+    
+    IF NOT FOUND THEN
+        RETURN 'pending';
+    END IF;
+    
+    -- Check if all demographic fields are filled (Profile Complete)
+    has_profile_data := (
+        competitor_record.email_personal IS NOT NULL AND competitor_record.email_personal != '' AND
+        competitor_record.email_school IS NOT NULL AND competitor_record.email_school != '' AND
+        competitor_record.grade IS NOT NULL AND competitor_record.grade != '' AND
+        competitor_record.gender IS NOT NULL AND competitor_record.gender != '' AND
+        competitor_record.race IS NOT NULL AND competitor_record.race != '' AND
+        competitor_record.ethnicity IS NOT NULL AND competitor_record.ethnicity != '' AND
+        competitor_record.level_of_technology IS NOT NULL AND competitor_record.level_of_technology != '' AND
+        competitor_record.years_competing IS NOT NULL
+    );
+    
+    -- Check required forms based on age
+    IF competitor_record.is_18_or_over THEN
+        -- For 18+ competitors: only need participation agreement
+        has_required_forms := competitor_record.participation_agreement_date IS NOT NULL;
+    ELSE
+        -- For under 18: need both media release and participation agreement
+        has_required_forms := (
+            competitor_record.media_release_date IS NOT NULL AND 
+            competitor_record.participation_agreement_date IS NOT NULL
+        );
+    END IF;
+    
+    -- Determine status
+    IF has_profile_data AND has_required_forms THEN
+        RETURN 'complete';
+    ELSIF has_profile_data THEN
+        RETURN 'profile updated';
+    ELSE
+        RETURN 'pending';
+    END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."calculate_competitor_status"("competitor_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."check_team_size"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -187,12 +255,10 @@ ALTER FUNCTION "public"."set_profile_update_token_with_expiry"() OWNER TO "postg
 
 CREATE OR REPLACE FUNCTION "public"."update_competitor_status"() RETURNS "trigger"
     LANGUAGE "plpgsql"
-    AS $$
-BEGIN
-    NEW.status = calculate_competitor_status(NEW.id)::competitor_status_new;
+    AS $$BEGIN
+    NEW.status = calculate_competitor_status(NEW.id)::competitor_status;
     RETURN NEW;
-END;
-$$;
+END;$$;
 
 
 ALTER FUNCTION "public"."update_competitor_status"() OWNER TO "postgres";
@@ -247,9 +313,7 @@ CREATE TABLE IF NOT EXISTS "public"."competitors" (
     "ethnicity" "text",
     "level_of_technology" "text",
     "years_competing" integer,
-    "media_release_signed" boolean DEFAULT false,
     "media_release_date" timestamp with time zone,
-    "participation_agreement_signed" boolean DEFAULT false,
     "participation_agreement_date" timestamp with time zone,
     "adobe_sign_document_id" "text",
     "profile_update_token" "text",
@@ -294,7 +358,7 @@ CREATE TABLE IF NOT EXISTS "public"."teams" (
 ALTER TABLE "public"."teams" OWNER TO "postgres";
 
 
-CREATE OR REPLACE VIEW "public"."comp_team_view" AS
+CREATE OR REPLACE VIEW "public"."comp_team_view" WITH ("security_invoker"='on') AS
  SELECT "c"."id",
     "c"."first_name",
     "c"."last_name",
@@ -303,9 +367,7 @@ CREATE OR REPLACE VIEW "public"."comp_team_view" AS
     "c"."is_18_or_over",
     "c"."grade",
     "c"."status",
-    "c"."media_release_signed",
     "c"."media_release_date",
-    "c"."participation_agreement_signed",
     "c"."participation_agreement_date",
     "c"."game_platform_id",
     "c"."game_platform_synced_at",
@@ -495,6 +557,10 @@ CREATE OR REPLACE TRIGGER "enforce_team_size" BEFORE INSERT ON "public"."team_me
 
 
 CREATE OR REPLACE TRIGGER "set_profile_update_token" BEFORE INSERT ON "public"."competitors" FOR EACH ROW EXECUTE FUNCTION "public"."set_profile_update_token_with_expiry"();
+
+
+
+CREATE OR REPLACE TRIGGER "trigger_update_competitor_status" BEFORE INSERT OR UPDATE ON "public"."competitors" FOR EACH ROW EXECUTE FUNCTION "public"."update_competitor_status"();
 
 
 
@@ -909,6 +975,12 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
+
+
+
+GRANT ALL ON FUNCTION "public"."calculate_competitor_status"("competitor_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."calculate_competitor_status"("competitor_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."calculate_competitor_status"("competitor_id" "uuid") TO "service_role";
 
 
 

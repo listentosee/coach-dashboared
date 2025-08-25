@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 
 const ProfileUpdateSchema = z.object({
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
@@ -59,8 +60,6 @@ export async function PUT(
         parent_name: validatedData.parent_name || null,
         parent_email: validatedData.parent_email || null,
         updated_at: new Date().toISOString(),
-        // Set status to 'profile updated' since all required fields are now filled
-        status: 'profile updated'
       })
       .eq('id', existingCompetitor.id)
       .select()
@@ -69,6 +68,18 @@ export async function PUT(
     if (updateError) {
       console.error('Database error:', updateError);
       return NextResponse.json({ error: 'Failed to update profile: ' + updateError.message }, { status: 400 });
+    }
+
+    // Calculate and update status
+    const newStatus = calculateCompetitorStatus(competitor);
+    const { error: statusError } = await supabase
+      .from('competitors')
+      .update({ status: newStatus })
+      .eq('id', existingCompetitor.id);
+
+    if (statusError) {
+      console.error('Status update error:', statusError);
+      // Don't fail the entire request, just log the error
     }
 
     return NextResponse.json({

@@ -19,7 +19,7 @@ interface Competitor {
   email_school?: string;
   is_18_or_over?: boolean;
   grade?: string;
-  status: 'pending' | 'profile updated' | 'complete';
+  status: string;
   media_release_signed: boolean;
   media_release_date?: string;
   participation_agreement_signed: boolean;
@@ -176,7 +176,9 @@ export default function DashboardPage() {
     switch (status) {
       case 'complete':
         return 'bg-green-100 text-green-800';
-      case 'profile updated':
+      case 'compliance':
+        return 'bg-purple-100 text-purple-800';
+      case 'profile':
         return 'bg-blue-100 text-blue-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
@@ -257,6 +259,8 @@ export default function DashboardPage() {
       alert('Failed to update competitor status: ' + error.message);
     }
   };
+
+
 
   const assignTeam = async (competitorId: string, teamId: string | undefined) => {
     try {
@@ -356,19 +360,19 @@ export default function DashboardPage() {
           <CardContent>
             <div className="text-2xl font-bold text-green-400">{stats.activeCompetitors}</div>
             <p className="text-xs text-meta-muted">
-              Currently active participants
+              Game platform integrated
             </p>
           </CardContent>
         </Card>
 
         <Card className="bg-meta-card border-meta-border">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-meta-light">Pending Profile Update</CardTitle>
+            <CardTitle className="text-sm font-medium text-meta-light">Pending</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-yellow-400">{stats.pendingCompetitors}</div>
             <p className="text-xs text-meta-muted">
-              Awaiting profile completion
+              Coach initiated record
             </p>
           </CardContent>
         </Card>
@@ -390,6 +394,8 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+
 
       {/* Competitors List */}
       <Card className="bg-meta-card border-meta-border">

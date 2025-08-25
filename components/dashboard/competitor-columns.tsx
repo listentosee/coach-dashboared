@@ -13,7 +13,7 @@ export interface Competitor {
   email_school?: string;
   is_18_or_over?: boolean;
   grade?: string;
-  status: 'pending' | 'profile updated' | 'complete';
+  status: string;
   media_release_signed: boolean;
   media_release_date?: string;
   participation_agreement_signed: boolean;
@@ -33,7 +33,9 @@ export const getStatusColor = (status: string) => {
   switch (status) {
     case 'complete':
       return 'bg-green-100 text-green-800';
-    case 'profile updated':
+    case 'compliance':
+      return 'bg-purple-100 text-purple-800';
+    case 'profile':
       return 'bg-blue-100 text-blue-800';
     case 'pending':
       return 'bg-yellow-100 text-yellow-800';

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
+import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 
 const UpdateCompetitorSchema = z.object({
   email_personal: z.string().email('Invalid email').optional().or(z.literal('')),
@@ -60,6 +61,18 @@ export async function PUT(
     if (error) {
       console.error('Database error:', error);
       return NextResponse.json({ error: 'Failed to update competitor: ' + error.message }, { status: 400 });
+    }
+
+    // Calculate and update status
+    const newStatus = calculateCompetitorStatus(competitor);
+    const { error: statusError } = await supabase
+      .from('competitors')
+      .update({ status: newStatus })
+      .eq('id', params.id);
+
+    if (statusError) {
+      console.error('Status update error:', statusError);
+      // Don't fail the entire request, just log the error
     }
 
     // Log activity

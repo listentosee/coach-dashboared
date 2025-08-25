@@ -8,6 +8,8 @@ import { supabase } from '@/lib/supabase/client';
 import { CompetitorForm } from '@/components/dashboard/competitor-form';
 import { CompetitorEditForm } from '@/components/dashboard/competitor-edit-form';
 import { Edit, UserCheck, Gamepad2, Ban, Plus, Link as LinkIcon, ChevronDown } from 'lucide-react';
+import { DataTable } from '@/components/ui/data-table';
+import { createCompetitorColumns, Competitor as CompetitorType } from '@/components/dashboard/competitor-columns';
 
 interface Competitor {
   id: string;
@@ -56,8 +58,9 @@ export default function DashboardPage() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [regeneratedLink, setRegeneratedLink] = useState<string | null>(null);
   const [showLinkModal, setShowLinkModal] = useState(false);
-  const [teams, setTeams] = useState<Array<{id: string, name: string}>>([]);
+  const [teams, setTeams] = useState<Array<{id: string, name: string, memberCount?: number}>>([]);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [showInactive, setShowInactive] = useState(true);
 
   const fetchData = async () => {
     try {
@@ -93,7 +96,25 @@ export default function DashboardPage() {
         .order('name', { ascending: true });
 
       if (teamsError) throw teamsError;
-      setTeams(teamsData || []);
+      
+      // Fetch team member counts separately
+      const teamMemberCounts = new Map<string, number>();
+      for (const team of teamsData || []) {
+        const { count } = await supabase
+          .from('team_members')
+          .select('*', { count: 'exact', head: true })
+          .eq('team_id', team.id);
+        teamMemberCounts.set(team.id, count || 0);
+      }
+      
+      // Transform teams data to include member count
+      const transformedTeams = (teamsData || []).map(team => ({
+        id: team.id,
+        name: team.name,
+        memberCount: teamMemberCounts.get(team.id) || 0
+      }));
+      
+      setTeams(transformedTeams);
 
       // Calculate stats
       const totalCompetitors = transformedCompetitors.length;
@@ -143,10 +164,13 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const filteredCompetitors = competitors.filter(competitor =>
-    competitor.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    competitor.last_name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter competitors
+  const filteredCompetitors = competitors.filter(competitor => {
+    const matchesSearch = competitor.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         competitor.last_name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesActiveFilter = showInactive || competitor.is_active;
+    return matchesSearch && matchesActiveFilter;
+  });
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -327,7 +351,7 @@ export default function DashboardPage() {
 
         <Card className="bg-meta-card border-meta-border">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-meta-light">Active Competitors</CardTitle>
+            <CardTitle className="text-sm font-medium text-meta-light">Complete</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-400">{stats.activeCompetitors}</div>
@@ -339,7 +363,7 @@ export default function DashboardPage() {
 
         <Card className="bg-meta-card border-meta-border">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-meta-light">Pending Approval</CardTitle>
+            <CardTitle className="text-sm font-medium text-meta-light">Pending Profile Update</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-yellow-400">{stats.pendingCompetitors}</div>
@@ -381,120 +405,38 @@ export default function DashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {filteredCompetitors.length === 0 ? (
-            <div className="text-center py-8 text-meta-muted">
-              {searchTerm ? 'No competitors found matching your search.' : 'No competitors added yet.'}
+          {/* Controls */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-4">
+              <label className="flex items-center space-x-2 text-sm text-meta-light">
+                <input
+                  type="checkbox"
+                  checked={showInactive}
+                  onChange={(e) => setShowInactive(e.target.checked)}
+                  className="rounded border-meta-border bg-meta-card text-meta-accent focus:ring-meta-accent"
+                />
+                <span>Show Inactive Competitors</span>
+              </label>
             </div>
-          ) : (
-            <div className="space-y-0">
-              {filteredCompetitors.map((competitor) => (
-                <div
-                  key={competitor.id}
-                  className={`flex items-center justify-between p-2 border border-meta-border rounded-lg hover:bg-meta-dark transition-colors ${!competitor.is_active ? 'opacity-50' : ''}`}
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3">
-                      <div>
-                        <h3 className="font-medium text-meta-light">
-                          {competitor.first_name} {competitor.last_name}
-                        </h3>
-                        <div className="flex items-center space-x-4 text-sm text-meta-muted">
-                          {competitor.grade && (
-                            <span>Grade: {competitor.grade}</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center space-x-4 pr-5">
-                    {/* Status Indicators */}
-                    <div className="flex items-center space-x-2">
-                      {/* Only show Media Release for competitors under 18 */}
-                      {!competitor.is_18_or_over && (
-                        <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.media_release_date ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-                          Media Release
-                        </div>
-                      )}
-                      <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.participation_agreement_date ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-                        Agreement
-                      </div>
-                      <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.game_platform_synced_at ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-                        Game Platform
-                      </div>
-                      <div className="relative">
-                        <button
-                          onClick={() => setOpenDropdown(openDropdown === competitor.id ? null : competitor.id)}
-                          className="px-2 py-1 text-xs font-medium rounded bg-meta-accent text-white cursor-pointer hover:bg-blue-600 transition-colors flex items-center space-x-1"
-                        >
-                          <span>{competitor.team_name || 'No Team'}</span>
-                          <ChevronDown className="h-3 w-3" />
-                        </button>
-                        
-                        {openDropdown === competitor.id && (
-                          <div className="absolute top-full left-0 mt-1 bg-meta-card border border-meta-border rounded-lg shadow-lg z-10 min-w-32">
-                            <div className="py-1">
-                              <button
-                                onClick={() => assignTeam(competitor.id, undefined)}
-                                className="w-full text-left px-3 py-2 text-sm text-meta-light hover:bg-meta-accent hover:text-white"
-                              >
-                                No Team
-                              </button>
-                              {teams.map((team) => (
-                                <button
-                                  key={team.id}
-                                  onClick={() => assignTeam(competitor.id, team.id)}
-                                  className="w-full text-left px-3 py-2 text-sm text-meta-light hover:bg-meta-accent hover:text-white"
-                                >
-                                  {team.name}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(competitor.status)}`}>
-                      {competitor.status}
-                    </span>
-                  </div>
-                  
-                  {/* Action Buttons */}
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={() => handleEdit(competitor.id)}
-                      title="Edit Competitor"
-                      className="text-meta-light hover:text-meta-accent p-1"
-                    >
-                      <Edit className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleRegenerateLink(competitor.id)}
-                      title="Regenerate Profile Link"
-                      className="text-meta-light hover:text-meta-accent p-1"
-                    >
-                      <LinkIcon className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleRegister(competitor.id)}
-                      title="Register on Game Platform"
-                      className="text-meta-light hover:text-meta-accent p-1"
-                    >
-                      <Gamepad2 className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDisable(competitor.id)}
-                      title={competitor.is_active ? "Disable Competitor" : "Enable Competitor"}
-                      className={`p-1 ${competitor.is_active ? 'text-meta-light hover:text-meta-accent' : 'text-red-500 hover:text-red-600'}`}
-                    >
-                      {competitor.is_active ? <Ban className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="text-sm text-meta-muted">
+              Showing {filteredCompetitors.length} of {competitors.length} competitors
             </div>
-          )}
+          </div>
+
+          {/* Data Table */}
+          <DataTable
+            columns={createCompetitorColumns(
+              handleEdit,
+              handleRegenerateLink,
+              handleRegister,
+              handleDisable,
+              assignTeam,
+              teams,
+              openDropdown,
+              setOpenDropdown
+            )}
+            data={filteredCompetitors}
+          />
         </CardContent>
       </Card>
 

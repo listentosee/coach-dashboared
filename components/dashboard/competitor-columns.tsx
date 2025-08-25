@@ -1,0 +1,287 @@
+"use client"
+
+import { ColumnDef } from "@tanstack/react-table"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Edit, UserCheck, Gamepad2, Ban, Link as LinkIcon, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react"
+
+export interface Competitor {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email_personal?: string;
+  email_school?: string;
+  is_18_or_over?: boolean;
+  grade?: string;
+  status: 'pending' | 'profile updated' | 'complete';
+  media_release_signed: boolean;
+  media_release_date?: string;
+  participation_agreement_signed: boolean;
+  participation_agreement_date?: string;
+  game_platform_id?: string;
+  game_platform_synced_at?: string;
+  team_id?: string;
+  team_name?: string;
+  team_position?: number;
+  profile_update_token?: string;
+  profile_update_token_expires?: string;
+  created_at: string;
+  is_active: boolean;
+}
+
+export const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'complete':
+      return 'bg-green-100 text-green-800';
+    case 'profile updated':
+      return 'bg-blue-100 text-blue-800';
+    case 'pending':
+      return 'bg-yellow-100 text-yellow-800';
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+};
+
+export const createCompetitorColumns = (
+  onEdit: (id: string) => void,
+  onRegenerateLink: (id: string) => void,
+  onRegister: (id: string) => void,
+  onDisable: (id: string) => void,
+  onTeamChange: (competitorId: string, teamId: string | undefined) => void,
+  teams: Array<{id: string, name: string, memberCount?: number}>,
+  openDropdown: string | null,
+  setOpenDropdown: (id: string | null) => void
+): ColumnDef<Competitor>[] => [
+  {
+    accessorKey: "first_name",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        className="h-auto p-0 font-medium text-left hover:bg-transparent"
+      >
+        Name
+        {column.getIsSorted() === "asc" ? (
+          <ChevronUp className="ml-2 h-4 w-4" />
+        ) : column.getIsSorted() === "desc" ? (
+          <ChevronDown className="ml-2 h-4 w-4" />
+        ) : (
+          <ChevronsUpDown className="ml-2 h-4 w-4" />
+        )}
+      </Button>
+    ),
+    cell: ({ row }) => {
+      const competitor = row.original;
+      return (
+        <div>
+          <div className="font-medium text-meta-light">
+            {competitor.first_name} {competitor.last_name}
+          </div>
+          {competitor.grade && (
+            <div className="text-sm text-meta-muted">
+              Grade: {competitor.grade}
+            </div>
+          )}
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "status",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        className="h-auto p-0 font-medium text-left hover:bg-transparent"
+      >
+        Status
+        {column.getIsSorted() === "asc" ? (
+          <ChevronUp className="ml-2 h-4 w-4" />
+        ) : column.getIsSorted() === "desc" ? (
+          <ChevronDown className="ml-2 h-4 w-4" />
+        ) : (
+          <ChevronsUpDown className="ml-2 h-4 w-4" />
+        )}
+      </Button>
+    ),
+    cell: ({ row }) => {
+      const status = row.getValue("status") as string;
+      return (
+        <div className="text-center">
+          <Badge className={getStatusColor(status)}>
+            {status}
+          </Badge>
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "compliance",
+    header: "Compliance",
+    cell: ({ row }) => {
+      const competitor = row.original;
+      return (
+        <div className="text-center">
+          {competitor.is_18_or_over ? (
+            // 18+ only needs participation agreement
+            <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.participation_agreement_date ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+              Agreement
+            </div>
+          ) : (
+            // Under 18 needs media release
+            <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.media_release_date ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+              Media Release
+            </div>
+          )}
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "game_platform_synced_at",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        className="h-auto p-0 font-medium text-left hover:bg-transparent"
+      >
+        Game Platform
+        {column.getIsSorted() === "asc" ? (
+          <ChevronUp className="ml-2 h-4 w-4" />
+        ) : column.getIsSorted() === "desc" ? (
+          <ChevronDown className="ml-2 h-4 w-4" />
+        ) : (
+          <ChevronsUpDown className="ml-2 h-4 w-4" />
+        )}
+      </Button>
+    ),
+    cell: ({ row }) => {
+      const competitor = row.original;
+      return (
+        <div className="text-center">
+          <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.game_platform_synced_at ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+            {competitor.game_platform_synced_at ? 'Registered' : 'Waiting'}
+          </div>
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "team_name",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        className="h-auto p-0 font-medium text-left hover:bg-transparent"
+      >
+        Team
+        {column.getIsSorted() === "asc" ? (
+          <ChevronUp className="ml-2 h-4 w-4" />
+        ) : column.getIsSorted() === "desc" ? (
+          <ChevronDown className="ml-2 h-4 w-4" />
+        ) : (
+          <ChevronsUpDown className="ml-2 h-4 w-4" />
+        )}
+      </Button>
+    ),
+    cell: ({ row }) => {
+      const competitor = row.original;
+      const isDisabled = !competitor.is_active;
+      
+      return (
+        <div className="relative">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => !isDisabled && setOpenDropdown(openDropdown === competitor.id ? null : competitor.id)}
+            className={`${isDisabled ? 'bg-meta-muted text-meta-muted cursor-not-allowed' : 'bg-meta-accent text-white hover:bg-blue-600'}`}
+            disabled={isDisabled}
+          >
+            <span>{competitor.team_name || 'No Team'}</span>
+            <ChevronDown className="ml-2 h-3 w-3" />
+          </Button>
+          
+          {openDropdown === competitor.id && !isDisabled && (
+            <div className="absolute top-full left-0 mt-1 bg-meta-card border border-meta-border rounded-lg shadow-lg z-10 min-w-32">
+              <div className="py-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onTeamChange(competitor.id, undefined)}
+                  className="w-full justify-start"
+                >
+                  No Team
+                </Button>
+                {teams
+                  .filter(team => (team.memberCount || 0) < 6)
+                  .map((team) => (
+                    <Button
+                      key={team.id}
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onTeamChange(competitor.id, team.id)}
+                      className="w-full justify-start"
+                    >
+                      {team.name} ({6 - (team.memberCount || 0)} seats)
+                    </Button>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    },
+  },
+  {
+    id: "actions",
+    header: "Actions",
+    cell: ({ row }) => {
+      const competitor = row.original;
+      const isDisabled = !competitor.is_active;
+      
+      return (
+        <div className="flex items-center space-x-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onEdit(competitor.id)}
+            title="Edit Competitor"
+            className={`p-1 ${isDisabled ? 'text-meta-muted cursor-not-allowed' : 'text-meta-light hover:text-meta-accent'}`}
+            disabled={isDisabled}
+          >
+            <Edit className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onRegenerateLink(competitor.id)}
+            title="Regenerate Profile Link"
+            className={`p-1 ${isDisabled ? 'text-meta-muted cursor-not-allowed' : 'text-meta-light hover:text-meta-accent'}`}
+            disabled={isDisabled}
+          >
+            <LinkIcon className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onRegister(competitor.id)}
+            title="Register on Game Platform"
+            className={`p-1 ${isDisabled ? 'text-meta-muted cursor-not-allowed' : 'text-meta-light hover:text-meta-accent'}`}
+            disabled={isDisabled}
+          >
+            <Gamepad2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDisable(competitor.id)}
+            title={competitor.is_active ? "Disable Competitor" : "Enable Competitor"}
+            className={`p-1 ${competitor.is_active ? 'text-meta-light hover:text-meta-accent' : 'text-red-500 hover:text-red-600'}`}
+          >
+            {competitor.is_active ? <Ban className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+          </Button>
+        </div>
+      );
+    },
+  },
+];

@@ -95,17 +95,23 @@ function DraggableCompetitor({ competitor }: { competitor: Competitor }) {
 }
 
 // Droppable Team Component
-function DroppableTeam({ team, teamMembers, onDeleteTeam, onRemoveMember }: { 
+function DroppableTeam({ team, teamMembers, onDeleteTeam, onRemoveMember, allCollapsed }: { 
   team: Team; 
   teamMembers: TeamMember[];
   onDeleteTeam: (teamId: string) => void;
   onRemoveMember: (teamId: string, competitorId: string) => void;
+  allCollapsed: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: team.id,
   });
   
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(allCollapsed);
+
+  // Update collapsed state when allCollapsed changes
+  useEffect(() => {
+    setCollapsed(allCollapsed);
+  }, [allCollapsed]);
 
   return (
     <div
@@ -186,6 +192,8 @@ export default function TeamsPage() {
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [allCollapsed, setAllCollapsed] = useState(true);
+  const [competitorSearchTerm, setCompetitorSearchTerm] = useState('');
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -194,6 +202,13 @@ export default function TeamsPage() {
       },
     })
   );
+
+  // Filter competitors based on search term
+  const filteredUnassignedCompetitors = unassignedCompetitors.filter(competitor => {
+    const fullName = `${competitor.first_name} ${competitor.last_name}`.toLowerCase();
+    const searchLower = competitorSearchTerm.toLowerCase();
+    return fullName.includes(searchLower);
+  });
 
   useEffect(() => {
     fetchData();
@@ -607,18 +622,37 @@ export default function TeamsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Search Filter */}
+              <div className="mb-4">
+                <Input
+                  placeholder="Search competitors..."
+                  value={competitorSearchTerm}
+                  onChange={(e) => setCompetitorSearchTerm(e.target.value)}
+                  className="bg-meta-dark border-meta-border text-meta-light"
+                />
+              </div>
+              
               <SortableContext
-                items={unassignedCompetitors.map(c => c.id)}
+                items={filteredUnassignedCompetitors.map(c => c.id)}
                 strategy={verticalListSortingStrategy}
               >
                 <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {unassignedCompetitors.length === 0 ? (
+                  {filteredUnassignedCompetitors.length === 0 ? (
                     <div className="text-center py-8 text-meta-muted">
-                      <Users className="mx-auto h-8 w-8 mb-2" />
-                      <p>All students are assigned to teams</p>
+                      {unassignedCompetitors.length === 0 ? (
+                        <>
+                          <Users className="mx-auto h-8 w-8 mb-2" />
+                          <p>All students are assigned to teams</p>
+                        </>
+                      ) : (
+                        <>
+                          <Users className="mx-auto h-8 w-8 mb-2" />
+                          <p>No competitors found matching "{competitorSearchTerm}"</p>
+                        </>
+                      )}
                     </div>
                   ) : (
-                    unassignedCompetitors.map((competitor) => (
+                    filteredUnassignedCompetitors.map((competitor) => (
                       <DraggableCompetitor key={competitor.id} competitor={competitor} />
                     ))
                   )}
@@ -658,6 +692,18 @@ export default function TeamsPage() {
               </div>
 
               {/* Teams List */}
+              {teams.length > 0 && (
+                <div className="mb-3 flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAllCollapsed(!allCollapsed)}
+                    className="text-meta-muted border-meta-border hover:bg-meta-accent hover:text-white"
+                  >
+                    {allCollapsed ? 'Expand All' : 'Collapse All'}
+                  </Button>
+                </div>
+              )}
               <div className="space-y-3 max-h-80 overflow-y-auto">
                 {teams.length === 0 ? (
                   <div className="text-center py-8 text-meta-muted">
@@ -673,6 +719,7 @@ export default function TeamsPage() {
                        teamMembers={teamMembers[team.id] || []}
                        onDeleteTeam={deleteTeam}
                        onRemoveMember={removeMemberFromTeam}
+                       allCollapsed={allCollapsed}
                      />
                    ))
                  )}

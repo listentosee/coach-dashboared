@@ -130,7 +130,7 @@ export const createCompetitorColumns = (
           ) : (
             // Under 18 needs media release
             <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.media_release_date ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-              Media Release
+              Release
             </div>
           )}
         </div>

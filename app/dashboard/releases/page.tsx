@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { 
   Send, 
   FileText, 
@@ -47,6 +48,7 @@ export default function ReleaseManagementPage() {
   const [agreements, setAgreements] = useState<Agreement[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -60,7 +62,7 @@ export default function ReleaseManagementPage() {
       const { data: competitorsData } = await supabase
         .from('competitors')
         .select('*')
-        .order('last_name', { ascending: true });
+        .order('first_name', { ascending: true });
 
       // Fetch agreements
       const { data: agreementsData } = await supabase
@@ -105,6 +107,13 @@ export default function ReleaseManagementPage() {
     const agreement = agreements.find(a => a.competitor_id === competitorId);
     return agreement;
   };
+
+  const filteredCompetitors = competitors.filter(competitor =>
+    competitor.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    competitor.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    competitor.school?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    competitor.grade?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const getStatusBadge = (status: string, templateKind?: string) => {
     switch (status) {
@@ -169,10 +178,18 @@ export default function ReleaseManagementPage() {
       <Card className="bg-meta-card border-meta-border">
         <CardHeader>
           <CardTitle className="text-meta-light">Competitors & Release Status</CardTitle>
+        <div className="mt-4">
+          <Input
+            placeholder="Search competitors by name, school, or grade..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="max-w-md bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
+          />
+        </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {competitors.map((competitor) => {
+            {filteredCompetitors.map((competitor) => {
               const agreement = getAgreementStatus(competitor.id);
               const hasSigned = competitor.is_18_or_over 
                 ? competitor.participation_agreement_date 

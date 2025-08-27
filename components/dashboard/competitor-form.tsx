@@ -34,7 +34,6 @@ const formSchema = z.object({
   grade: z.string().optional(),
   email_personal: z.string().email('Invalid email').optional().or(z.literal('')),
   email_school: z.string().email('Invalid email').optional().or(z.literal('')),
-  game_platform_id: z.string().min(1, 'Student ID is required'),
 });
 
 export function CompetitorForm({ onSuccess, variant = 'default' }: { onSuccess?: () => void; variant?: 'default' | 'compact' }) {
@@ -53,7 +52,6 @@ export function CompetitorForm({ onSuccess, variant = 'default' }: { onSuccess?:
       grade: '',
       email_personal: '',
       email_school: '',
-      game_platform_id: '',
     },
   });
 
@@ -251,22 +249,7 @@ export function CompetitorForm({ onSuccess, variant = 'default' }: { onSuccess?:
                 />
               </div>
 
-              <FormField
-                control={form.control}
-                name="game_platform_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-gray-700">Student ID *</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="Enter student ID" className="bg-white border-gray-300 text-gray-900" />
-                    </FormControl>
-                    <FormDescription className="text-gray-600">
-                      Unique identifier for the student (required)
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+
 
               <FormField
                 control={form.control}

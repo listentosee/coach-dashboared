@@ -8,8 +8,13 @@ type Body = {
 };
 
 export async function POST(req: NextRequest) {
+  console.log('Zoho send API called with:', { competitorId: req.body });
+  
   const { competitorId, mode = 'email' } = (await req.json()) as Body;
+  console.log('Parsed request:', { competitorId, mode });
+  
   const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  console.log('Supabase client created');
 
   // Pull competitor data (adjust field names if needed)
   const { data: c, error } = await supabase
@@ -18,26 +23,51 @@ export async function POST(req: NextRequest) {
     .eq('id', competitorId)
     .single();
 
-  if (error || !c) return NextResponse.json({ error: 'Competitor not found' }, { status: 404 });
+  if (error || !c) {
+    console.error('Competitor fetch error:', error);
+    return NextResponse.json({ error: 'Competitor not found' }, { status: 404 });
+  }
+  
+  console.log('Competitor data fetched:', { 
+    id: c.id, 
+    name: `${c.first_name} ${c.last_name}`,
+    isAdult: c.is_18_or_over,
+    email: c.is_18_or_over ? c.email_school : c.parent_email
+  });
 
   const isAdult = !!c.is_18_or_over;
   const templateId = isAdult ? process.env.ZOHO_SIGN_TEMPLATE_ID_ADULT! : process.env.ZOHO_SIGN_TEMPLATE_ID_MINOR!;
   const templateKind = isAdult ? 'adult' : 'minor';
+  
+  console.log('Template selection:', { isAdult, templateId, templateKind });
 
+  console.log('Getting Zoho access token...');
   const accessToken = await getZohoAccessToken();
+  console.log('Access token retrieved:', accessToken ? 'Success' : 'Failed');
 
   // Get template details to read its single action_id
+  console.log('Fetching template details from Zoho...');
   const tRes = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/templates/${templateId}`, {
     headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
   });
+  console.log('Template fetch response:', { status: tRes.status, ok: tRes.ok });
+  
   if (!tRes.ok) {
-    return NextResponse.json({ error: 'Failed to load template', detail: await tRes.text() }, { status: 502 });
+    const errorText = await tRes.text();
+    console.error('Template fetch failed:', { status: tRes.status, error: errorText });
+    return NextResponse.json({ error: 'Failed to load template', detail: errorText }, { status: 502 });
   }
+  
   const tJson = await tRes.json();
+  console.log('Template data received:', { hasTemplates: !!tJson.templates, actionsCount: tJson.templates?.actions?.length });
+  
   const action = tJson.templates?.actions?.[0];
   if (!action) {
+    console.error('No actions found in template');
     return NextResponse.json({ error: 'Template has no signer action' }, { status: 400 });
   }
+  
+  console.log('Action found:', { actionId: action.action_id, actionType: action.action_type });
 
   // Build the single recipient action
   const recipient =
@@ -88,6 +118,7 @@ export async function POST(req: NextRequest) {
     is_quicksend: 'true',
   });
 
+  console.log('Creating document in Zoho...');
   const createRes = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/templates/${templateId}/createdocument`, {
     method: 'POST',
     headers: {
@@ -96,9 +127,14 @@ export async function POST(req: NextRequest) {
     },
     body: formBody.toString(),
   });
-
+  
+  console.log('Document creation response:', { status: createRes.status, ok: createRes.ok });
+  
   const createJson = await createRes.json().catch(() => ({}));
+  console.log('Document creation result:', createJson);
+  
   if (!createRes.ok || createJson.status !== 'success') {
+    console.error('Document creation failed:', { status: createRes.status, response: createJson });
     return NextResponse.json({ error: 'Zoho Sign create failed', detail: createJson }, { status: 502 });
   }
 

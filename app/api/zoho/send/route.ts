@@ -33,6 +33,8 @@ export async function POST(req: NextRequest) {
     `)
     .eq('id', competitorId)
     .single();
+    
+  console.log('Raw competitor data from Supabase:', c);
 
   if (error || !c) {
     console.error('Competitor fetch error:', error);
@@ -43,7 +45,9 @@ export async function POST(req: NextRequest) {
     id: c.id, 
     name: `${c.first_name} ${c.last_name}`,
     isAdult: c.is_18_or_over,
-    email: c.is_18_or_over ? c.email_school : c.parent_email
+    email: c.is_18_or_over ? c.email_school : c.parent_email,
+    profiles: c.profiles,
+    schoolName: c.profiles?.school_name
   });
 
   const isAdult = !!c.is_18_or_over;

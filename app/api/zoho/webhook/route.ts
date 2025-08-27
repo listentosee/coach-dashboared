@@ -12,9 +12,26 @@ function verifyZohoHmac(rawBody: string, headerSig: string | null) {
 export async function POST(req: NextRequest) {
   const raw = await req.text(); // compute HMAC over raw body
   const headerSig = req.headers.get('x-zs-webhook-signature');
-  if (!verifyZohoHmac(raw, headerSig)) return new NextResponse('invalid signature', { status: 401 });
+  
+  // Check if this is a test request from Zoho (no signature header)
+  const isTestRequest = !headerSig;
+  
+  // For production requests, verify HMAC signature
+  if (!isTestRequest && !verifyZohoHmac(raw, headerSig)) {
+    return new NextResponse('invalid signature', { status: 401 });
+  }
 
   const payload = JSON.parse(raw);
+  
+  // Handle test requests (just return success)
+  if (isTestRequest) {
+    return NextResponse.json({ 
+      ok: true, 
+      message: 'Test webhook received successfully',
+      timestamp: new Date().toISOString()
+    });
+  }
+
   const requestId: string | undefined = payload?.requests?.request_id;
   const requestStatus: string | undefined = payload?.requests?.request_status;
 

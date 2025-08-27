@@ -40,7 +40,9 @@ export async function POST(request: NextRequest) {
         schoolName: coach.schoolName,
         mobileNumber: coach.mobileNumber,
         division: coach.division,
-        region: coach.region
+        region: coach.region,
+        liveScanCompleted: coach.liveScanCompleted,
+        mandatedReporterCompleted: coach.mandatedReporterCompleted
       }
     });
 

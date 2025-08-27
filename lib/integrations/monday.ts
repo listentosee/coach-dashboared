@@ -47,12 +47,21 @@ export class MondayClient {
     console.log('getCoachByEmail called with email:', email);
     
     try {
+      // Clear cached board structure to force fresh fetch
+      this.boardMapper.clearCache(this.boardId);
+      
       // Get column IDs for filtering and data extraction
       const columnIds = await this.boardMapper.getColumnIds(this.boardId, [
-        'Email', 'Status', 'Full Name', 'First Name', 'Last Name', 
-        'School Name', 'Mobile Number', 'Division', 'Region',
-        'Live Scan Completed', 'Mandated Reporter Completed'
+        'Email', 'Status', 'First Name', 'Last Name', 
+        'School Name', 'Phone', 'Division', 'Region',
+        'Live Scan', 'Mandated Reporter'
       ]);
+      
+      // Debug: Check what we actually got
+      console.log('=== COLUMN MAPPING DEBUG ===');
+      console.log('Requested columns:', ['Email', 'Status', 'First Name', 'Last Name', 'School Name', 'Phone', 'Division', 'Region', 'Live Scan', 'Mandated Reporter']);
+      console.log('Found columns:', Object.fromEntries(columnIds));
+      console.log('=== END COLUMN MAPPING DEBUG ===');
 
       console.log('Column mappings:', Object.fromEntries(columnIds));
 
@@ -193,23 +202,66 @@ export class MondayClient {
       return hasComplete;
     };
 
+    const getCheckboxValue = (columnName: string) => {
+      const columnId = columnIds.get(columnName);
+      if (!columnId) {
+        console.log(`Checkbox column "${columnName}" not found in mappings`);
+        return false;
+      }
+      
+      const column = columnValues.find((col: any) => col.id === columnId);
+      console.log(`Checkbox column "${columnName}" (ID: ${columnId}):`, column);
+      
+      if (!column) return false;
+      
+      // For checkbox columns, parse the value to check if checked
+      if (column.type === 'checkbox' && column.value) {
+        try {
+          const parsedValue = JSON.parse(column.value);
+          const isChecked = parsedValue.checked === true;
+          console.log(`Checkbox value:`, parsedValue, `isChecked: ${isChecked}`);
+          return isChecked;
+        } catch (e) {
+          console.log(`Failed to parse checkbox value:`, e);
+          return false;
+        }
+      }
+      
+      // Fallback to text field (some checkboxes might use text)
+      const isChecked = column.text && column.text.toLowerCase().includes('v');
+      console.log(`Fallback checkbox text: "${column.text}" isChecked: ${isChecked}`);
+      return isChecked;
+    };
+
     const isApproved = getStatusValue('Status');
     console.log(`Final isApproved result: ${isApproved}`);
+    
+    const liveScanCompleted = getCheckboxValue('Live Scan');
+    const mandatedReporterCompleted = getCheckboxValue('Mandated Reporter');
+    
+    console.log('=== FINAL PARSED COACH OBJECT ===');
+    console.log('Live Scan Completed:', liveScanCompleted);
+    console.log('Mandated Reporter Completed:', mandatedReporterCompleted);
 
-    return {
+    const coachObject = {
       id: item.id,
       email: getColumnValue('Email'),
-      fullName: getColumnValue('Full Name') || item.name,
+      fullName: `${getColumnValue('First Name')} ${getColumnValue('Last Name')}`.trim() || item.name,
       firstName: getColumnValue('First Name'),
       lastName: getColumnValue('Last Name'),
       schoolName: getColumnValue('School Name'),
-      mobileNumber: getColumnValue('Mobile Number'),
+      mobileNumber: getColumnValue('Phone'),
       division: getColumnValue('Division'),
       region: getColumnValue('Region'),
       isApproved: isApproved,
-      liveScanCompleted: getStatusValue('Live Scan Completed'),
-      mandatedReporterCompleted: getStatusValue('Mandated Reporter Completed')
+      liveScanCompleted: liveScanCompleted,
+      mandatedReporterCompleted: mandatedReporterCompleted
     };
+    
+    console.log('Complete coach object:', JSON.stringify(coachObject, null, 2));
+    console.log('=== END FINAL PARSED COACH OBJECT ===');
+    
+    return coachObject;
   }
 
   // Method to verify if a coach exists and is approved

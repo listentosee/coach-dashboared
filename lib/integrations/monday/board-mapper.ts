@@ -38,15 +38,32 @@ export class MondayBoardMapper {
   }
 
   async getColumnIds(boardId: string, columnNames: string[]): Promise<Map<string, string>> {
+    console.log('=== MONDAY BOARD MAPPER DEBUG ===');
+    console.log('Requested column names:', columnNames);
+    
     const structure = await this.getBoardStructure(boardId);
+    console.log('Board structure retrieved, total columns found:', structure.columns.size);
+    
+    // Debug: Show all available columns
+    console.log('All available columns in board:');
+    for (const [title, id] of structure.columns.entries()) {
+      console.log(`  "${title}" -> ${id}`);
+    }
+    
     const result = new Map<string, string>();
     
     for (const name of columnNames) {
       const id = structure.columns.get(name);
       if (id) {
         result.set(name, id);
+        console.log(`✅ Found column "${name}" -> ${id}`);
+      } else {
+        console.log(`❌ Column "${name}" NOT FOUND in board`);
       }
     }
+    
+    console.log('Final column mapping result:', Object.fromEntries(result));
+    console.log('=== END BOARD MAPPER DEBUG ===');
     
     return result;
   }
@@ -129,6 +146,9 @@ export class MondayBoardMapper {
   }
 
   private async fetchBoardStructure(boardId: string): Promise<BoardStructure> {
+    console.log('=== FETCHING BOARD STRUCTURE ===');
+    console.log('Board ID:', boardId);
+    
     const apiToken = process.env.MONDAY_API_TOKEN;
     if (!apiToken) {
       throw new Error('MONDAY_API_TOKEN environment variable is required');
@@ -146,6 +166,8 @@ export class MondayBoardMapper {
       }
     `;
 
+    console.log('GraphQL Query:', query);
+
     const response = await fetch('https://api.monday.com/v2', {
       method: 'POST',
       headers: {
@@ -161,17 +183,24 @@ export class MondayBoardMapper {
     }
 
     const data = await response.json();
+    console.log('Monday.com API Response:', JSON.stringify(data, null, 2));
     
     if (data.errors) {
       throw new Error(`Monday.com API error: ${data.errors[0].message}`);
     }
 
     const columns = data.data.boards[0]?.columns || [];
+    console.log(`Raw columns from API:`, columns);
+    
     const columnMap = new Map<string, string>();
     
     for (const column of columns) {
+      console.log(`Processing column:`, column);
       columnMap.set(column.title, column.id);
     }
+
+    console.log('Final column map:', Object.fromEntries(columnMap));
+    console.log('=== END FETCHING BOARD STRUCTURE ===');
 
     return {
       boardId,

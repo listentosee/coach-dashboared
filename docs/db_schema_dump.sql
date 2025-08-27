@@ -117,20 +117,53 @@ CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
 BEGIN
   -- Only create profile for authenticated users
   IF NEW.email IS NOT NULL THEN
-    -- Try to insert profile, but don't fail if it already exists
-    INSERT INTO public.profiles (id, email, role, first_name, last_name)
+    -- Try to insert profile with Monday.com data from metadata, but don't fail if it already exists
+    INSERT INTO public.profiles (
+      id, 
+      email, 
+      role, 
+      full_name,
+      first_name, 
+      last_name,
+      school_name,
+      mobile_number,
+      division,
+      region,
+      monday_coach_id,
+      is_approved,
+      live_scan_completed,
+      mandated_reporter_completed
+    )
     VALUES (
       NEW.id,
       NEW.email,
       COALESCE(NEW.raw_user_meta_data->>'role', 'coach'),
-      NEW.raw_user_meta_data->>'first_name',
-      NEW.raw_user_meta_data->>'last_name'
+      COALESCE(NEW.raw_user_meta_data->>'name', NEW.raw_user_meta_data->>'fullName', ''),
+      COALESCE(NEW.raw_user_meta_data->>'first_name', ''),
+      COALESCE(NEW.raw_user_meta_data->>'last_name', ''),
+      COALESCE(NEW.raw_user_meta_data->>'school_name', ''),
+      COALESCE(NEW.raw_user_meta_data->>'mobile_number', ''),
+      COALESCE(NEW.raw_user_meta_data->>'division', ''),
+      COALESCE(NEW.raw_user_meta_data->>'region', ''),
+      COALESCE(NEW.raw_user_meta_data->>'monday_coach_id', ''),
+      COALESCE((NEW.raw_user_meta_data->>'is_approved')::boolean, true),
+      COALESCE((NEW.raw_user_meta_data->>'live_scan_completed')::boolean, false),
+      COALESCE((NEW.raw_user_meta_data->>'mandated_reporter_completed')::boolean, false)
     )
     ON CONFLICT (id) DO UPDATE SET
       email = EXCLUDED.email,
       role = EXCLUDED.role,
+      full_name = EXCLUDED.full_name,
       first_name = EXCLUDED.first_name,
       last_name = EXCLUDED.last_name,
+      school_name = EXCLUDED.school_name,
+      mobile_number = EXCLUDED.mobile_number,
+      division = EXCLUDED.division,
+      region = EXCLUDED.region,
+      monday_coach_id = EXCLUDED.monday_coach_id,
+      is_approved = EXCLUDED.is_approved,
+      live_scan_completed = EXCLUDED.live_scan_completed,
+      mandated_reporter_completed = EXCLUDED.mandated_reporter_completed,
       updated_at = now();
 
     -- For coach users, try to link to existing coach record if it exists
@@ -159,6 +192,10 @@ $$;
 
 
 ALTER FUNCTION "public"."handle_new_user"() OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."handle_new_user"() IS 'Automatically creates profile records with Monday.com data when new users sign up';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."set_profile_update_token_with_expiry"() RETURNS "trigger"
@@ -218,7 +255,9 @@ CREATE TABLE IF NOT EXISTS "public"."agreements" (
     "signed_pdf_path" "text",
     "metadata" "jsonb",
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "template_kind" "text" DEFAULT 'adult'::"text" NOT NULL,
+    CONSTRAINT "agreements_template_kind_check" CHECK (("template_kind" = ANY (ARRAY['adult'::"text", 'minor'::"text"])))
 );
 
 
@@ -604,6 +643,18 @@ ALTER TABLE "public"."activity_logs" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."agreements" ENABLE ROW LEVEL SECURITY;
 
 
+CREATE POLICY "coaches_can_update_agreements" ON "public"."agreements" FOR UPDATE USING ((EXISTS ( SELECT 1
+   FROM "public"."competitors" "c"
+  WHERE (("c"."id" = "agreements"."competitor_id") AND ("c"."coach_id" = "auth"."uid"())))));
+
+
+
+CREATE POLICY "coaches_can_view_agreements" ON "public"."agreements" FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM "public"."competitors" "c"
+  WHERE (("c"."id" = "agreements"."competitor_id") AND ("c"."coach_id" = "auth"."uid"())))));
+
+
+
 ALTER TABLE "public"."competitors" ENABLE ROW LEVEL SECURITY;
 
 
@@ -611,6 +662,10 @@ ALTER TABLE "public"."game_platform_stats" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "service_role_full_access" ON "public"."agreements" USING (("auth"."role"() = 'service_role'::"text"));
+
 
 
 ALTER TABLE "public"."system_config" ENABLE ROW LEVEL SECURITY;

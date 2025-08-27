@@ -70,6 +70,23 @@ export async function POST(req: NextRequest) {
           .update({ [dateField]: new Date().toISOString() })
           .eq('id', agreement.competitor_id);
 
+        // Recalculate and update competitor status
+        const { data: updatedCompetitor } = await supabase
+          .from('competitors')
+          .select('*')
+          .eq('id', agreement.competitor_id)
+          .single();
+
+        if (updatedCompetitor) {
+          const { calculateCompetitorStatus } = await import('@/lib/utils/competitor-status');
+          const newStatus = calculateCompetitorStatus(updatedCompetitor);
+          
+          await supabase
+            .from('competitors')
+            .update({ status: newStatus })
+            .eq('id', agreement.competitor_id);
+        }
+
         await supabase.from('agreements')
           .update({ signed_pdf_path: pdfPath })
           .eq('request_id', requestId);

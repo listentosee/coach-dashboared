@@ -13,7 +13,8 @@ import {
   Settings, 
   LogOut,
   Menu,
-  X
+  X,
+  FileSignature
 } from 'lucide-react';
 
 export default function DashboardLayout({
@@ -103,6 +104,13 @@ export default function DashboardLayout({
               <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
                 <Trophy className="h-5 w-5 mr-3" />
                 Competitions
+              </Button>
+            </Link>
+            
+            <Link href="/dashboard/releases">
+              <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
+                <FileSignature className="h-5 w-5 mr-3" />
+                Release Management
               </Button>
             </Link>
             

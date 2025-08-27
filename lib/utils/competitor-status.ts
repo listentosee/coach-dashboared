@@ -91,12 +91,14 @@ export async function updateAllCompetitorStatuses(supabase: any) {
   }
 }
 
-export function getStatusDescription(status: 'pending' | 'profile updated' | 'complete'): string {
+export function getStatusDescription(status: 'pending' | 'profile' | 'compliance' | 'complete'): string {
   switch (status) {
     case 'pending':
       return 'Profile incomplete - missing required demographic information';
-    case 'profile updated':
+    case 'profile':
       return 'Profile complete - missing required form signatures';
+    case 'compliance':
+      return 'Forms signed - missing game platform assignment';
     case 'complete':
       return 'Fully complete - all requirements met';
     default:

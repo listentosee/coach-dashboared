@@ -160,8 +160,11 @@ export async function POST(req: NextRequest) {
   }
 
   const requestId = createJson.requests?.request_id as string;
+  console.log('Zoho request ID:', requestId);
 
-  await supabase.from('agreements').insert({
+  // Create agreement record in database
+  console.log('Creating agreement record in database...');
+  const { data: agreementData, error: agreementError } = await supabase.from('agreements').insert({
     competitor_id: c.id,
     provider: 'zoho',
     template_kind: templateKind,
@@ -169,7 +172,14 @@ export async function POST(req: NextRequest) {
     status: 'sent',
     signers: [{ role: isAdult ? 'Participant' : 'ParentGuardian', email: recipient.email, name: recipient.name, status: 'sent' }],
     metadata: { templateId, mode },
-  });
+  }).select();
+
+  if (agreementError) {
+    console.error('Failed to create agreement record:', agreementError);
+    return NextResponse.json({ error: 'Failed to create agreement record', detail: agreementError }, { status: 500 });
+  }
+
+  console.log('Agreement record created successfully:', agreementData);
 
   return NextResponse.json({ ok: true, requestId, templateKind });
 }

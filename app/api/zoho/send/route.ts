@@ -80,19 +80,7 @@ export async function POST(req: NextRequest) {
   
   console.log('Action found:', { actionId: action.action_id, actionType: action.action_type });
 
-  // Get template fields for mapping
-  const fields = tJson.templates?.fields || [];
-  console.log('Template fields:', fields);
-  
-  // Find field IDs by label
-  const fieldMap = {
-    participant_name: fields.find((f: any) => f.field_label === 'participant_name')?.field_id,
-    school: fields.find((f: any) => f.field_label === 'school')?.field_id,
-    grade: fields.find((f: any) => f.field_label === 'grade')?.field_id,
-    program_dates: fields.find((f: any) => f.field_label === 'program_dates')?.field_id,
-  };
-  
-  console.log('Field mapping:', fieldMap);
+
 
   // Build the single recipient action
   const recipient =
@@ -119,21 +107,18 @@ export async function POST(req: NextRequest) {
     actionPayload.is_host = true;
   }
 
-  // Prefill fields using field IDs (Zoho requirement)
-  const field_data: any = {};
-  
-  if (fieldMap.participant_name) {
-    field_data[fieldMap.participant_name] = `${c.first_name} ${c.last_name}`;
-  }
-  if (fieldMap.school) {
-    field_data[fieldMap.school] = c.profiles?.school_name || '';
-  }
-  if (fieldMap.grade) {
-    field_data[fieldMap.grade] = c.grade || '';
-  }
-  if (fieldMap.program_dates) {
-    field_data[fieldMap.program_dates] = 'September 15, 2025 – May 30, 2026';
-  }
+  // Prefill fields using Zoho's expected format
+  const field_data = {
+    field_text_data: {
+      participant_name: `${c.first_name} ${c.last_name}`,
+      school: c.profiles?.school_name || '',
+      grade: c.grade || '',
+    },
+    field_boolean_data: {},
+    field_date_data: {},
+    field_radio_data: {},
+    field_checkboxgroup_data: {}
+  };
   
   console.log('Field data being sent:', field_data);
 

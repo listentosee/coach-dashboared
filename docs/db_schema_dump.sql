@@ -65,16 +65,6 @@ CREATE EXTENSION IF NOT EXISTS "wrappers" WITH SCHEMA "extensions";
 
 
 
-CREATE TYPE "public"."competitor_status" AS ENUM (
-    'pending',
-    'profile updated',
-    'complete'
-);
-
-
-ALTER TYPE "public"."competitor_status" OWNER TO "postgres";
-
-
 CREATE TYPE "public"."team_status" AS ENUM (
     'forming',
     'active',
@@ -92,74 +82,6 @@ CREATE TYPE "public"."user_role" AS ENUM (
 
 
 ALTER TYPE "public"."user_role" OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."calculate_competitor_status"("competitor_id" "uuid") RETURNS "text"
-    LANGUAGE "plpgsql"
-    AS $$
-DECLARE
-    competitor_record RECORD;
-    has_profile_data BOOLEAN;
-    has_required_forms BOOLEAN;
-BEGIN
-    -- Get competitor data
-    SELECT 
-        is_18_or_over,
-        email_personal,
-        email_school,
-        grade,
-        gender,
-        race,
-        ethnicity,
-        level_of_technology,
-        years_competing,
-        media_release_date,
-        participation_agreement_date
-    INTO competitor_record
-    FROM competitors 
-    WHERE id = competitor_id;
-    
-    IF NOT FOUND THEN
-        RETURN 'pending';
-    END IF;
-    
-    -- Check if all demographic fields are filled (Profile Complete)
-    has_profile_data := (
-        competitor_record.email_personal IS NOT NULL AND competitor_record.email_personal != '' AND
-        competitor_record.email_school IS NOT NULL AND competitor_record.email_school != '' AND
-        competitor_record.grade IS NOT NULL AND competitor_record.grade != '' AND
-        competitor_record.gender IS NOT NULL AND competitor_record.gender != '' AND
-        competitor_record.race IS NOT NULL AND competitor_record.race != '' AND
-        competitor_record.ethnicity IS NOT NULL AND competitor_record.ethnicity != '' AND
-        competitor_record.level_of_technology IS NOT NULL AND competitor_record.level_of_technology != '' AND
-        competitor_record.years_competing IS NOT NULL
-    );
-    
-    -- Check required forms based on age
-    IF competitor_record.is_18_or_over THEN
-        -- For 18+ competitors: only need participation agreement
-        has_required_forms := competitor_record.participation_agreement_date IS NOT NULL;
-    ELSE
-        -- For under 18: need both media release and participation agreement
-        has_required_forms := (
-            competitor_record.media_release_date IS NOT NULL AND 
-            competitor_record.participation_agreement_date IS NOT NULL
-        );
-    END IF;
-    
-    -- Determine status
-    IF has_profile_data AND has_required_forms THEN
-        RETURN 'complete';
-    ELSIF has_profile_data THEN
-        RETURN 'profile updated';
-    ELSE
-        RETURN 'pending';
-    END IF;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."calculate_competitor_status"("competitor_id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."check_team_size"() RETURNS "trigger"
@@ -253,17 +175,6 @@ $$;
 ALTER FUNCTION "public"."set_profile_update_token_with_expiry"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."update_competitor_status"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
-    AS $$BEGIN
-    NEW.status = calculate_competitor_status(NEW.id)::competitor_status;
-    RETURN NEW;
-END;$$;
-
-
-ALTER FUNCTION "public"."update_competitor_status"() OWNER TO "postgres";
-
-
 CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -297,6 +208,23 @@ CREATE TABLE IF NOT EXISTS "public"."activity_logs" (
 ALTER TABLE "public"."activity_logs" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."agreements" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "competitor_id" "uuid" NOT NULL,
+    "provider" "text" DEFAULT 'zoho'::"text" NOT NULL,
+    "request_id" "text" NOT NULL,
+    "status" "text" DEFAULT 'sent'::"text" NOT NULL,
+    "signers" "jsonb",
+    "signed_pdf_path" "text",
+    "metadata" "jsonb",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."agreements" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."competitors" (
     "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
     "coach_id" "uuid" NOT NULL,
@@ -320,10 +248,10 @@ CREATE TABLE IF NOT EXISTS "public"."competitors" (
     "profile_update_token_expires" timestamp with time zone,
     "game_platform_id" "text",
     "game_platform_synced_at" timestamp with time zone,
-    "status" "public"."competitor_status" DEFAULT 'pending'::"public"."competitor_status",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
-    "is_active" boolean DEFAULT true
+    "is_active" boolean DEFAULT true,
+    "status" "text" DEFAULT 'pending'::"text"
 );
 
 
@@ -445,6 +373,11 @@ ALTER TABLE ONLY "public"."activity_logs"
 
 
 
+ALTER TABLE ONLY "public"."agreements"
+    ADD CONSTRAINT "agreements_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."competitors"
     ADD CONSTRAINT "competitors_coach_school_email_student_id_unique" UNIQUE ("coach_id", "email_school", "game_platform_id");
 
@@ -520,6 +453,14 @@ ALTER TABLE ONLY "public"."teams"
 
 
 
+CREATE INDEX "agreements_idx1" ON "public"."agreements" USING "btree" ("competitor_id");
+
+
+
+CREATE INDEX "agreements_idx2" ON "public"."agreements" USING "btree" ("provider", "request_id");
+
+
+
 CREATE INDEX "idx_activity_logs_created_at" ON "public"."activity_logs" USING "btree" ("created_at" DESC);
 
 
@@ -533,10 +474,6 @@ CREATE INDEX "idx_competitors_coach_id" ON "public"."competitors" USING "btree" 
 
 
 CREATE INDEX "idx_competitors_game_platform_id" ON "public"."competitors" USING "btree" ("game_platform_id");
-
-
-
-CREATE INDEX "idx_competitors_status" ON "public"."competitors" USING "btree" ("status");
 
 
 
@@ -560,10 +497,6 @@ CREATE OR REPLACE TRIGGER "set_profile_update_token" BEFORE INSERT ON "public"."
 
 
 
-CREATE OR REPLACE TRIGGER "trigger_update_competitor_status" BEFORE INSERT OR UPDATE ON "public"."competitors" FOR EACH ROW EXECUTE FUNCTION "public"."update_competitor_status"();
-
-
-
 CREATE OR REPLACE TRIGGER "update_competitors_updated_at" BEFORE UPDATE ON "public"."competitors" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
 
 
@@ -578,6 +511,11 @@ CREATE OR REPLACE TRIGGER "update_teams_updated_at" BEFORE UPDATE ON "public"."t
 
 ALTER TABLE ONLY "public"."activity_logs"
     ADD CONSTRAINT "activity_logs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."agreements"
+    ADD CONSTRAINT "agreements_competitor_id_fkey" FOREIGN KEY ("competitor_id") REFERENCES "public"."competitors"("id") ON DELETE CASCADE;
 
 
 
@@ -661,6 +599,9 @@ CREATE POLICY "Users can view own profile" ON "public"."profiles" FOR SELECT USI
 
 
 ALTER TABLE "public"."activity_logs" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."agreements" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."competitors" ENABLE ROW LEVEL SECURITY;
@@ -978,12 +919,6 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."calculate_competitor_status"("competitor_id" "uuid") TO "anon";
-GRANT ALL ON FUNCTION "public"."calculate_competitor_status"("competitor_id" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."calculate_competitor_status"("competitor_id" "uuid") TO "service_role";
-
-
-
 GRANT ALL ON FUNCTION "public"."check_team_size"() TO "anon";
 GRANT ALL ON FUNCTION "public"."check_team_size"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."check_team_size"() TO "service_role";
@@ -1005,12 +940,6 @@ GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."set_profile_update_token_with_expiry"() TO "anon";
 GRANT ALL ON FUNCTION "public"."set_profile_update_token_with_expiry"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_profile_update_token_with_expiry"() TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."update_competitor_status"() TO "anon";
-GRANT ALL ON FUNCTION "public"."update_competitor_status"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."update_competitor_status"() TO "service_role";
 
 
 
@@ -1041,6 +970,12 @@ GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
 GRANT ALL ON TABLE "public"."activity_logs" TO "anon";
 GRANT ALL ON TABLE "public"."activity_logs" TO "authenticated";
 GRANT ALL ON TABLE "public"."activity_logs" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."agreements" TO "anon";
+GRANT ALL ON TABLE "public"."agreements" TO "authenticated";
+GRANT ALL ON TABLE "public"."agreements" TO "service_role";
 
 
 

@@ -16,10 +16,21 @@ export async function POST(req: NextRequest) {
   const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   console.log('Supabase client created');
 
-  // Pull competitor data (adjust field names if needed)
+  // Pull competitor data with coach's school from profile
   const { data: c, error } = await supabase
     .from('competitors')
-    .select('id, first_name, last_name, grade, school, email_school, is_18_or_over, parent_name, parent_email')
+    .select(`
+      id, 
+      first_name, 
+      last_name, 
+      grade, 
+      email_school, 
+      is_18_or_over, 
+      parent_name, 
+      parent_email,
+      coach_id,
+      profiles!competitors_coach_id_fkey(school_name)
+    `)
     .eq('id', competitorId)
     .single();
 
@@ -98,7 +109,7 @@ export async function POST(req: NextRequest) {
   const field_data = {
     field_text_data: {
       participant_name: `${c.first_name} ${c.last_name}`,
-      school: c.school || '',
+      school: c.profiles?.school_name || '',
       grade: c.grade || '',
       program_dates: 'September 15, 2025 – May 30, 2026', // or process.env.PROGRAM_DATES
     },

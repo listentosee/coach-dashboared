@@ -80,6 +80,20 @@ export async function POST(req: NextRequest) {
   
   console.log('Action found:', { actionId: action.action_id, actionType: action.action_type });
 
+  // Get template fields for mapping
+  const fields = tJson.templates?.fields || [];
+  console.log('Template fields:', fields);
+  
+  // Find field IDs by label
+  const fieldMap = {
+    participant_name: fields.find((f: any) => f.field_label === 'participant_name')?.field_id,
+    school: fields.find((f: any) => f.field_label === 'school')?.field_id,
+    grade: fields.find((f: any) => f.field_label === 'grade')?.field_id,
+    program_dates: fields.find((f: any) => f.field_label === 'program_dates')?.field_id,
+  };
+  
+  console.log('Field mapping:', fieldMap);
+
   // Build the single recipient action
   const recipient =
     isAdult
@@ -105,16 +119,23 @@ export async function POST(req: NextRequest) {
     actionPayload.is_host = true;
   }
 
-  // Prefill fields (labels must match your template fields)
-  const field_data = {
-    field_text_data: {
-      participant_name: `${c.first_name} ${c.last_name}`,
-      school: c.profiles?.school_name || '',
-      grade: c.grade || '',
-      program_dates: 'September 15, 2025 – May 30, 2026', // or process.env.PROGRAM_DATES
-    },
-    // Add address or other fields if present in your DB and template
-  };
+  // Prefill fields using field IDs (Zoho requirement)
+  const field_data: any = {};
+  
+  if (fieldMap.participant_name) {
+    field_data[fieldMap.participant_name] = `${c.first_name} ${c.last_name}`;
+  }
+  if (fieldMap.school) {
+    field_data[fieldMap.school] = c.profiles?.school_name || '';
+  }
+  if (fieldMap.grade) {
+    field_data[fieldMap.grade] = c.grade || '';
+  }
+  if (fieldMap.program_dates) {
+    field_data[fieldMap.program_dates] = 'September 15, 2025 – May 30, 2026';
+  }
+  
+  console.log('Field data being sent:', field_data);
 
   const dataParam = {
     templates: {

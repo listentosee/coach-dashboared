@@ -52,23 +52,43 @@ export async function POST(req: NextRequest) {
       const accessToken = await getZohoAccessToken();
       
       // For print mode agreements, we need to complete the request in Zoho
-      // This involves marking all signers as completed
-      const completeResponse = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/requests/${agreement.request_id}/complete`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Zoho-oauthtoken ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          notes: 'Document completed via manual upload by coach'
-        })
+      // First, get the request details to find the action IDs
+      const requestResponse = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/requests/${agreement.request_id}`, {
+        headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
       });
       
-      if (!completeResponse.ok) {
-        const errorText = await completeResponse.text();
-        console.warn('Failed to complete Zoho request:', completeResponse.status, errorText);
+      if (requestResponse.ok) {
+        const requestData = await requestResponse.json();
+        console.log('Zoho request data:', requestData);
+        
+        // Find the action that needs to be completed
+        const actions = requestData.requests?.actions || [];
+        if (actions.length > 0) {
+          const actionId = actions[0].action_id;
+          
+          // Complete the specific action
+          const completeResponse = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/requests/${agreement.request_id}/actions/${actionId}/complete`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Zoho-oauthtoken ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              notes: 'Document completed via manual upload by coach'
+            })
+          });
+          
+          if (!completeResponse.ok) {
+            const errorText = await completeResponse.text();
+            console.warn('Failed to complete Zoho action:', completeResponse.status, errorText);
+          } else {
+            console.log('Zoho action marked as completed successfully');
+          }
+        } else {
+          console.warn('No actions found in Zoho request');
+        }
       } else {
-        console.log('Zoho request marked as completed successfully');
+        console.warn('Failed to fetch Zoho request details:', requestResponse.status);
       }
     } catch (notifyError) {
       console.warn('Failed to notify Zoho:', notifyError);

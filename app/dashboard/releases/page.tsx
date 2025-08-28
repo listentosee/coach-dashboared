@@ -62,11 +62,27 @@ export default function ReleaseManagementPage() {
     try {
       setLoading(true);
       
-      // Fetch competitors
-      const { data: competitorsData } = await supabase
+      // Fetch competitors - coaches only see their own, admins see all
+      const { data: { user } } = await supabase.auth.getUser();
+      let competitorsQuery = supabase
         .from('competitors')
         .select('*')
         .order('first_name', { ascending: true });
+
+      // If user is not admin, filter by coach_id
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        
+        if (profile?.role !== 'admin') {
+          competitorsQuery = competitorsQuery.eq('coach_id', user.id);
+        }
+      }
+
+      const { data: competitorsData } = await competitorsQuery;
 
       // Fetch agreements
       const { data: agreementsData } = await supabase

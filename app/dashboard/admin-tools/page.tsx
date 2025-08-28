@@ -43,10 +43,40 @@ export default function AdminToolsPage() {
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string[]>([]);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
-    fetchData();
+    checkUserRole();
   }, []);
+
+  const checkUserRole = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setAccessDenied(true);
+        return;
+      }
+
+      // Check if user has admin role (you'll need to implement this based on your auth system)
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (profile?.role !== 'admin') {
+        setAccessDenied(true);
+        return;
+      }
+
+      setUserRole(profile.role);
+      fetchData();
+    } catch (error) {
+      console.error('Error checking user role:', error);
+      setAccessDenied(true);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -131,6 +161,18 @@ export default function AdminToolsPage() {
       alert('Failed to download PDF. Please try again.');
     }
   };
+
+  if (accessDenied) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <AlertCircle className="h-16 w-16 mx-auto mb-4 text-red-500" />
+          <h2 className="text-2xl font-bold text-meta-light mb-2">Access Denied</h2>
+          <p className="text-meta-muted">You do not have permission to access administrative tools.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

@@ -105,6 +105,21 @@ export async function POST(req: NextRequest) {
     verification_type: 'EMAIL',
   };
   
+  // Prefill fields using Zoho's expected format
+  const field_data = {
+    field_text_data: {
+      participant_name: `${c.first_name} ${c.last_name}`,
+      school: c.profiles?.school_name || '',
+      grade: c.grade || '',
+    },
+    field_boolean_data: {},
+    field_date_data: {},
+    field_radio_data: {},
+    field_checkboxgroup_data: {}
+  };
+  
+  console.log('Field data being sent:', field_data);
+
   // For print mode, we'll add a note indicating manual upload is expected
   const notes = mode === 'print' 
     ? 'Please print, sign, and return to your coach for manual upload.'
@@ -214,21 +229,6 @@ export async function POST(req: NextRequest) {
     
     return NextResponse.json({ ok: true, requestId: printRequestId, templateKind, mode: 'print' });
   }
-
-  // Prefill fields using Zoho's expected format
-  const field_data = {
-    field_text_data: {
-      participant_name: `${c.first_name} ${c.last_name}`,
-      school: c.profiles?.school_name || '',
-      grade: c.grade || '',
-    },
-    field_boolean_data: {},
-    field_date_data: {},
-    field_radio_data: {},
-    field_checkboxgroup_data: {}
-  };
-  
-  console.log('Field data being sent:', field_data);
 
   const dataParam = {
     templates: {

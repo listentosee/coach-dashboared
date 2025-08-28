@@ -110,17 +110,60 @@ export async function POST(req: NextRequest) {
     ? 'Please print, sign, and return to your coach for manual upload.'
     : 'Please review and sign the Mayors Cup release.';
 
-  // For print mode, we don't send through Zoho - just create local agreement
+  // For print mode, create a Zoho request but don't send emails
   if (mode === 'print') {
-    console.log('Print mode detected - creating local agreement without Zoho send');
+    console.log('Print mode detected - creating Zoho request for PDF generation');
     
-    // Create agreement record in database with 'print' status
+    // Create a Zoho request with internal recipient (coach) to avoid sending emails
+    const printActionPayload = {
+      action_id: action.action_id,
+      action_type: 'SIGN',
+      recipient_name: 'Coach', // Internal recipient
+      recipient_email: 'coach@internal.local', // Internal email to prevent sending
+      verify_recipient: false, // No verification needed for internal
+      verification_type: 'NONE',
+    };
+
+    const printDataParam = {
+      templates: {
+        field_data,
+        actions: [printActionPayload],
+        notes: notes,
+      },
+    };
+
+    const printFormBody = new URLSearchParams({
+      data: JSON.stringify(printDataParam),
+      is_quicksend: 'true',
+    });
+
+    // Create the Zoho request for PDF generation
+    const printCreateRes = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/templates/${templateId}/createdocument`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Zoho-oauthtoken ${accessToken}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: printFormBody.toString(),
+    });
+
+    if (!printCreateRes.ok) {
+      const errorText = await printCreateRes.text();
+      console.error('Print request creation failed:', { status: printCreateRes.status, error: errorText });
+      return NextResponse.json({ error: 'Failed to create print request', detail: errorText }, { status: 502 });
+    }
+
+    const printCreateJson = await printCreateRes.json();
+    const printRequestId = printCreateJson.requests?.request_id as string;
+    console.log('Print Zoho request ID:', printRequestId);
+
+    // Create agreement record in database with 'print_ready' status
     const { data: agreementData, error: agreementError } = await supabase.from('agreements').insert({
       competitor_id: c.id,
       provider: 'zoho',
       template_kind: templateKind,
-      request_id: `print-${Date.now()}-${c.id}`, // Generate local request ID
-      status: 'print_ready', // New status for print agreements
+      request_id: printRequestId, // Use actual Zoho request ID
+      status: 'print_ready',
       signers: [{ role: isAdult ? 'Participant' : 'ParentGuardian', email: recipient.email, name: recipient.name, status: 'print_ready' }],
       metadata: { templateId, mode, notes, isPrintMode: true },
     }).select();
@@ -132,22 +175,10 @@ export async function POST(req: NextRequest) {
 
     console.log('Print agreement record created successfully:', agreementData);
     
-    // Generate pre-filled PDF for printing (without sending through Zoho)
+    // Generate pre-filled PDF from the Zoho request
     try {
-      const pdfResponse = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/templates/${templateId}/pdf`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Zoho-oauthtoken ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          data: {
-            templates: {
-              field_data,
-              notes: notes,
-            },
-          },
-        }),
+      const pdfResponse = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/requests/${printRequestId}/pdf`, {
+        headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
       });
 
       if (pdfResponse.ok) {
@@ -181,7 +212,7 @@ export async function POST(req: NextRequest) {
       // Continue even if PDF generation fails
     }
     
-    return NextResponse.json({ ok: true, requestId: `print-${Date.now()}-${c.id}`, templateKind, mode: 'print' });
+    return NextResponse.json({ ok: true, requestId: printRequestId, templateKind, mode: 'print' });
   }
 
   // Prefill fields using Zoho's expected format

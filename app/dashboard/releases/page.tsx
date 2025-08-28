@@ -14,7 +14,8 @@ import {
   XCircle, 
   AlertCircle,
   Download,
-  RefreshCw
+  RefreshCw,
+  Upload
 } from 'lucide-react';
 
 interface Competitor {
@@ -49,6 +50,9 @@ export default function ReleaseManagementPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [selectedAgreement, setSelectedAgreement] = useState<Agreement | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -79,7 +83,7 @@ export default function ReleaseManagementPage() {
     }
   };
 
-  const sendRelease = async (competitorId: string, mode: 'email' | 'inperson' = 'email') => {
+  const sendRelease = async (competitorId: string, mode: 'email' | 'print' = 'email') => {
     try {
       setSending(competitorId);
       
@@ -100,6 +104,42 @@ export default function ReleaseManagementPage() {
       alert('Failed to send release. Please try again.');
     } finally {
       setSending(null);
+    }
+  };
+
+  const openUploadModal = (agreement: Agreement) => {
+    setSelectedAgreement(agreement);
+    setUploadModalOpen(true);
+  };
+
+  const handleFileUpload = async (file: File) => {
+    if (!selectedAgreement) return;
+    
+    try {
+      setUploading(true);
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('agreementId', selectedAgreement.id);
+      
+      const response = await fetch('/api/zoho/upload-manual', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload file');
+      }
+
+      // Refresh data and close modal
+      await fetchData();
+      setUploadModalOpen(false);
+      setSelectedAgreement(null);
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      alert('Failed to upload file. Please try again.');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -239,6 +279,19 @@ export default function ReleaseManagementPage() {
                       </Button>
                     )}
                     
+                    {agreement && agreement.status === 'sent' && agreement.metadata?.mode === 'print' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openUploadModal(agreement)}
+                        disabled={uploading}
+                        className="text-meta-light border-meta-border hover:bg-meta-accent"
+                      >
+                        <Upload className="h-4 w-4 mr-1" />
+                        Upload Signed
+                      </Button>
+                    )}
+                    
                     {!agreement && !hasSigned && (
                       <>
                         <Button
@@ -260,12 +313,12 @@ export default function ReleaseManagementPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => sendRelease(competitor.id, 'inperson')}
+                          onClick={() => sendRelease(competitor.id, 'print')}
                           disabled={sending === competitor.id}
                           className="text-meta-light border-meta-border hover:bg-meta-accent"
                         >
                           <FileText className="h-4 w-4 mr-1" />
-                          In-Person
+                          Print Pre-filled
                         </Button>
                       </>
                     )}
@@ -276,6 +329,55 @@ export default function ReleaseManagementPage() {
           </div>
         </CardContent>
       </Card>
+      
+      {/* Upload Modal */}
+      {uploadModalOpen && selectedAgreement && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-meta-dark border border-meta-border rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-meta-light mb-4">
+              Upload Signed Document
+            </h3>
+            <p className="text-sm text-meta-muted mb-4">
+              Please upload the signed document for {selectedAgreement.competitor_id ? 
+                competitors.find(c => c.id === selectedAgreement.competitor_id)?.first_name + ' ' + 
+                competitors.find(c => c.id === selectedAgreement.competitor_id)?.last_name : 'this competitor'}.
+            </p>
+            
+            <div className="space-y-4">
+              <Input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileUpload(file);
+                }}
+                disabled={uploading}
+                className="bg-meta-dark border-meta-border text-meta-light"
+              />
+              
+              <div className="flex space-x-2">
+                <Button
+                  onClick={() => {
+                    setUploadModalOpen(false);
+                    setSelectedAgreement(null);
+                  }}
+                  variant="outline"
+                  className="flex-1 text-meta-light border-meta-border hover:bg-meta-accent"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => setUploadModalOpen(false)}
+                  disabled={uploading}
+                  className="flex-1 bg-meta-accent hover:bg-meta-accent/90 text-white"
+                >
+                  {uploading ? 'Uploading...' : 'Close'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { getZohoAccessToken } from '../_lib/token';
 
 type Body = {
   competitorId: string;
-  mode?: 'email' | 'inperson';          // 'inperson' for kiosk check-in
+  mode?: 'email' | 'print';          // 'print' for print-and-sign manual upload
 };
 
 export async function POST(req: NextRequest) {
@@ -98,18 +98,17 @@ export async function POST(req: NextRequest) {
 
   const actionPayload: any = {
     action_id: action.action_id,
-    action_type: mode === 'inperson' ? 'INPERSONSIGN' : 'SIGN',
-    recipient_name: mode === 'inperson' ? recipient.name : recipient.name,
-    recipient_email: mode === 'inperson' ? (recipient.email || 'no-email@example.com') : recipient.email,
+    action_type: mode === 'print' ? 'SIGN' : 'SIGN', // Both modes use SIGN, print just indicates manual upload
+    recipient_name: recipient.name,
+    recipient_email: recipient.email,
     verify_recipient: true,
     verification_type: 'EMAIL',
   };
-  if (mode === 'inperson') {
-    // Host an in-person session for the first signer
-    actionPayload.in_person_name = recipient.name;
-    actionPayload.in_person_email = recipient.email || 'no-email@example.com';
-    actionPayload.is_host = true;
-  }
+  
+  // For print mode, we'll add a note indicating manual upload is expected
+  const notes = mode === 'print' 
+    ? 'Please print, sign, and return to your coach for manual upload.'
+    : 'Please review and sign the Mayors Cup release.';
 
   // Prefill fields using Zoho's expected format
   const field_data = {
@@ -130,7 +129,7 @@ export async function POST(req: NextRequest) {
     templates: {
       field_data,
       actions: [actionPayload],
-      notes: 'Please review and sign the Mayors Cup release.',
+      notes: notes,
     },
   };
 
@@ -164,15 +163,15 @@ export async function POST(req: NextRequest) {
 
   // Create agreement record in database
   console.log('Creating agreement record in database...');
-  const { data: agreementData, error: agreementError } = await supabase.from('agreements').insert({
-    competitor_id: c.id,
-    provider: 'zoho',
-    template_kind: templateKind,
-    request_id: requestId,
-    status: 'sent',
-    signers: [{ role: isAdult ? 'Participant' : 'ParentGuardian', email: recipient.email, name: recipient.name, status: 'sent' }],
-    metadata: { templateId, mode },
-  }).select();
+          const { data: agreementData, error: agreementError } = await supabase.from('agreements').insert({
+          competitor_id: c.id,
+          provider: 'zoho',
+          template_kind: templateKind,
+          request_id: requestId,
+          status: 'sent',
+          signers: [{ role: isAdult ? 'Participant' : 'ParentGuardian', email: recipient.email, name: recipient.name, status: 'sent' }],
+          metadata: { templateId, mode, notes },
+        }).select();
 
   if (agreementError) {
     console.error('Failed to create agreement record:', agreementError);

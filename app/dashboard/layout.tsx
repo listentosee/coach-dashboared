@@ -114,6 +114,13 @@ export default function DashboardLayout({
               </Button>
             </Link>
             
+            <Link href="/dashboard/admin-tools">
+              <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
+                <Settings className="h-5 w-5 mr-3" />
+                Admin Tools
+              </Button>
+            </Link>
+            
             <Link href="/dashboard/settings">
               <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
                 <Settings className="h-5 w-5 mr-3" />

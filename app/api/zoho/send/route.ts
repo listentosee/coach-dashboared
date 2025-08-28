@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
       action_id: action.action_id,
       action_type: 'SIGN',
       recipient_name: 'Coach', // Internal recipient
-      recipient_email: 'coach@internal.local', // Internal email to prevent sending
+      recipient_email: 'cyber@syned.org', // Default email to prevent sending to external recipients
       verify_recipient: false, // No verification needed for internal
       verification_type: 'NONE',
     };

@@ -51,21 +51,24 @@ export async function POST(req: NextRequest) {
       const { getZohoAccessToken } = await import('../_lib/token');
       const accessToken = await getZohoAccessToken();
       
-      // Update the Zoho request status to indicate manual completion
-      const updateResponse = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/requests/${agreement.request_id}/status`, {
-        method: 'PUT',
+      // For print mode agreements, we need to complete the request in Zoho
+      // This involves marking all signers as completed
+      const completeResponse = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/requests/${agreement.request_id}/complete`, {
+        method: 'POST',
         headers: {
           'Authorization': `Zoho-oauthtoken ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          status: 'completed',
-          notes: 'Document completed via manual upload'
+          notes: 'Document completed via manual upload by coach'
         })
       });
       
-      if (!updateResponse.ok) {
-        console.warn('Failed to update Zoho request status:', updateResponse.status);
+      if (!completeResponse.ok) {
+        const errorText = await completeResponse.text();
+        console.warn('Failed to complete Zoho request:', completeResponse.status, errorText);
+      } else {
+        console.log('Zoho request marked as completed successfully');
       }
     } catch (notifyError) {
       console.warn('Failed to notify Zoho:', notifyError);

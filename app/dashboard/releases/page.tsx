@@ -161,6 +161,8 @@ export default function ReleaseManagementPage() {
         return <Badge className="bg-green-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Completed</Badge>;
       case 'sent':
         return <Badge className="bg-blue-600 text-white"><Clock className="h-3 w-3 mr-1" />Sent</Badge>;
+      case 'print_ready':
+        return <Badge className="bg-purple-600 text-white"><FileText className="h-3 w-3 mr-1" />Print Ready</Badge>;
       case 'viewed':
         return <Badge className="bg-yellow-600 text-white"><FileText className="h-3 w-3 mr-1" />Viewed</Badge>;
       case 'declined':
@@ -277,6 +279,30 @@ export default function ReleaseManagementPage() {
                         <Download className="h-4 w-4 mr-1" />
                         PDF
                       </Button>
+                    )}
+                    
+                    {agreement && agreement.status === 'print_ready' && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => downloadPDF(agreement.signed_pdf_path!, `${competitor.first_name} ${competitor.last_name} - Print Ready`)}
+                          className="text-meta-light border-meta-border hover:bg-meta-accent"
+                        >
+                          <Download className="h-4 w-4 mr-1" />
+                          Download Print
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openUploadModal(agreement)}
+                          disabled={uploading}
+                          className="text-meta-light border-meta-border hover:bg-meta-accent"
+                        >
+                          <Upload className="h-4 w-4 mr-1" />
+                          Upload Signed
+                        </Button>
+                      </>
                     )}
                     
                     {agreement && agreement.status === 'sent' && agreement.metadata?.mode === 'print' && (

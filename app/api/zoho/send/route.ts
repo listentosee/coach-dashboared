@@ -110,6 +110,80 @@ export async function POST(req: NextRequest) {
     ? 'Please print, sign, and return to your coach for manual upload.'
     : 'Please review and sign the Mayors Cup release.';
 
+  // For print mode, we don't send through Zoho - just create local agreement
+  if (mode === 'print') {
+    console.log('Print mode detected - creating local agreement without Zoho send');
+    
+    // Create agreement record in database with 'print' status
+    const { data: agreementData, error: agreementError } = await supabase.from('agreements').insert({
+      competitor_id: c.id,
+      provider: 'zoho',
+      template_kind: templateKind,
+      request_id: `print-${Date.now()}-${c.id}`, // Generate local request ID
+      status: 'print_ready', // New status for print agreements
+      signers: [{ role: isAdult ? 'Participant' : 'ParentGuardian', email: recipient.email, name: recipient.name, status: 'print_ready' }],
+      metadata: { templateId, mode, notes, isPrintMode: true },
+    }).select();
+
+    if (agreementError) {
+      console.error('Failed to create print agreement record:', agreementError);
+      return NextResponse.json({ error: 'Failed to create agreement record', detail: agreementError }, { status: 500 });
+    }
+
+    console.log('Print agreement record created successfully:', agreementData);
+    
+    // Generate pre-filled PDF for printing (without sending through Zoho)
+    try {
+      const pdfResponse = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/templates/${templateId}/pdf`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Zoho-oauthtoken ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          data: {
+            templates: {
+              field_data,
+              notes: notes,
+            },
+          },
+        }),
+      });
+
+      if (pdfResponse.ok) {
+        const pdfBuffer = await pdfResponse.arrayBuffer();
+        const pdfPath = `print-ready/${agreementData[0].id}.pdf`;
+        
+        // Store the pre-filled PDF in Supabase Storage
+        const { error: storageError } = await supabase.storage
+          .from('signatures')
+          .upload(pdfPath, pdfBuffer, {
+            contentType: 'application/pdf',
+            upsert: true,
+          });
+
+        if (!storageError) {
+          // Update agreement with PDF path
+          await supabase
+            .from('agreements')
+            .update({ signed_pdf_path: pdfPath })
+            .eq('id', agreementData[0].id);
+          
+          console.log('Pre-filled PDF generated and stored:', pdfPath);
+        } else {
+          console.warn('Failed to store pre-filled PDF:', storageError);
+        }
+      } else {
+        console.warn('Failed to generate pre-filled PDF:', pdfResponse.status);
+      }
+    } catch (pdfError) {
+      console.warn('PDF generation failed:', pdfError);
+      // Continue even if PDF generation fails
+    }
+    
+    return NextResponse.json({ ok: true, requestId: `print-${Date.now()}-${c.id}`, templateKind, mode: 'print' });
+  }
+
   // Prefill fields using Zoho's expected format
   const field_data = {
     field_text_data: {

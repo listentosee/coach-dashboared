@@ -176,16 +176,18 @@ export default function ReleaseManagementPage() {
 
   const downloadPDF = async (signedPdfPath: string, competitorName: string) => {
     try {
-      const { data, error } = await supabase.storage
-        .from('signatures')
-        .download(signedPdfPath);
+      // Use server-side download endpoint to avoid CORS issues
+      const response = await fetch(`/api/zoho/download?path=${encodeURIComponent(signedPdfPath)}&name=${encodeURIComponent(competitorName)}-release.pdf`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to download PDF');
+      }
 
-      if (error) throw error;
-
-      const url = URL.createObjectURL(data);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${competitorName}-signed-release.pdf`;
+      a.download = `${competitorName}-release.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

@@ -92,6 +92,19 @@ export async function POST(req: NextRequest) {
       ? { name: `${c.first_name} ${c.last_name}`, email: c.email_school } // or use your preferred participant email field
       : { name: c.parent_name, email: c.parent_email };
 
+  // Validate required fields based on age
+  if (isAdult === null) {
+    return NextResponse.json({ error: 'Competitor age information is missing. Please set is_18_or_over field.' }, { status: 400 });
+  }
+
+  if (isAdult && !c.email_school) {
+    return NextResponse.json({ error: 'Adult competitor is missing school email address.' }, { status: 400 });
+  }
+
+  if (!isAdult && (!c.parent_name || !c.parent_email)) {
+    return NextResponse.json({ error: 'Minor competitor is missing parent/guardian information (name and email).' }, { status: 400 });
+  }
+
   if (!recipient.email) {
     return NextResponse.json({ error: 'Missing recipient email for this template' }, { status: 400 });
   }

@@ -148,12 +148,23 @@ export default function ReleaseManagementPage() {
     return agreement;
   };
 
-  const filteredCompetitors = competitors.filter(competitor =>
-    competitor.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    competitor.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    competitor.school?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    competitor.grade?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredCompetitors = competitors.filter(competitor => {
+    // Only show competitors with status 'profile' or higher (profile, compliance, complete)
+    // This ensures they have the required demographic data for releases
+    const statusOrder = ['pending', 'profile', 'compliance', 'complete'];
+    const competitorStatusIndex = statusOrder.indexOf(competitor.status);
+    const profileIndex = statusOrder.indexOf('profile');
+    
+    if (competitorStatusIndex < profileIndex) {
+      return false; // Skip competitors with status below 'profile'
+    }
+    
+    // Apply search filter
+    return competitor.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           competitor.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           competitor.school?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           competitor.grade?.toLowerCase().includes(searchTerm.toLowerCase());
+  });
 
   const getStatusBadge = (status: string, templateKind?: string) => {
     switch (status) {
@@ -211,7 +222,9 @@ export default function ReleaseManagementPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-meta-light">Release Management</h1>
-          <p className="text-meta-muted mt-2">Manage release forms and track signing status</p>
+          <p className="text-meta-muted mt-2">
+            Manage release forms and track signing status. Only competitors with complete profiles (status: profile or higher) are shown.
+          </p>
         </div>
         <Button onClick={fetchData} variant="outline" className="text-meta-light border-meta-border">
           <RefreshCw className="h-4 w-4 mr-2" />

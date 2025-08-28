@@ -149,8 +149,12 @@ export default function ReleaseManagementPage() {
   };
 
   const filteredCompetitors = competitors.filter(competitor => {
-    // Only show competitors with status 'profile' or higher (profile, compliance, complete)
-    // This ensures they have the required demographic data for releases
+    // Only show active competitors with status 'profile' or higher
+    // This ensures they have the required demographic data and are active
+    if (!competitor.is_active) {
+      return false; // Skip inactive competitors
+    }
+    
     const statusOrder = ['pending', 'profile', 'compliance', 'complete'];
     const competitorStatusIndex = statusOrder.indexOf(competitor.status);
     const profileIndex = statusOrder.indexOf('profile');
@@ -223,7 +227,7 @@ export default function ReleaseManagementPage() {
         <div>
           <h1 className="text-3xl font-bold text-meta-light">Release Management</h1>
           <p className="text-meta-muted mt-2">
-            Manage release forms and track signing status. Only competitors with complete profiles (status: profile or higher) are shown.
+            Manage release forms and track signing status. Only active competitors with complete profiles (status: profile or higher) are shown.
           </p>
         </div>
         <Button onClick={fetchData} variant="outline" className="text-meta-light border-meta-border">

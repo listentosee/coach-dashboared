@@ -156,7 +156,7 @@ export default function CoachAssistTool() {
                       type="text"
                       value={result.link}
                       readOnly
-                      className="flex-1 p-2 text-sm border rounded bg-gray-50"
+                      className="flex-1 p-2 text-sm border rounded bg-gray-50 text-gray-900"
                     />
                     <Button
                       size="sm"

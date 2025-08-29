@@ -27,8 +27,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Coach not found' }, { status: 404 });
     }
 
-    // Use the correct redirect URL - this should match your app's actual URL
-    const redirectUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard`;
+    // Determine the correct redirect URL based on environment
+    let redirectUrl: string;
+    
+    if (process.env.VERCEL_URL) {
+      // Production - use Vercel URL
+      redirectUrl = `https://${process.env.VERCEL_URL}/dashboard`;
+    } else if (process.env.NEXT_PUBLIC_APP_URL) {
+      // Custom environment variable
+      redirectUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`;
+    } else {
+      // Development fallback
+      redirectUrl = 'http://localhost:3000/dashboard';
+    }
 
     console.log('Generating magic link with redirect URL:', redirectUrl);
 

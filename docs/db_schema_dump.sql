@@ -65,6 +65,15 @@ CREATE EXTENSION IF NOT EXISTS "wrappers" WITH SCHEMA "extensions";
 
 
 
+CREATE TYPE "public"."completion_source" AS ENUM (
+    'zoho',
+    'manual'
+);
+
+
+ALTER TYPE "public"."completion_source" OWNER TO "postgres";
+
+
 CREATE TYPE "public"."team_status" AS ENUM (
     'forming',
     'active',
@@ -275,6 +284,12 @@ CREATE TABLE IF NOT EXISTS "public"."agreements" (
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "template_kind" "text" DEFAULT 'adult'::"text" NOT NULL,
     "zoho_completed" boolean DEFAULT false,
+    "completion_source" "public"."completion_source" DEFAULT 'zoho'::"public"."completion_source",
+    "manual_completion_reason" "text" DEFAULT 'Manual completion'::"text",
+    "manual_uploaded_path" "text",
+    "manual_completed_at" timestamp with time zone,
+    "zoho_request_status" "text",
+    CONSTRAINT "agreements_manual_completion_check" CHECK (((("completion_source" = 'manual'::"public"."completion_source") AND ("manual_uploaded_path" IS NOT NULL) AND ("manual_completed_at" IS NOT NULL)) OR ("completion_source" = 'zoho'::"public"."completion_source"))),
     CONSTRAINT "agreements_template_kind_check" CHECK (("template_kind" = ANY (ARRAY['adult'::"text", 'minor'::"text"])))
 );
 
@@ -283,6 +298,26 @@ ALTER TABLE "public"."agreements" OWNER TO "postgres";
 
 
 COMMENT ON COLUMN "public"."agreements"."zoho_completed" IS 'Indicates whether a manually completed agreement has been marked as complete in Zoho Sign';
+
+
+
+COMMENT ON COLUMN "public"."agreements"."completion_source" IS 'Indicates whether agreement was completed via Zoho or manual upload';
+
+
+
+COMMENT ON COLUMN "public"."agreements"."manual_completion_reason" IS 'Reason for manual completion (default: Manual completion)';
+
+
+
+COMMENT ON COLUMN "public"."agreements"."manual_uploaded_path" IS 'Path to manually uploaded document in Supabase Storage';
+
+
+
+COMMENT ON COLUMN "public"."agreements"."manual_completed_at" IS 'Timestamp when manual completion occurred';
+
+
+
+COMMENT ON COLUMN "public"."agreements"."zoho_request_status" IS 'Optional mirroring of Zoho request status for audit purposes';
 
 
 
@@ -514,11 +549,19 @@ ALTER TABLE ONLY "public"."teams"
 
 
 
+CREATE INDEX "agreements_completion_source_idx" ON "public"."agreements" USING "btree" ("completion_source");
+
+
+
 CREATE INDEX "agreements_idx1" ON "public"."agreements" USING "btree" ("competitor_id");
 
 
 
 CREATE INDEX "agreements_idx2" ON "public"."agreements" USING "btree" ("provider", "request_id");
+
+
+
+CREATE INDEX "agreements_manual_completed_at_idx" ON "public"."agreements" USING "btree" ("manual_completed_at");
 
 
 
@@ -800,6 +843,10 @@ GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
+
+
+
+GRANT ALL ON TYPE "public"."completion_source" TO "authenticated";
 
 
 

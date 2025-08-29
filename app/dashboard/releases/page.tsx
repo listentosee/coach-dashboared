@@ -42,6 +42,10 @@ interface Agreement {
   signed_pdf_path: string | null;
   created_at: string;
   updated_at: string;
+  completion_source?: 'email' | 'print' | 'manual';
+  metadata?: {
+    mode: 'email' | 'print';
+  };
 }
 
 export default function ReleaseManagementPage() {
@@ -186,7 +190,7 @@ export default function ReleaseManagementPage() {
            competitor.grade?.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
-  const getStatusBadge = (status: string, templateKind?: string) => {
+  const getStatusBadge = (status: string, templateKind?: string, completionSource?: string) => {
     switch (status) {
       case 'completed':
         return <Badge className="bg-green-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Completed</Badge>;
@@ -291,7 +295,7 @@ export default function ReleaseManagementPage() {
                       
                       <div className="flex items-center space-x-2">
                         {agreement ? (
-                          getStatusBadge(agreement.status, agreement.template_kind)
+                          getStatusBadge(agreement.status, agreement.template_kind, agreement.completion_source)
                         ) : hasSigned ? (
                           <Badge className="bg-green-600 text-white">
                             <CheckCircle className="h-3 w-3 mr-1" />Legacy Signed

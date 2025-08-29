@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     // Get the agreement details
     const { data: agreement, error: agreementError } = await supabase
       .from('agreements')
-      .select('competitor_id, template_kind, request_id')
+      .select('competitor_id, template_kind, request_id, status')
       .eq('id', agreementId)
       .single();
 
@@ -24,21 +24,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Agreement not found' }, { status: 404 });
     }
 
-    // Convert file to buffer
+    // Check if already completed
+    if (agreement.status === 'completed' || agreement.status === 'completed_manual') {
+      return NextResponse.json({ error: 'Agreement already completed' }, { status: 400 });
+    }
+
+    // Step 1: Upload file to Supabase Storage
     const fileBuffer = Buffer.from(await file.arrayBuffer());
-    
-    // Generate unique filename
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const fileExtension = file.name.split('.').pop();
     const fileName = `manual-upload-${agreement.request_id}-${timestamp}.${fileExtension}`;
     const filePath = `manual/${fileName}`;
 
-    // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from('signatures')
       .upload(filePath, fileBuffer, {
-        contentType: file.type,
-        upsert: true,
+        contentType: file.type || 'application/pdf',
+        upsert: false, // Prevent overwrites
       });
 
     if (uploadError) {
@@ -46,63 +48,79 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 });
     }
 
-    // Notify Zoho that the document has been submitted for manual upload
+    // Step 2: Recall Zoho request
+    let recallSuccess = false;
+    let deleteSuccess = false;
+    
     try {
       const { getZohoAccessToken } = await import('../_lib/token');
       const accessToken = await getZohoAccessToken();
       
-      // For print mode agreements, we need to complete the request in Zoho
-      // First, get the request details to find the action IDs
-      const requestResponse = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/requests/${agreement.request_id}`, {
-        headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+      // Recall the document (cancel signing process)
+      const recallResponse = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/requests/${agreement.request_id}/recall`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Zoho-oauthtoken ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ reason: 'Manual completion' })
       });
-      
-      if (requestResponse.ok) {
-        const requestData = await requestResponse.json();
-        console.log('Zoho request data:', requestData);
-        
-        // Find the action that needs to be completed
-        const actions = requestData.requests?.actions || [];
-        if (actions.length > 0) {
-          const actionId = actions[0].action_id;
-          
-          // Complete the specific action
-          const completeResponse = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/requests/${agreement.request_id}/actions/${actionId}/complete`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Zoho-oauthtoken ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              notes: 'Document completed via manual upload by coach'
-            })
-          });
-          
-          if (!completeResponse.ok) {
-            const errorText = await completeResponse.text();
-            console.warn('Failed to complete Zoho action:', completeResponse.status, errorText);
-          } else {
-            console.log('Zoho action marked as completed successfully');
-          }
-        } else {
-          console.warn('No actions found in Zoho request');
-        }
+
+      if (recallResponse.ok) {
+        recallSuccess = true;
+        console.log('Zoho request recalled successfully');
       } else {
-        console.warn('Failed to fetch Zoho request details:', requestResponse.status);
+        const errorText = await recallResponse.text();
+        console.warn('Failed to recall Zoho request:', recallResponse.status, errorText);
       }
-    } catch (notifyError) {
-      console.warn('Failed to notify Zoho:', notifyError);
-      // Continue with local updates even if Zoho notification fails
+
+      // Step 3: Delete Zoho request (move to trash)
+      if (recallSuccess) {
+        const deleteResponse = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/requests/${agreement.request_id}/delete`, {
+          method: 'PUT',
+          headers: { 
+            'Authorization': `Zoho-oauthtoken ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            recall_inprogress: true, 
+            reason: 'Manual completion' 
+          })
+        });
+
+        if (deleteResponse.ok) {
+          deleteSuccess = true;
+          console.log('Zoho request deleted successfully');
+        } else {
+          const errorText = await deleteResponse.text();
+          console.warn('Failed to delete Zoho request:', deleteResponse.status, errorText);
+        }
+      }
+
+    } catch (zohoError) {
+      console.warn('Zoho API operations failed:', zohoError);
+      // Continue with local updates even if Zoho operations fail
     }
 
-    // Update agreement status to completed
+    // Step 4: Update local database
+    const updateData: any = {
+      status: 'completed_manual',
+      completion_source: 'manual',
+      manual_completion_reason: 'Manual completion',
+      manual_uploaded_path: filePath,
+      manual_completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    // Track Zoho cleanup status if operations failed
+    if (!recallSuccess || !deleteSuccess) {
+      updateData.zoho_request_status = 'cleanup_pending';
+      updateData.manual_completion_reason = `Manual completion (Zoho cleanup ${!recallSuccess ? 'recall failed' : 'delete failed'})`;
+    }
+
     const { error: updateError } = await supabase
       .from('agreements')
-      .update({ 
-        status: 'completed',
-        signed_pdf_path: filePath,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', agreementId);
 
     if (updateError) {
@@ -110,7 +128,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to update agreement' }, { status: 500 });
     }
 
-    // Update competitor record with agreement date
+    // Step 5: Update competitor record with agreement date
     const dateField = agreement.template_kind === 'adult' ? 'participation_agreement_date' : 'media_release_date';
     const { error: competitorError } = await supabase
       .from('competitors')
@@ -122,7 +140,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to update competitor' }, { status: 500 });
     }
 
-    // Recalculate and update competitor status
+    // Step 6: Recalculate and update competitor status
     const { data: updatedCompetitor } = await supabase
       .from('competitors')
       .select('*')
@@ -141,8 +159,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ 
       ok: true, 
-      message: 'Document uploaded successfully',
-      filePath 
+      message: 'Document uploaded and agreement marked as manually completed',
+      filePath,
+      zohoCleanup: { recallSuccess, deleteSuccess }
     });
 
   } catch (error) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+import { isUserAdmin } from '@/lib/utils/admin-check';
 import { z } from 'zod';
 
 const UpdateTeamSchema = z.object({
@@ -23,17 +24,24 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Check if user is admin
+    const isAdmin = await isUserAdmin(supabase, session.user.id);
+
     // Parse and validate request body
     const body = await request.json();
     const validatedData = UpdateTeamSchema.parse(body);
 
-    // Verify the team belongs to the authenticated coach
-    const { data: existingTeam, error: checkError } = await supabase
+    // Verify the team exists and user has access
+    let query = supabase
       .from('teams')
-      .select('id, name, status')
-      .eq('id', params.id)
-      .eq('coach_id', session.user.id)
-      .single();
+      .select('id, name, status, coach_id')
+      .eq('id', params.id);
+
+    if (!isAdmin) {
+      query = query.eq('coach_id', session.user.id);
+    }
+
+    const { data: existingTeam, error: checkError } = await query.single();
 
     if (checkError || !existingTeam) {
       return NextResponse.json({ error: 'Team not found or access denied' }, { status: 404 });
@@ -41,13 +49,17 @@ export async function PUT(
 
     // Check if team name already exists for this coach (if name is being changed)
     if (validatedData.name !== existingTeam.name) {
-      const { data: duplicateTeam, error: duplicateError } = await supabase
+      let duplicateQuery = supabase
         .from('teams')
         .select('id, name')
-        .eq('coach_id', session.user.id)
         .eq('name', validatedData.name)
-        .neq('id', params.id)
-        .single();
+        .neq('id', params.id);
+
+      if (!isAdmin) {
+        duplicateQuery = duplicateQuery.eq('coach_id', session.user.id);
+      }
+
+      const { data: duplicateTeam, error: duplicateError } = await duplicateQuery.single();
 
       if (duplicateTeam) {
         return NextResponse.json({ 
@@ -85,7 +97,7 @@ export async function PUT(
         entity_id: team.id,
         metadata: { 
           team_name: team.name,
-          coach_id: session.user.id
+          coach_id: existingTeam.coach_id
         }
       });
 

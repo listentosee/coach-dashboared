@@ -70,16 +70,15 @@ export default function DashboardPage() {
         return;
       }
 
-      // Fetch competitors with team data using the view
-      const { data: competitorsData, error: competitorsError } = await supabase
-        .from('comp_team_view')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (competitorsError) throw competitorsError;
-
+      // Fetch competitors through API route (enables admin access control)
+      const competitorsResponse = await fetch('/api/competitors');
+      if (!competitorsResponse.ok) {
+        throw new Error('Failed to fetch competitors');
+      }
+      const competitorsData = await competitorsResponse.json();
+      
       // Transform data to include status fields
-      const transformedCompetitors = (competitorsData || []).map(comp => ({
+      const transformedCompetitors = (competitorsData.competitors || []).map((comp: any) => ({
         ...comp,
         media_release_signed: comp.media_release_signed || false,
         participation_agreement_signed: comp.participation_agreement_signed || false,
@@ -88,18 +87,16 @@ export default function DashboardPage() {
 
       setCompetitors(transformedCompetitors);
 
-      // Fetch teams for dropdown
-      const { data: teamsData, error: teamsError } = await supabase
-        .from('teams')
-        .select('id, name')
-        .eq('coach_id', session.user.id)
-        .order('name', { ascending: true });
-
-      if (teamsError) throw teamsError;
+      // Fetch teams for dropdown - also through API for admin access
+      const teamsResponse = await fetch('/api/teams');
+      if (!teamsResponse.ok) {
+        throw new Error('Failed to fetch teams');
+      }
+      const teamsData = await teamsResponse.json();
       
       // Fetch team member counts separately
       const teamMemberCounts = new Map<string, number>();
-      for (const team of teamsData || []) {
+      for (const team of teamsData.teams || []) {
         const { count } = await supabase
           .from('team_members')
           .select('*', { count: 'exact', head: true })
@@ -108,7 +105,7 @@ export default function DashboardPage() {
       }
       
       // Transform teams data to include member count
-      const transformedTeams = (teamsData || []).map(team => ({
+      const transformedTeams = (teamsData.teams || []).map((team: any) => ({
         id: team.id,
         name: team.name,
         memberCount: teamMemberCounts.get(team.id) || 0
@@ -121,15 +118,10 @@ export default function DashboardPage() {
       const activeCompetitors = transformedCompetitors.filter(c => c.status === 'complete').length;
       const pendingCompetitors = transformedCompetitors.filter(c => c.status === 'pending').length;
 
-      // Fetch teams count
-      const { count: teamsCount } = await supabase
-        .from('teams')
-        .select('*', { count: 'exact', head: true })
-        .eq('coach_id', session.user.id);
-
+      // Use teams count from API response
       setStats({
         totalCompetitors,
-        totalTeams: teamsCount || 0,
+        totalTeams: teamsData.teams?.length || 0,
         activeCompetitors,
         pendingCompetitors
       });

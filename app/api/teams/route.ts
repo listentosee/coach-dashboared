@@ -1,0 +1,51 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import { isUserAdmin } from '@/lib/utils/admin-check';
+
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = createRouteHandlerClient({ cookies });
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const isAdmin = await isUserAdmin(supabase, session.user.id);
+
+    let query = supabase
+      .from('teams')
+      .select('id, name, coach_id')
+      .order('name', { ascending: true });
+
+    if (!isAdmin) {
+      query = query.eq('coach_id', session.user.id);
+    }
+
+    const { data: teams, error: teamsError } = await query;
+
+    if (teamsError) {
+      console.error('Database error:', teamsError);
+      return NextResponse.json({ error: 'Failed to fetch teams' }, { status: 400 });
+    }
+
+    const transformedTeams = teams?.map(team => ({
+      id: team.id,
+      name: team.name,
+      ...(isAdmin && { coach_id: team.coach_id })
+    })) || [];
+
+    return NextResponse.json({
+      teams: transformedTeams,
+      isAdmin
+    });
+
+  } catch (error) {
+    console.error('Error fetching teams:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+import { isUserAdmin } from '@/lib/utils/admin-check';
 import { z } from 'zod';
 
 const AddMemberSchema = z.object({
@@ -21,29 +22,40 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Check if user is admin
+    const isAdmin = await isUserAdmin(supabase, session.user.id);
+
     // Parse and validate request body
     const body = await request.json();
     const validatedData = AddMemberSchema.parse(body);
 
-    // Verify the team belongs to the authenticated coach
-    const { data: team, error: teamError } = await supabase
+    // Verify the team exists and user has access
+    let teamQuery = supabase
       .from('teams')
-      .select('id, name, status')
-      .eq('id', params.id)
-      .eq('coach_id', session.user.id)
-      .single();
+      .select('id, name, status, coach_id')
+      .eq('id', params.id);
+
+    if (!isAdmin) {
+      teamQuery = teamQuery.eq('coach_id', session.user.id);
+    }
+
+    const { data: team, error: teamError } = await teamQuery.single();
 
     if (teamError || !team) {
       return NextResponse.json({ error: 'Team not found or access denied' }, { status: 404 });
     }
 
-    // Verify the competitor belongs to the authenticated coach
-    const { data: competitor, error: competitorError } = await supabase
+    // Verify the competitor exists and user has access
+    let competitorQuery = supabase
       .from('competitors')
-      .select('id, first_name, last_name')
-      .eq('id', validatedData.competitor_id)
-      .eq('coach_id', session.user.id)
-      .single();
+      .select('id, first_name, last_name, coach_id')
+      .eq('id', validatedData.competitor_id);
+
+    if (!isAdmin) {
+      competitorQuery = competitorQuery.eq('coach_id', session.user.id);
+    }
+
+    const { data: competitor, error: competitorError } = await competitorQuery.single();
 
     if (competitorError || !competitor) {
       return NextResponse.json({ error: 'Competitor not found or access denied' }, { status: 404 });
@@ -121,7 +133,7 @@ export async function POST(
           team_name: team.name,
           competitor_name: `${competitor.first_name} ${competitor.last_name}`,
           position: validatedData.position,
-          coach_id: session.user.id
+          coach_id: team.coach_id
         }
       });
 

@@ -219,27 +219,23 @@ export default function TeamsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Fetch all competitors
-      const { data: competitorsData, error: competitorsError } = await supabase
-        .from('competitors')
-        .select('*')
-        .eq('coach_id', user.id)
-        .order('last_name', { ascending: true });
+      // Fetch all competitors through API route (enables admin access)
+      const competitorsResponse = await fetch('/api/competitors');
+      if (!competitorsResponse.ok) {
+        throw new Error('Failed to fetch competitors');
+      }
+      const competitorsData = await competitorsResponse.json();
 
-      if (competitorsError) throw competitorsError;
-
-      // Fetch teams
-      const { data: teamsData, error: teamsError } = await supabase
-        .from('teams')
-        .select('*')
-        .eq('coach_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (teamsError) throw teamsError;
+      // Fetch teams through API route (enables admin access)
+      const teamsResponse = await fetch('/api/teams');
+      if (!teamsResponse.ok) {
+        throw new Error('Failed to fetch teams');
+      }
+      const teamsData = await teamsResponse.json();
 
       // Fetch team members for all teams
       const membersData: Record<string, TeamMember[]> = {};
-      for (const team of teamsData || []) {
+      for (const team of teamsData.teams || []) {
         const { data: members, error: membersError } = await supabase
           .from('team_members')
           .select(`
@@ -269,8 +265,8 @@ export default function TeamsPage() {
         members.forEach(member => assignedCompetitorIds.add(member.competitor_id));
       });
 
-      const unassigned = (competitorsData || []).filter(c => !assignedCompetitorIds.has(c.id));
-      const teamsWithCounts = (teamsData || []).map(team => ({
+      const unassigned = (competitorsData.competitors || []).filter(c => !assignedCompetitorIds.has(c.id));
+      const teamsWithCounts = (teamsData.teams || []).map(team => ({
         ...team,
         member_count: (membersData[team.id] || []).length
       }));

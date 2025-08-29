@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+import { isUserAdmin } from '@/lib/utils/admin-check';
 import { z } from 'zod';
 
 const CreateTeamSchema = z.object({
   name: z.string().min(2, 'Team name must be at least 2 characters'),
   description: z.string().optional(),
   division: z.string().optional(),
+  coach_id: z.string().uuid().optional(), // Optional for admins to specify coach
 });
 
 export async function POST(request: NextRequest) {
@@ -19,15 +21,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Check if user is admin
+    const isAdmin = await isUserAdmin(supabase, session.user.id);
+
     // Parse and validate request body
     const body = await request.json();
     const validatedData = CreateTeamSchema.parse(body);
+
+    // Determine which coach_id to use
+    const coachId = isAdmin && validatedData.coach_id ? validatedData.coach_id : session.user.id;
 
     // Check if team name already exists for this coach
     const { data: existingTeam, error: checkError } = await supabase
       .from('teams')
       .select('id, name')
-      .eq('coach_id', session.user.id)
+      .eq('coach_id', coachId)
       .eq('name', validatedData.name)
       .single();
 
@@ -41,7 +49,7 @@ export async function POST(request: NextRequest) {
     const { data: team, error: createError } = await supabase
       .from('teams')
       .insert({
-        coach_id: session.user.id,
+        coach_id: coachId,
         name: validatedData.name,
         description: validatedData.description || null,
         division: validatedData.division || null,
@@ -65,7 +73,7 @@ export async function POST(request: NextRequest) {
         entity_id: team.id,
         metadata: { 
           team_name: team.name,
-          coach_id: session.user.id
+          coach_id: coachId
         }
       });
 

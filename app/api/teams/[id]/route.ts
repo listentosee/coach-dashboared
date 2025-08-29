@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+import { isUserAdmin } from '@/lib/utils/admin-check';
 
 export async function DELETE(
   request: NextRequest,
@@ -15,13 +16,20 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Verify the team belongs to the authenticated coach
-    const { data: team, error: teamError } = await supabase
+    // Check if user is admin
+    const isAdmin = await isUserAdmin(supabase, session.user.id);
+
+    // Verify the team exists and user has access
+    let query = supabase
       .from('teams')
-      .select('id, name')
-      .eq('id', params.id)
-      .eq('coach_id', session.user.id)
-      .single();
+      .select('id, name, coach_id')
+      .eq('id', params.id);
+
+    if (!isAdmin) {
+      query = query.eq('coach_id', session.user.id);
+    }
+
+    const { data: team, error: teamError } = await query.single();
 
     if (teamError || !team) {
       return NextResponse.json({ error: 'Team not found or access denied' }, { status: 404 });
@@ -48,7 +56,7 @@ export async function DELETE(
         entity_id: params.id,
         metadata: { 
           team_name: team.name,
-          coach_id: session.user.id
+          coach_id: team.coach_id
         }
       });
 

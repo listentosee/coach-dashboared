@@ -645,6 +645,10 @@ CREATE POLICY "Users can manage own profile" ON "public"."profiles" TO "authenti
 
 
 
+CREATE POLICY "Users can update own profile" ON "public"."profiles" FOR UPDATE USING (("auth"."uid"() = "id"));
+
+
+
 CREATE POLICY "Users can update their own profile" ON "public"."profiles" FOR UPDATE TO "authenticated" USING (("auth"."uid"() = "id")) WITH CHECK (("auth"."uid"() = "id"));
 
 
@@ -666,21 +670,71 @@ CREATE POLICY "Users can view own profile" ON "public"."profiles" FOR SELECT USI
 ALTER TABLE "public"."activity_logs" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "admins_can_update_agreements" ON "public"."agreements" FOR UPDATE USING (((("auth"."jwt"() ->> 'role'::"text") = 'admin'::"text") OR (EXISTS ( SELECT 1
-   FROM "auth"."users"
-  WHERE (("users"."id" = "auth"."uid"()) AND (("users"."raw_user_meta_data" ->> 'role'::"text") = 'admin'::"text"))))));
+CREATE POLICY "admins_can_delete_competitors" ON "public"."competitors" FOR DELETE USING ("public"."is_admin_user"());
 
 
 
-CREATE POLICY "admins_can_view_all_agreements" ON "public"."agreements" FOR SELECT USING (((("auth"."jwt"() ->> 'role'::"text") = 'admin'::"text") OR (EXISTS ( SELECT 1
-   FROM "auth"."users"
-  WHERE (("users"."id" = "auth"."uid"()) AND (("users"."raw_user_meta_data" ->> 'role'::"text") = 'admin'::"text"))))));
+CREATE POLICY "admins_can_delete_team_members" ON "public"."team_members" FOR DELETE USING ("public"."is_admin_user"());
 
 
 
-CREATE POLICY "admins_can_view_all_profiles" ON "public"."profiles" FOR SELECT USING (((("auth"."jwt"() ->> 'role'::"text") = 'admin'::"text") OR (EXISTS ( SELECT 1
-   FROM "auth"."users"
-  WHERE (("users"."id" = "auth"."uid"()) AND (("users"."raw_user_meta_data" ->> 'role'::"text") = 'admin'::"text"))))));
+CREATE POLICY "admins_can_delete_teams" ON "public"."teams" FOR DELETE USING ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "admins_can_insert_activity_logs" ON "public"."activity_logs" FOR INSERT WITH CHECK ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "admins_can_insert_competitors" ON "public"."competitors" FOR INSERT WITH CHECK ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "admins_can_insert_team_members" ON "public"."team_members" FOR INSERT WITH CHECK ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "admins_can_insert_teams" ON "public"."teams" FOR INSERT WITH CHECK ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "admins_can_update_agreements" ON "public"."agreements" FOR UPDATE USING ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "admins_can_update_all_competitors" ON "public"."competitors" FOR UPDATE USING ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "admins_can_update_all_team_members" ON "public"."team_members" FOR UPDATE USING ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "admins_can_update_all_teams" ON "public"."teams" FOR UPDATE USING ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "admins_can_view_all_activity_logs" ON "public"."activity_logs" FOR SELECT USING ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "admins_can_view_all_agreements" ON "public"."agreements" FOR SELECT USING ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "admins_can_view_all_competitors" ON "public"."competitors" FOR SELECT USING ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "admins_can_view_all_profiles" ON "public"."profiles" FOR SELECT USING ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "admins_can_view_all_team_members" ON "public"."team_members" FOR SELECT USING ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "admins_can_view_all_teams" ON "public"."teams" FOR SELECT USING ("public"."is_admin_user"());
 
 
 
@@ -693,9 +747,25 @@ CREATE POLICY "coaches_can_update_agreements" ON "public"."agreements" FOR UPDAT
 
 
 
+CREATE POLICY "coaches_can_update_own_competitors" ON "public"."competitors" FOR UPDATE USING (("coach_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "coaches_can_update_own_teams" ON "public"."teams" FOR UPDATE USING (("coach_id" = "auth"."uid"()));
+
+
+
 CREATE POLICY "coaches_can_view_agreements" ON "public"."agreements" FOR SELECT USING ((EXISTS ( SELECT 1
    FROM "public"."competitors" "c"
   WHERE (("c"."id" = "agreements"."competitor_id") AND ("c"."coach_id" = "auth"."uid"())))));
+
+
+
+CREATE POLICY "coaches_can_view_own_competitors" ON "public"."competitors" FOR SELECT USING (("coach_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "coaches_can_view_own_teams" ON "public"."teams" FOR SELECT USING (("coach_id" = "auth"."uid"()));
 
 
 

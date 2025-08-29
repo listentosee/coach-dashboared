@@ -27,12 +27,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Coach not found' }, { status: 404 });
     }
 
-    // Use environment variables for redirect URL with proper fallbacks
-    const redirectUrl = (process.env.NEXT_PUBLIC_APP_URL || `https://${process.env.VERCEL_URL}` || 'http://localhost:3000') + '/dashboard';
+    // Use Vercel system environment variables for redirect URL
+    // VERCEL_URL is automatically provided by Vercel at runtime
+    const redirectUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}/dashboard`
+      : 'http://localhost:3000/dashboard';
 
     console.log('Environment variables:', {
-      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
       VERCEL_URL: process.env.VERCEL_URL,
+      VERCEL_ENV: process.env.VERCEL_ENV,
       NODE_ENV: process.env.NODE_ENV
     });
     console.log('Magic link redirect URL:', redirectUrl);

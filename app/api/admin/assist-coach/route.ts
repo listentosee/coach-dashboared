@@ -28,10 +28,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Use Vercel system environment variables for redirect URL
-    // VERCEL_URL is automatically provided by Vercel at runtime
-    const redirectUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}/dashboard`
-      : 'http://localhost:3000/dashboard';
+    // VERCEL_PROJECT_PRODUCTION_URL is the custom domain in production
+    const redirectUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL 
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/dashboard`
+      : process.env.VERCEL_URL 
+        ? `https://${process.env.VERCEL_URL}/dashboard`
+        : 'http://localhost:3000/dashboard';
 
     // Debug: Log ALL environment variables to see what Vercel actually provides
     console.log('=== ENVIRONMENT VARIABLE DEBUG ===');

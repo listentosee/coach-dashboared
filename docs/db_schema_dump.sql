@@ -198,6 +198,23 @@ COMMENT ON FUNCTION "public"."handle_new_user"() IS 'Automatically creates profi
 
 
 
+CREATE OR REPLACE FUNCTION "public"."is_admin_user"() RETURNS boolean
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+    -- Check if the current user has admin role in their profile
+    -- Use SECURITY DEFINER to bypass RLS
+    RETURN EXISTS (
+        SELECT 1 FROM public.profiles 
+        WHERE id = auth.uid() AND role = 'admin'
+    );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."is_admin_user"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."set_profile_update_token_with_expiry"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -257,11 +274,16 @@ CREATE TABLE IF NOT EXISTS "public"."agreements" (
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "template_kind" "text" DEFAULT 'adult'::"text" NOT NULL,
+    "zoho_completed" boolean DEFAULT false,
     CONSTRAINT "agreements_template_kind_check" CHECK (("template_kind" = ANY (ARRAY['adult'::"text", 'minor'::"text"])))
 );
 
 
 ALTER TABLE "public"."agreements" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."agreements"."zoho_completed" IS 'Indicates whether a manually completed agreement has been marked as complete in Zoho Sign';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."competitors" (
@@ -500,6 +522,10 @@ CREATE INDEX "agreements_idx2" ON "public"."agreements" USING "btree" ("provider
 
 
 
+CREATE INDEX "agreements_zoho_completed_idx" ON "public"."agreements" USING "btree" ("zoho_completed") WHERE ("zoho_completed" = false);
+
+
+
 CREATE INDEX "idx_activity_logs_created_at" ON "public"."activity_logs" USING "btree" ("created_at" DESC);
 
 
@@ -638,6 +664,24 @@ CREATE POLICY "Users can view own profile" ON "public"."profiles" FOR SELECT USI
 
 
 ALTER TABLE "public"."activity_logs" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "admins_can_update_agreements" ON "public"."agreements" FOR UPDATE USING (((("auth"."jwt"() ->> 'role'::"text") = 'admin'::"text") OR (EXISTS ( SELECT 1
+   FROM "auth"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND (("users"."raw_user_meta_data" ->> 'role'::"text") = 'admin'::"text"))))));
+
+
+
+CREATE POLICY "admins_can_view_all_agreements" ON "public"."agreements" FOR SELECT USING (((("auth"."jwt"() ->> 'role'::"text") = 'admin'::"text") OR (EXISTS ( SELECT 1
+   FROM "auth"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND (("users"."raw_user_meta_data" ->> 'role'::"text") = 'admin'::"text"))))));
+
+
+
+CREATE POLICY "admins_can_view_all_profiles" ON "public"."profiles" FOR SELECT USING (((("auth"."jwt"() ->> 'role'::"text") = 'admin'::"text") OR (EXISTS ( SELECT 1
+   FROM "auth"."users"
+  WHERE (("users"."id" = "auth"."uid"()) AND (("users"."raw_user_meta_data" ->> 'role'::"text") = 'admin'::"text"))))));
+
 
 
 ALTER TABLE "public"."agreements" ENABLE ROW LEVEL SECURITY;
@@ -989,6 +1033,12 @@ GRANT ALL ON FUNCTION "public"."generate_profile_update_token"() TO "service_rol
 GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "anon";
 GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."is_admin_user"() TO "anon";
+GRANT ALL ON FUNCTION "public"."is_admin_user"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."is_admin_user"() TO "service_role";
 
 
 

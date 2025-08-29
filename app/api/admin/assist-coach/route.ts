@@ -33,11 +33,28 @@ export async function POST(request: NextRequest) {
       ? `https://${process.env.VERCEL_URL}/dashboard`
       : 'http://localhost:3000/dashboard';
 
-    console.log('Environment variables:', {
-      VERCEL_URL: process.env.VERCEL_URL,
-      VERCEL_ENV: process.env.VERCEL_ENV,
-      NODE_ENV: process.env.NODE_ENV
+    // Debug: Log ALL environment variables to see what Vercel actually provides
+    console.log('=== ENVIRONMENT VARIABLE DEBUG ===');
+    console.log('All process.env keys:', Object.keys(process.env).filter(key => key.includes('VERCEL')));
+    console.log('VERCEL_URL:', process.env.VERCEL_URL);
+    console.log('VERCEL_ENV:', process.env.VERCEL_ENV);
+    console.log('VERCEL_PROJECT_PRODUCTION_URL:', process.env.VERCEL_PROJECT_PRODUCTION_URL);
+    console.log('VERCEL_BRANCH_URL:', process.env.VERCEL_BRANCH_URL);
+    console.log('NODE_ENV:', process.env.NODE_ENV);
+    console.log('=== END DEBUG ===');
+
+    // Debug: Log ALL environment variables (be careful with sensitive ones)
+    console.log('=== ALL ENVIRONMENT VARIABLES ===');
+    Object.keys(process.env).forEach(key => {
+      // Skip sensitive variables like API keys
+      if (!key.toLowerCase().includes('key') && !key.toLowerCase().includes('secret') && !key.toLowerCase().includes('password')) {
+        console.log(`${key}: ${process.env[key]}`);
+      } else {
+        console.log(`${key}: [REDACTED]`);
+      }
     });
+    console.log('=== END ALL ENV VARS ===');
+
     console.log('Magic link redirect URL:', redirectUrl);
 
     // Generate magic link for the coach

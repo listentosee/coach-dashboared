@@ -27,21 +27,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Coach not found' }, { status: 404 });
     }
 
-    // Determine the correct redirect URL based on environment
-    let redirectUrl: string;
-    
-    if (process.env.VERCEL_URL) {
-      // Production - use Vercel URL
-      redirectUrl = `https://${process.env.VERCEL_URL}/dashboard`;
-    } else if (process.env.NEXT_PUBLIC_APP_URL) {
-      // Custom environment variable
-      redirectUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`;
-    } else {
-      // Development fallback
-      redirectUrl = 'http://localhost:3000/dashboard';
-    }
+    // Use environment variables for redirect URL with proper fallbacks
+    const redirectUrl = (process.env.NEXT_PUBLIC_APP_URL || `https://${process.env.VERCEL_URL}` || 'http://localhost:3000') + '/dashboard';
 
-    console.log('Generating magic link with redirect URL:', redirectUrl);
+    console.log('Environment variables:', {
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+      VERCEL_URL: process.env.VERCEL_URL,
+      NODE_ENV: process.env.NODE_ENV
+    });
+    console.log('Magic link redirect URL:', redirectUrl);
 
     // Generate magic link for the coach
     const { data: magicLinkData, error: magicLinkError } = await supabase.auth.admin.generateLink({

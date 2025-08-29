@@ -59,9 +59,9 @@ export async function POST(request: NextRequest) {
 
     console.log('Magic link redirect URL:', redirectUrl);
 
-    // Generate magic link for the coach
+    // Generate magic link for the coach using recovery type (supports redirectTo)
     const { data: magicLinkData, error: magicLinkError } = await supabase.auth.admin.generateLink({
-      type: 'magiclink',
+      type: 'recovery',
       email: coach.email,
       options: {
         redirectTo: redirectUrl

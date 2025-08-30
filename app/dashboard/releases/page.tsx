@@ -193,7 +193,12 @@ export default function ReleaseManagementPage() {
   const getStatusBadge = (status: string, templateKind?: string, completionSource?: string) => {
     switch (status) {
       case 'completed':
+        if (completionSource === 'manual') {
+          return <Badge className="bg-orange-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Completed (Manual)</Badge>;
+        }
         return <Badge className="bg-green-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Completed</Badge>;
+      case 'completed_manual':
+        return <Badge className="bg-orange-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Completed (Manual)</Badge>;
       case 'sent':
         return <Badge className="bg-blue-600 text-white"><Clock className="h-3 w-3 mr-1" />Sent</Badge>;
       case 'print_ready':

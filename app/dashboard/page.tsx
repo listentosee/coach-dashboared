@@ -273,12 +273,11 @@ export default function DashboardPage() {
         });
 
         if (response.ok) {
-          // Optimistic update
-          setCompetitors(prev => prev.map(c => 
-            c.id === competitorId 
-              ? { ...c, team_id: teamId, team_name: teams.find(t => t.id === teamId)?.name || '', team_position: nextPosition }
-              : c
-          ));
+          // Refresh data to get updated team information
+          fetchData();
+        } else {
+          const errorData = await response.json();
+          alert('Failed to assign team: ' + errorData.error);
         }
       } else {
         // Remove from team
@@ -289,12 +288,10 @@ export default function DashboardPage() {
           });
 
           if (response.ok) {
-                      // Optimistic update
-          setCompetitors(prev => prev.map(c => 
-            c.id === competitorId 
-              ? { ...c, team_id: undefined, team_name: undefined, team_position: undefined }
-              : c
-          ));
+            // Refresh data to get updated team information
+            fetchData();
+          } else {
+            alert('Failed to remove from team');
           }
         }
       }

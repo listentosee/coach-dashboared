@@ -257,18 +257,11 @@ export default function DashboardPage() {
   const assignTeam = async (competitorId: string, teamId: string | undefined) => {
     try {
       if (teamId) {
-        // Find next available position
-        const currentMembers = competitors
-          .filter(c => c.team_id === teamId)
-          .map(c => c.team_position || 0);
-        const nextPosition = [1, 2, 3, 4, 5, 6].find(p => !currentMembers.includes(p)) || 1;
-        
         const response = await fetch(`/api/teams/${teamId}/members/add`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             competitor_id: competitorId,
-            position: nextPosition,
           }),
         });
 

@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 const AddMemberSchema = z.object({
   competitor_id: z.string().uuid('Invalid competitor ID'),
-  position: z.number().min(1).max(6, 'Position must be between 1 and 6'),
+  position: z.number().min(1).max(6, 'Position must be between 1 and 6').optional(),
 });
 
 export async function POST(
@@ -74,36 +74,48 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Check if position is already taken
-    const { data: positionTaken, error: positionError } = await supabase
-      .from('team_members')
-      .select('id')
-      .eq('team_id', params.id)
-      .eq('position', validatedData.position)
-      .single();
+    // Determine the position to use
+    let positionToUse = validatedData.position;
+    
+    if (!positionToUse) {
+      // Auto-assign next available position
+      const { data: existingPositions, error: positionsError } = await supabase
+        .from('team_members')
+        .select('position')
+        .eq('team_id', params.id);
 
-    if (positionTaken) {
-      return NextResponse.json({ 
-        error: `Position ${validatedData.position} is already taken` 
-      }, { status: 400 });
+      if (positionsError) {
+        console.error('Error fetching existing positions:', positionsError);
+        return NextResponse.json({ error: 'Failed to check team positions' }, { status: 400 });
+      }
+
+      const takenPositions = (existingPositions || []).map(p => p.position);
+      const nextPosition = [1, 2, 3, 4, 5, 6].find(p => !takenPositions.includes(p));
+      
+      if (!nextPosition) {
+        return NextResponse.json({ 
+          error: 'Team is already at maximum capacity (6 members)' 
+        }, { status: 400 });
+      }
+      
+      positionToUse = nextPosition;
+    } else {
+      // Check if specified position is already taken
+      const { data: positionTaken, error: positionError } = await supabase
+        .from('team_members')
+        .select('id')
+        .eq('team_id', params.id)
+        .eq('position', positionToUse)
+        .single();
+
+      if (positionTaken) {
+        return NextResponse.json({ 
+          error: `Position ${positionToUse} is already taken` 
+        }, { status: 400 });
+      }
     }
 
-    // Check team size limit
-    const { count: currentMembers, error: countError } = await supabase
-      .from('team_members')
-      .select('*', { count: 'exact', head: true })
-      .eq('team_id', params.id);
-
-    if (countError) {
-      console.error('Error counting team members:', countError);
-      return NextResponse.json({ error: 'Failed to check team size' }, { status: 400 });
-    }
-
-    if (currentMembers >= 6) {
-      return NextResponse.json({ 
-        error: 'Team is already at maximum capacity (6 members)' 
-      }, { status: 400 });
-    }
+    // Team size limit is already checked in position calculation above
 
     // Add the member to the team
     const { data: teamMember, error: addError } = await supabase
@@ -111,7 +123,7 @@ export async function POST(
       .insert({
         team_id: params.id,
         competitor_id: validatedData.competitor_id,
-        position: validatedData.position,
+        position: positionToUse,
       })
       .select()
       .single();

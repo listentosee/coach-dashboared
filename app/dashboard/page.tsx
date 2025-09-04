@@ -56,18 +56,30 @@ export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingCompetitor, setEditingCompetitor] = useState<Competitor | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [regeneratedLink, setRegeneratedLink] = useState<string | null>(null);
-  const [showLinkModal, setShowLinkModal] = useState(false);
   const [teams, setTeams] = useState<Array<{id: string, name: string, memberCount?: number}>>([]);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(true);
+  const [session, setSession] = useState<any>(null);
+  const [coachProfile, setCoachProfile] = useState<any>(null);
 
   const fetchData = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      const { data: { session: sessionData } } = await supabase.auth.getSession();
+      if (!sessionData) {
         console.error('No session found');
         return;
+      }
+      setSession(sessionData);
+      
+      // Fetch coach profile
+      if (sessionData?.user) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('first_name, last_name')
+          .eq('id', sessionData.user.id)
+          .single();
+        
+        setCoachProfile(profileData);
       }
 
       // Fetch competitors through API route (enables admin access control)
@@ -198,10 +210,6 @@ export default function DashboardPage() {
       }
 
       const data = await response.json();
-      
-      // Show the new link in a modal
-      setRegeneratedLink(data.profileUpdateUrl);
-      setShowLinkModal(true);
       
       // Refresh data to get updated token info
       fetchData();
@@ -421,7 +429,9 @@ export default function DashboardPage() {
               assignTeam,
               teams,
               openDropdown,
-              setOpenDropdown
+              setOpenDropdown,
+              session?.user?.email,
+              coachProfile ? `${coachProfile.first_name} ${coachProfile.last_name}` : session?.user?.email
             )}
             data={filteredCompetitors}
           />
@@ -441,45 +451,7 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* Regenerated Link Modal */}
-      {showLinkModal && regeneratedLink && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-lg p-6 max-w-md w-full mx-4 border border-blue-200">
-            <h3 className="text-lg font-semibold mb-4 text-gray-900">Profile Link Regenerated</h3>
-            <p className="text-sm text-gray-700 mb-4">
-              A new profile update link has been generated for this competitor. The previous link is no longer valid.
-            </p>
-            <div className="bg-white p-3 rounded border border-gray-300 mb-4">
-              <p className="text-xs text-gray-600 mb-2">New Profile Update Link:</p>
-              <p className="text-sm font-mono break-all text-gray-900">{regeneratedLink}</p>
-            </div>
-            <p className="text-xs text-gray-600 mb-4">
-              This link will expire in 30 days. Share it with the competitor to allow them to update their profile.
-            </p>
-            <div className="flex justify-end space-x-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowLinkModal(false);
-                  setRegeneratedLink(null);
-                }}
-                className="border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                Close
-              </Button>
-              <Button
-                onClick={() => {
-                  navigator.clipboard.writeText(regeneratedLink);
-                  alert('Link copied to clipboard!');
-                }}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                Copy Link
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

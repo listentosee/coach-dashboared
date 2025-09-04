@@ -3,7 +3,8 @@
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Edit, UserCheck, Gamepad2, Ban, Link as LinkIcon, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react"
+import { Edit, UserCheck, Gamepad2, Ban, Link as LinkIcon, ChevronDown, ChevronUp, ChevronsUpDown, Mail } from "lucide-react"
+import { sendEmail, emailTemplates } from "@/components/ui/email-composer"
 
 export interface Competitor {
   id: string;
@@ -52,7 +53,9 @@ export const createCompetitorColumns = (
   onTeamChange: (competitorId: string, teamId: string | undefined) => void,
   teams: Array<{id: string, name: string, memberCount?: number}>,
   openDropdown: string | null,
-  setOpenDropdown: (id: string | null) => void
+  setOpenDropdown: (id: string | null) => void,
+  coachEmail?: string,
+  coachName?: string
 ): ColumnDef<Competitor>[] => [
   {
     accessorKey: "first_name",
@@ -256,8 +259,21 @@ export const createCompetitorColumns = (
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onRegenerateLink(competitor.id)}
-            title="Regenerate Profile Link"
+            onClick={() => {
+              onRegenerateLink(competitor.id);
+              if (coachEmail && coachName) {
+                const competitorEmail = competitor.email_school || competitor.email_personal;
+                if (competitorEmail) {
+                  const template = emailTemplates.profileUpdate(
+                    competitor.first_name,
+                    `${window.location.origin}/update-profile/${competitor.profile_update_token}`,
+                    coachName
+                  );
+                  sendEmail(competitorEmail, coachEmail, template);
+                }
+              }
+            }}
+            title="Regenerate Profile Link & Send Email"
             className={`p-1 ${isDisabled ? 'text-meta-muted cursor-not-allowed' : 'text-meta-light hover:text-meta-accent'}`}
             disabled={isDisabled}
           >

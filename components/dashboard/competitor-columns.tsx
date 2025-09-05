@@ -47,7 +47,7 @@ export const getStatusColor = (status: string) => {
 
 export const createCompetitorColumns = (
   onEdit: (id: string) => void,
-  onRegenerateLink: (id: string) => void,
+  onRegenerateLink: (id: string) => Promise<string | null>,
   onRegister: (id: string) => void,
   onDisable: (id: string) => void,
   onTeamChange: (competitorId: string, teamId: string | undefined) => void,
@@ -259,14 +259,14 @@ export const createCompetitorColumns = (
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => {
-              onRegenerateLink(competitor.id);
-              if (coachEmail && coachName) {
+            onClick={async () => {
+              const newProfileUrl = await onRegenerateLink(competitor.id);
+              if (newProfileUrl && coachEmail && coachName) {
                 const competitorEmail = competitor.email_school || competitor.email_personal;
                 if (competitorEmail) {
                   const template = emailTemplates.profileUpdate(
                     competitor.first_name,
-                    `${window.location.origin}/update-profile/${competitor.profile_update_token}`,
+                    newProfileUrl,
                     coachName
                   );
                   sendEmail(competitorEmail, coachEmail, template);

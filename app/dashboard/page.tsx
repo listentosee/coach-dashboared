@@ -199,7 +199,7 @@ export default function DashboardPage() {
     }
   };
 
-  const handleRegenerateLink = async (competitorId: string) => {
+  const handleRegenerateLink = async (competitorId: string): Promise<string | null> => {
     try {
       const response = await fetch(`/api/competitors/${competitorId}/regenerate-link`, {
         method: 'POST',
@@ -213,9 +213,13 @@ export default function DashboardPage() {
       
       // Refresh data to get updated token info
       fetchData();
+      
+      // Return the new profile update URL
+      return data.profileUpdateUrl;
     } catch (error: any) {
       console.error('Error regenerating link:', error);
       alert('Failed to regenerate profile link: ' + error.message);
+      return null;
     }
   };
 

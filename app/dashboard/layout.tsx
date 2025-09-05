@@ -31,6 +31,7 @@ export default function DashboardLayout({
   const [profile, setProfile] = useState<any>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [coachToolsExpanded, setCoachToolsExpanded] = useState(false);
+  const [unread, setUnread] = useState<number>(0);
 
   useEffect(() => {
     const getUser = async () => {
@@ -50,6 +51,35 @@ export default function DashboardLayout({
     };
     getUser();
   }, []);
+
+  useEffect(() => {
+    let timer: any
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/messaging/unread/count')
+        if (res.ok) {
+          const json = await res.json()
+          setUnread(json.count || 0)
+        }
+      } catch (e) {}
+      timer = setTimeout(poll, 15000)
+    }
+    poll()
+    return () => clearTimeout(timer)
+  }, [])
+
+  useEffect(() => {
+    const handler = () => {
+      fetch('/api/messaging/unread/count').then(async res => {
+        if (res.ok) {
+          const json = await res.json()
+          setUnread(json.count || 0)
+        }
+      })
+    }
+    window.addEventListener('unread-refresh', handler)
+    return () => window.removeEventListener('unread-refresh', handler)
+  }, [])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -116,6 +146,19 @@ export default function DashboardLayout({
               <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
                 <FileSignature className="h-5 w-5 mr-3" />
                 Release Management
+              </Button>
+            </Link>
+
+            <Link href="/dashboard/messages">
+              <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
+                {/* Reusing Users icon for simplicity */}
+                <Users className="h-5 w-5 mr-3" />
+                Messages
+                {unread > 0 && (
+                  <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-600 text-white text-xs px-2 py-0.5">
+                    {unread}
+                  </span>
+                )}
               </Button>
             </Link>
             

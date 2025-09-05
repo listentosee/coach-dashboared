@@ -159,6 +159,17 @@ This project follows the architecture outlined in `docs/Coaches Dashboard Archit
 - **Real-time capabilities** with Supabase Realtime
 - **Integration-ready** for external services
 
+### In-App Messaging (Supabase-native)
+
+This app uses Supabase (Postgres + RLS + Realtime) for a native, low-maintenance messaging system between admins and coaches, including a read-only Announcements channel.
+
+- Schema: see `docs/messaging_schema.sql`
+- Realtime: `messages` table is added to the realtime publication
+- Security: RLS enforces that coaches only see their own conversations; admins see all
+
+Coming next in the app:
+- Dashboard “Messages” UI and minimal APIs for listing conversations and sending messages using the Supabase schema.
+
 ## Contributing
 
 1. Fork the repository

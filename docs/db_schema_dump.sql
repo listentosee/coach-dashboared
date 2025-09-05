@@ -207,6 +207,19 @@ COMMENT ON FUNCTION "public"."handle_new_user"() IS 'Automatically creates profi
 
 
 
+CREATE OR REPLACE FUNCTION "public"."is_admin"("uid" "uuid") RETURNS boolean
+    LANGUAGE "sql" STABLE
+    AS $$
+  select exists (
+    select 1 from public.profiles p
+    where p.id = uid and p.role = 'admin'
+  );
+$$;
+
+
+ALTER FUNCTION "public"."is_admin"("uid" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."is_admin_user"() RETURNS boolean
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -416,6 +429,32 @@ CREATE OR REPLACE VIEW "public"."comp_team_view" WITH ("security_invoker"='on') 
 ALTER TABLE "public"."comp_team_view" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."conversation_members" (
+    "conversation_id" "uuid" NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "role" "text" DEFAULT 'member'::"text" NOT NULL,
+    "joined_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "muted_until" timestamp with time zone,
+    "last_read_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."conversation_members" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."conversations" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "type" "text" NOT NULL,
+    "title" "text",
+    "created_by" "uuid" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "conversations_type_check" CHECK (("type" = ANY (ARRAY['dm'::"text", 'announcement'::"text"])))
+);
+
+
+ALTER TABLE "public"."conversations" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."game_platform_stats" (
     "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
     "competitor_id" "uuid" NOT NULL,
@@ -431,6 +470,30 @@ CREATE TABLE IF NOT EXISTS "public"."game_platform_stats" (
 
 
 ALTER TABLE "public"."game_platform_stats" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."messages" (
+    "id" bigint NOT NULL,
+    "conversation_id" "uuid" NOT NULL,
+    "sender_id" "uuid" NOT NULL,
+    "body" "text" NOT NULL,
+    "metadata" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."messages" OWNER TO "postgres";
+
+
+ALTER TABLE "public"."messages" ALTER COLUMN "id" ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME "public"."messages_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."profiles" (
@@ -499,8 +562,23 @@ ALTER TABLE ONLY "public"."competitors"
 
 
 
+ALTER TABLE ONLY "public"."conversation_members"
+    ADD CONSTRAINT "conversation_members_pkey" PRIMARY KEY ("conversation_id", "user_id");
+
+
+
+ALTER TABLE ONLY "public"."conversations"
+    ADD CONSTRAINT "conversations_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."game_platform_stats"
     ADD CONSTRAINT "game_platform_stats_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."messages"
+    ADD CONSTRAINT "messages_pkey" PRIMARY KEY ("id");
 
 
 
@@ -590,7 +668,15 @@ CREATE INDEX "idx_competitors_game_platform_id" ON "public"."competitors" USING 
 
 
 
+CREATE INDEX "idx_conversation_members_user" ON "public"."conversation_members" USING "btree" ("user_id");
+
+
+
 CREATE INDEX "idx_game_platform_stats_competitor_id" ON "public"."game_platform_stats" USING "btree" ("competitor_id");
+
+
+
+CREATE INDEX "idx_messages_conversation_created_at" ON "public"."messages" USING "btree" ("conversation_id", "created_at" DESC);
 
 
 
@@ -641,8 +727,33 @@ ALTER TABLE ONLY "public"."competitors"
 
 
 
+ALTER TABLE ONLY "public"."conversation_members"
+    ADD CONSTRAINT "conversation_members_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."conversation_members"
+    ADD CONSTRAINT "conversation_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE RESTRICT;
+
+
+
+ALTER TABLE ONLY "public"."conversations"
+    ADD CONSTRAINT "conversations_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id") ON DELETE RESTRICT;
+
+
+
 ALTER TABLE ONLY "public"."game_platform_stats"
     ADD CONSTRAINT "game_platform_stats_competitor_id_fkey" FOREIGN KEY ("competitor_id") REFERENCES "public"."competitors"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."messages"
+    ADD CONSTRAINT "messages_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."messages"
+    ADD CONSTRAINT "messages_sender_id_fkey" FOREIGN KEY ("sender_id") REFERENCES "auth"."users"("id") ON DELETE RESTRICT;
 
 
 
@@ -824,7 +935,92 @@ CREATE POLICY "coaches_can_view_own_teams" ON "public"."teams" FOR SELECT USING 
 ALTER TABLE "public"."competitors" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."conversation_members" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."conversations" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "conversations_delete_admin" ON "public"."conversations" FOR DELETE USING ("public"."is_admin"("auth"."uid"()));
+
+
+
+CREATE POLICY "conversations_insert_admin" ON "public"."conversations" FOR INSERT WITH CHECK ("public"."is_admin"("auth"."uid"()));
+
+
+
+CREATE POLICY "conversations_select_admin" ON "public"."conversations" FOR SELECT USING ("public"."is_admin"("auth"."uid"()));
+
+
+
+CREATE POLICY "conversations_select_member" ON "public"."conversations" FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM "public"."conversation_members" "m"
+  WHERE (("m"."conversation_id" = "conversations"."id") AND ("m"."user_id" = "auth"."uid"())))));
+
+
+
+CREATE POLICY "conversations_update_admin" ON "public"."conversations" FOR UPDATE USING ("public"."is_admin"("auth"."uid"())) WITH CHECK ("public"."is_admin"("auth"."uid"()));
+
+
+
+CREATE POLICY "convo_members_delete_admin" ON "public"."conversation_members" FOR DELETE USING ("public"."is_admin"("auth"."uid"()));
+
+
+
+CREATE POLICY "convo_members_insert_admin" ON "public"."conversation_members" FOR INSERT WITH CHECK ("public"."is_admin"("auth"."uid"()));
+
+
+
+CREATE POLICY "convo_members_select_admin" ON "public"."conversation_members" FOR SELECT USING ("public"."is_admin"("auth"."uid"()));
+
+
+
+CREATE POLICY "convo_members_select_self" ON "public"."conversation_members" FOR SELECT USING (("user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "convo_members_update_admin" ON "public"."conversation_members" FOR UPDATE USING ("public"."is_admin"("auth"."uid"())) WITH CHECK ("public"."is_admin"("auth"."uid"()));
+
+
+
+CREATE POLICY "convo_members_update_self_read" ON "public"."conversation_members" FOR UPDATE USING (("user_id" = "auth"."uid"())) WITH CHECK ((("user_id" = "auth"."uid"()) AND ("role" = ( SELECT "conversation_members_1"."role"
+   FROM "public"."conversation_members" "conversation_members_1"
+  WHERE (("conversation_members_1"."conversation_id" = "conversation_members_1"."conversation_id") AND ("conversation_members_1"."user_id" = "conversation_members_1"."user_id")))) AND (NOT ("muted_until" IS DISTINCT FROM ( SELECT "conversation_members_1"."muted_until"
+   FROM "public"."conversation_members" "conversation_members_1"
+  WHERE (("conversation_members_1"."conversation_id" = "conversation_members_1"."conversation_id") AND ("conversation_members_1"."user_id" = "conversation_members_1"."user_id")))))));
+
+
+
 ALTER TABLE "public"."game_platform_stats" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."messages" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "messages_delete_admin" ON "public"."messages" FOR DELETE USING ("public"."is_admin"("auth"."uid"()));
+
+
+
+CREATE POLICY "messages_insert_allowed" ON "public"."messages" FOR INSERT WITH CHECK (("public"."is_admin"("auth"."uid"()) OR ((EXISTS ( SELECT 1
+   FROM "public"."conversation_members" "m"
+  WHERE (("m"."conversation_id" = "messages"."conversation_id") AND ("m"."user_id" = "auth"."uid"()) AND (("m"."muted_until" IS NULL) OR ("m"."muted_until" < "now"()))))) AND (( SELECT "c"."type"
+   FROM "public"."conversations" "c"
+  WHERE ("c"."id" = "messages"."conversation_id")) = 'dm'::"text"))));
+
+
+
+CREATE POLICY "messages_select_admin" ON "public"."messages" FOR SELECT USING ("public"."is_admin"("auth"."uid"()));
+
+
+
+CREATE POLICY "messages_select_member" ON "public"."messages" FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM "public"."conversation_members" "m"
+  WHERE (("m"."conversation_id" = "m"."conversation_id") AND ("m"."user_id" = "auth"."uid"())))));
+
+
+
+CREATE POLICY "messages_update_admin" ON "public"."messages" FOR UPDATE USING ("public"."is_admin"("auth"."uid"())) WITH CHECK ("public"."is_admin"("auth"."uid"()));
+
 
 
 ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
@@ -846,6 +1042,10 @@ ALTER TABLE "public"."teams" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."messages";
+
 
 
 GRANT USAGE ON SCHEMA "public" TO "postgres";
@@ -1162,6 +1362,12 @@ GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."is_admin"("uid" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."is_admin"("uid" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."is_admin"("uid" "uuid") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."is_admin_user"() TO "anon";
 GRANT ALL ON FUNCTION "public"."is_admin_user"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."is_admin_user"() TO "service_role";
@@ -1234,9 +1440,33 @@ GRANT ALL ON TABLE "public"."comp_team_view" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."conversation_members" TO "anon";
+GRANT ALL ON TABLE "public"."conversation_members" TO "authenticated";
+GRANT ALL ON TABLE "public"."conversation_members" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."conversations" TO "anon";
+GRANT ALL ON TABLE "public"."conversations" TO "authenticated";
+GRANT ALL ON TABLE "public"."conversations" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."game_platform_stats" TO "anon";
 GRANT ALL ON TABLE "public"."game_platform_stats" TO "authenticated";
 GRANT ALL ON TABLE "public"."game_platform_stats" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."messages" TO "anon";
+GRANT ALL ON TABLE "public"."messages" TO "authenticated";
+GRANT ALL ON TABLE "public"."messages" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."messages_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."messages_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."messages_id_seq" TO "service_role";
 
 
 

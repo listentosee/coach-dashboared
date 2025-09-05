@@ -12,9 +12,25 @@ export async function POST(
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    // Prefer RPC if available (bypasses RLS complexity and uses DB timestamps)
+    const { error: rpcErr } = await supabase.rpc('mark_conversation_read', { p_conversation_id: params.id })
+    if (!rpcErr) return NextResponse.json({ ok: true })
+
+    // Fallback: direct update using the latest message timestamp
+    const { data: lastMsg, error: msgErr } = await supabase
+      .from('messages')
+      .select('created_at')
+      .eq('conversation_id', params.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (msgErr) return NextResponse.json({ error: msgErr.message }, { status: 400 })
+
+    const targetTs = lastMsg?.created_at || new Date().toISOString()
+
     const { error } = await supabase
       .from('conversation_members')
-      .update({ last_read_at: new Date().toISOString() })
+      .update({ last_read_at: targetTs as any })
       .eq('conversation_id', params.id)
       .eq('user_id', session.user.id)
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
@@ -25,4 +41,3 @@ export async function POST(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

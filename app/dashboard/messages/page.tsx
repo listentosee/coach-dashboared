@@ -4,10 +4,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Checkbox } from '@/components/ui/checkbox'
 import { supabase } from '@/lib/supabase/client'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { DataTable } from '@/components/ui/data-table'
+import { createConversationColumns, ConversationRow } from '@/components/messaging/conversations-columns'
+import { createDirectoryColumns, DirectoryRow } from '@/components/messaging/directory-columns'
+import { createParticipantsColumns, ParticipantRow } from '@/components/messaging/participants-columns'
 
 type Conversation = {
   id: string
@@ -32,7 +35,7 @@ export default function MessagesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState('')
-  const [directory, setDirectory] = useState<{ id: string; name: string; email: string; role?: string }[]>([])
+  const [directory, setDirectory] = useState<DirectoryRow[]>([])
   const [composeOpen, setComposeOpen] = useState(false)
   const [selectedRecipient, setSelectedRecipient] = useState<string>('')
   const [isAdmin, setIsAdmin] = useState(false)
@@ -42,6 +45,10 @@ export default function MessagesPage() {
   const [participantsOpen, setParticipantsOpen] = useState(false)
   const [participants, setParticipants] = useState<{ user_id: string; first_name?: string; last_name?: string; email?: string }[]>([])
   const [admins, setAdmins] = useState<{ id: string; first_name?: string; last_name?: string; email?: string }[]>([])
+  const [me, setMe] = useState<{ id: string; first_name?: string | null; last_name?: string | null; email?: string | null } | null>(null)
+  // Group compose helpers (used by Start group from this). We only keep setters to avoid unused state warnings.
+  const [, setComposeRecipients] = useState<Record<string, boolean>>({})
+  const [, setComposeTitle] = useState<string>('')
 
   // Markdown helpers for admin broadcast toolbar
   const mdInsert = (syntax: 'bold'|'italic'|'link'|'ul'|'ol') => {
@@ -59,7 +66,11 @@ export default function MessagesPage() {
     const res = await fetch('/api/messaging/conversations')
     if (res.ok) {
       const json = await res.json()
-      setConversations(json.conversations || [])
+      const normalized = (json.conversations || []).map((c: any) => ({
+        ...c,
+        unread_count: Math.max(0, Number(c.unread_count ?? 0))
+      }))
+      setConversations(normalized)
       if (!selectedId && json.conversations?.length > 0) {
         setSelectedId(json.conversations[0].id)
       }
@@ -77,7 +88,18 @@ export default function MessagesPage() {
   }
 
   useEffect(() => { fetchConversations() }, [])
-  useEffect(() => { if (selectedId) { fetchMessages(selectedId).then(async () => { await fetch(`/api/messaging/conversations/${selectedId}/read`, { method: 'POST' }); await fetchConversations(); window.dispatchEvent(new CustomEvent('unread-refresh')) }) } }, [selectedId])
+  useEffect(() => {
+    if (!selectedId) return
+    // Optimistically clear unread locally for snappier UI
+    setConversations(prev => prev.map(c => c.id === selectedId ? { ...c, unread_count: 0 } : c))
+    fetchMessages(selectedId).then(async () => {
+      const res = await fetch(`/api/messaging/conversations/${selectedId}/read`, { method: 'POST' })
+      if (res.ok) {
+        await fetchConversations()
+        window.dispatchEvent(new CustomEvent('unread-refresh'))
+      }
+    })
+  }, [selectedId])
   useEffect(() => {
     const loadDir = async () => {
       const res = await fetch('/api/users/directory')
@@ -102,11 +124,26 @@ export default function MessagesPage() {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+      const { data: profile } = await supabase.from('profiles').select('first_name,last_name,email,role').eq('id', user.id).single()
       setIsAdmin(profile?.role === 'admin')
+      setMe({ id: user.id, first_name: (profile as any)?.first_name ?? null, last_name: (profile as any)?.last_name ?? null, email: (profile as any)?.email ?? null })
     }
     checkAdmin()
   }, [])
+
+  // Build a quick map from user id -> display name for rendering senders
+  const userNameMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const u of directory) {
+      const name = u.name?.trim() || u.email || ''
+      if (u.id) map[u.id] = name
+    }
+    if (me?.id) {
+      const full = `${(me.first_name || '') as string} ${(me.last_name || '') as string}`.trim()
+      map[me.id] = (full.length > 0 ? full : (me.email || 'Me')) as string
+    }
+    return map
+  }, [directory, me])
 
   const send = async () => {
     const selected = conversations.find(c => c.id === selectedId)
@@ -190,10 +227,19 @@ export default function MessagesPage() {
   }
 
   const replyPrivately = async () => {
-    // Open DM to the first admin
-    const admin = admins[0]
-    if (!admin) return
-    const res = await fetch('/api/messaging/conversations/dm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: admin.id }) })
+    if (!selectedId) return
+    // Prefer last message sender as author; fallback to conversation creator; fallback to first admin
+    const last = messages[messages.length - 1]
+    let targetId: string | undefined = last?.sender_id
+    if (!targetId) {
+      const conv = conversations.find(c => c.id === selectedId)
+      targetId = conv?.created_by
+    }
+    if (!targetId && admins[0]) targetId = admins[0].id
+    if (!targetId) return
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user?.id === targetId && admins[0]) targetId = admins[0].id
+    const res = await fetch('/api/messaging/conversations/dm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: targetId }) })
     if (res.ok) {
       const json = await res.json()
       await fetchConversations()
@@ -220,9 +266,25 @@ export default function MessagesPage() {
     await loadParticipants()
   }
 
+  // Realtime: subscribe to messages to refresh lists in real-time
+  useEffect(() => {
+    const channel = supabase.channel('messages-page')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async () => {
+        await fetchConversations()
+        if (selectedId) await fetchMessages(selectedId)
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversation_members' }, async () => {
+        await fetchConversations()
+      })
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [selectedId])
+
   return (
     <div className="grid grid-cols-12 gap-4">
-      <div className="col-span-12 lg:col-span-3 border border-meta-border rounded-md overflow-hidden">
+      <div className="col-span-12 lg:col-span-4 border border-meta-border rounded-md overflow-hidden">
         <div className="p-3 font-medium bg-meta-card flex items-center justify-between">
           <span>Conversations</span>
           <Dialog open={composeOpen} onOpenChange={setComposeOpen}>
@@ -234,18 +296,7 @@ export default function MessagesPage() {
                 <DialogTitle>New Direct Message</DialogTitle>
               </DialogHeader>
               <div className="space-y-3">
-                <div className="max-h-64 overflow-auto border border-meta-border rounded-md p-2 space-y-1">
-                  {directory.map((u) => (
-                    <label key={u.id} className="flex items-center gap-2 py-1">
-                      <input type="radio" name="recipient" checked={selectedRecipient === u.id} onChange={() => setSelectedRecipient(u.id)} />
-                      <span className="text-sm">{u.name} <span className="text-meta-muted">{u.email}</span></span>
-                      <span className="ml-auto text-xs text-meta-muted">{u.role}</span>
-                    </label>
-                  ))}
-                  {directory.length === 0 && (
-                    <div className="text-sm text-meta-muted">No users found</div>
-                  )}
-                </div>
+                <DataTable columns={createDirectoryColumns((id) => setSelectedRecipient(id))} data={directory} onRowClick={(row) => setSelectedRecipient((row as any).id)} initialSortId="name" />
                 <div className="flex justify-end gap-2">
                   <Button variant="ghost" onClick={() => setComposeOpen(false)}>Cancel</Button>
                   <Button onClick={createDM} disabled={loading || !selectedRecipient}>Start DM</Button>
@@ -263,50 +314,30 @@ export default function MessagesPage() {
             {adminToolsOpen && (
               <div className="space-y-2">
                 <Input placeholder="Search coaches" value={coachFilter} onChange={e => setCoachFilter(e.target.value)} />
-                <div className="max-h-48 overflow-auto divide-y divide-meta-border border border-meta-border rounded-md">
-                  {coaches
-                    .filter(c => (c.name + ' ' + c.email).toLowerCase().includes(coachFilter.toLowerCase()))
-                    .map(c => (
-                      <div key={c.id} className="p-2 flex items-center justify-between">
-                        <div className="text-sm">{c.name} <span className="text-meta-muted">{c.email}</span></div>
-                        <Button size="sm" onClick={async () => {
-                          const res = await fetch('/api/messaging/conversations/dm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: c.id }) })
-                          if (res.ok) {
-                            const json = await res.json()
-                            await fetchConversations()
-                            setSelectedId(json.conversationId)
-                          }
-                        }}>Open DM</Button>
-                      </div>
-                    ))}
-                </div>
+                <DataTable columns={createDirectoryColumns(async (id) => {
+                  const res = await fetch('/api/messaging/conversations/dm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: id }) })
+                  if (res.ok) {
+                    const json = await res.json(); await fetchConversations(); setSelectedId(json.conversationId)
+                  }
+                })} data={directory.filter(c => (c.name + ' ' + c.email).toLowerCase().includes(coachFilter.toLowerCase()))} onRowClick={(row) => setSelectedRecipient((row as any).id)} initialSortId="name" />
               </div>
             )}
           </div>
         )}
-        <div className="divide-y divide-meta-border">
-          {conversations.map(c => (
-            <button
-              key={c.id}
-              onClick={() => setSelectedId(c.id)}
-              className={`w-full text-left p-3 hover:bg-meta-accent/20 ${selectedId === c.id ? 'bg-meta-accent/30' : ''}`}
-            >
-              <div className="text-sm text-meta-light flex items-center">
-                <span>{c.type === 'announcement' ? 'Announcements' : 'Direct Message'}</span>
-                {c.unread_count && c.unread_count > 0 && (
-                  <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-600 text-white text-xs px-2 py-0.5">{c.unread_count}</span>
-                )}
-              </div>
-              {c.title && <div className={`text-xs ${c.unread_count && c.unread_count > 0 ? 'text-white font-medium' : 'text-meta-muted'}`}>{c.title}</div>}
-            </button>
-          ))}
-          {conversations.length === 0 && (
-            <div className="p-3 text-sm text-meta-muted">No conversations</div>
-          )}
+        <div className="p-3">
+          <DataTable
+            columns={createConversationColumns(
+              (id) => setSelectedId(id),
+              async () => { await replyPrivately() },
+              isAdmin
+            )}
+            data={conversations as ConversationRow[]}
+            onRowClick={(row) => setSelectedId((row as any).id)}
+          />
         </div>
       </div>
 
-      <div className="col-span-12 lg:col-span-9 border border-meta-border rounded-md flex flex-col min-h-[60vh]">
+      <div className="col-span-12 lg:col-span-8 border border-meta-border rounded-md flex flex-col min-h-[60vh]">
         <div className="p-3 font-medium bg-meta-card flex items-center justify-between">
           <span>Messages</span>
           {isAdmin && (
@@ -329,20 +360,7 @@ export default function MessagesPage() {
         {isAdmin && participantsOpen && (
           <div className="p-3 border-b border-meta-border space-y-2 bg-meta-dark/40">
             <div className="text-sm font-medium text-meta-light">Participants</div>
-            <div className="space-y-1">
-              {participants.map(p => (
-                <div key={p.user_id} className="flex items-center justify-between text-sm">
-                  <div>
-                    {(p.first_name || p.last_name) ? `${p.first_name || ''} ${p.last_name || ''}`.trim() : p.email}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => muteUser(p.user_id, 60)}>Mute 60m</Button>
-                    <Button size="sm" variant="ghost" onClick={() => muteUser(p.user_id, null)}>Unmute</Button>
-                  </div>
-                </div>
-              ))}
-              {participants.length === 0 && <div className="text-sm text-meta-muted">No participants</div>}
-            </div>
+            <DataTable columns={createParticipantsColumns(muteUser)} data={participants as ParticipantRow[]} />
           </div>
         )}
         {isAdmin && (
@@ -372,7 +390,11 @@ export default function MessagesPage() {
         <div className="flex-1 p-4 space-y-3 overflow-auto">
           {messages.map(m => (
             <div key={m.id} className="text-sm">
-              <div className="text-meta-muted text-xs">{new Date(m.created_at).toLocaleString()}</div>
+              <div className="text-meta-muted text-xs">
+                <span className="font-medium text-meta-light">{userNameMap[m.sender_id] || 'Unknown'}</span>
+                <span className="mx-1">•</span>
+                {new Date(m.created_at).toLocaleString()}
+              </div>
               <div className="prose prose-invert max-w-none text-sm">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.body}</ReactMarkdown>
               </div>

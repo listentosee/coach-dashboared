@@ -53,19 +53,20 @@ export default function DashboardLayout({
   }, []);
 
   useEffect(() => {
-    let timer: any
-    const poll = async () => {
-      try {
-        const res = await fetch('/api/messaging/unread/count')
-        if (res.ok) {
-          const json = await res.json()
-          setUnread(json.count || 0)
-        }
-      } catch (e) {}
-      timer = setTimeout(poll, 15000)
-    }
-    poll()
-    return () => clearTimeout(timer)
+    // Initial fetch
+    fetch('/api/messaging/unread/count').then(async res => {
+      if (res.ok) { const json = await res.json(); setUnread(json.count || 0) }
+    })
+    // Realtime updates
+    const channel = supabase.channel('messages-unread')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async () => {
+        const res = await fetch('/api/messaging/unread/count'); if (res.ok) { const json = await res.json(); setUnread(json.count || 0) }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversation_members' }, async () => {
+        const res = await fetch('/api/messaging/unread/count'); if (res.ok) { const json = await res.json(); setUnread(json.count || 0) }
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
   }, [])
 
   useEffect(() => {

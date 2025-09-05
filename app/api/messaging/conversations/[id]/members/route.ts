@@ -14,33 +14,18 @@ export async function GET(
 
     const { data, error } = await supabase
       .from('conversation_members')
-      .select('user_id, profiles:first_name, profiles:last_name, profiles:email')
+      .select('user_id, profiles ( id, first_name, last_name, email )')
       .eq('conversation_id', params.id)
       .returns<any>()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
-    // The select with aliases above may not work in all environments; fallback to a join pattern
-    if (!data) {
-      const { data: rows, error: err2 } = await supabase
-        .from('conversation_members')
-        .select('user_id')
-        .eq('conversation_id', params.id)
-      if (err2) return NextResponse.json({ error: err2.message }, { status: 400 })
-      const ids = (rows || []).map(r => r.user_id)
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name, email')
-        .in('id', ids)
-      return NextResponse.json({ members: (profiles || []).map(p => ({ user_id: p.id, first_name: p.first_name, last_name: p.last_name, email: p.email })) })
-    }
-
-    // Normalize response
-    const members = (data as any[]).map((r: any) => ({
+    // Normalize nested profiles
+    const members = (data || []).map((r: any) => ({
       user_id: r.user_id,
-      first_name: (r as any).first_name,
-      last_name: (r as any).last_name,
-      email: (r as any).email,
+      first_name: r.profiles?.first_name ?? null,
+      last_name: r.profiles?.last_name ?? null,
+      email: r.profiles?.email ?? null,
     }))
     return NextResponse.json({ members })
   } catch (e) {
@@ -48,4 +33,3 @@ export async function GET(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

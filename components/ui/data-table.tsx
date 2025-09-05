@@ -22,15 +22,31 @@ import {
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
+  initialSortId?: string
+  initialSortDesc?: boolean
+  onRowClick?: (row: TData) => void
+  getRowClassName?: (row: TData) => string | undefined
 }
 
 export function DataTable<TData, TValue>({
   columns,
   data,
+  initialSortId,
+  initialSortDesc,
+  onRowClick,
+  getRowClassName,
 }: DataTableProps<TData, TValue>) {
-  const [sorting, setSorting] = React.useState<SortingState>([
-    { id: 'first_name', desc: false }
-  ])
+  // Determine a safe initial sort: prefer provided id, else 'first_name' if present, else none
+  const columnIds = React.useMemo(() => columns.map(c => (c.id as string) || (c as any).accessorKey).filter(Boolean), [columns])
+  const safeInitialId = React.useMemo(() => {
+    if (initialSortId && columnIds.includes(initialSortId)) return initialSortId
+    if (columnIds.includes('first_name')) return 'first_name'
+    return undefined
+  }, [initialSortId, columnIds])
+
+  const [sorting, setSorting] = React.useState<SortingState>(
+    safeInitialId ? [{ id: safeInitialId, desc: !!initialSortDesc }] : []
+  )
 
   const table = useReactTable({
     data,
@@ -68,7 +84,9 @@ export function DataTable<TData, TValue>({
               table.getRowModel().rows.map((row) => (
                 <TableRow 
                   key={row.id}
-                  className={(row.original as any).is_active === false ? "opacity-50" : ""}
+                  className={getRowClassName ? (getRowClassName(row.original)) : ((row.original as any).is_active === false ? "opacity-50" : "")}
+                  onClick={() => onRowClick && onRowClick(row.original)}
+                  style={{ cursor: onRowClick ? 'pointer' : undefined }}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>

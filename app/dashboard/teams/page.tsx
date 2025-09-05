@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase/client';
-import { Plus, Minus, Users, X, UserPlus } from 'lucide-react';
+import { Plus, Minus, Users, X, UserPlus, ChevronDown, ChevronRight, Upload, Image as ImageIcon } from 'lucide-react';
 import {
   DndContext,
   DragEndEvent,
@@ -30,6 +30,8 @@ interface Competitor {
   first_name: string;
   last_name: string;
   grade?: string;
+  status: string;
+  is_active: boolean;
   team_id?: string;
 }
 
@@ -39,12 +41,12 @@ interface Team {
   division?: string;
   status: 'forming' | 'active' | 'archived';
   member_count: number;
+  image_url?: string;
 }
 
 interface TeamMember {
   id: string;
   competitor_id: string;
-  position: number;
   competitor: {
     first_name: string;
     last_name: string;
@@ -53,6 +55,93 @@ interface TeamMember {
 }
 
 // Draggable Competitor Item
+function TeamImage({ teamId, teamName, hasImage }: { teamId: string; teamName: string; hasImage: boolean }) {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(hasImage);
+
+  useEffect(() => {
+    if (!hasImage) {
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchImageUrl = async () => {
+      try {
+        const { createClientComponentClient } = await import('@supabase/auth-helpers-nextjs');
+        const supabase = createClientComponentClient();
+        
+        // Get the team's image path from the database
+        const { data: teamData, error: teamError } = await supabase
+          .from('teams')
+          .select('image_url')
+          .eq('id', teamId)
+          .single();
+
+        if (teamError || !teamData?.image_url) {
+          console.error('No image path found for team:', teamId);
+          setIsLoading(false);
+          return;
+        }
+
+        // Generate signed URL for private bucket with RLS
+        console.log('Generating signed URL for path:', teamData.image_url);
+        const { data: { signedUrl }, error: signedUrlError } = await supabase.storage
+          .from('team-images')
+          .createSignedUrl(teamData.image_url, 60 * 60 * 24 * 7); // 7 days
+
+        if (signedUrlError) {
+          console.error('Error generating signed URL:', signedUrlError);
+        } else {
+          console.log('Generated signed URL:', signedUrl);
+          setImageUrl(signedUrl);
+        }
+      } catch (error) {
+        console.error('Error fetching image URL:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchImageUrl();
+  }, [teamId, hasImage]);
+
+  if (!hasImage) {
+    return (
+      <div className="w-24 h-24 rounded bg-meta-dark flex items-center justify-center">
+        <ImageIcon className="h-8 w-8 text-meta-muted" />
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="w-24 h-24 rounded bg-meta-dark flex items-center justify-center">
+        <div className="animate-spin h-4 w-4 border-2 border-meta-muted border-t-transparent rounded-full"></div>
+      </div>
+    );
+  }
+
+  if (!imageUrl) {
+    return (
+      <div className="w-24 h-24 rounded bg-meta-dark flex items-center justify-center">
+        <ImageIcon className="h-8 w-8 text-meta-muted" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={imageUrl}
+      alt={`${teamName} team`}
+      className="w-24 h-24 rounded object-contain bg-transparent"
+      onError={(e) => {
+        console.error('Failed to load team image:', imageUrl);
+        e.currentTarget.style.display = 'none';
+      }}
+    />
+  );
+}
+
 function DraggableCompetitor({ competitor }: { competitor: Competitor }) {
   const {
     attributes,
@@ -77,123 +166,156 @@ function DraggableCompetitor({ competitor }: { competitor: Competitor }) {
       {...listeners}
       className="p-3 border border-meta-border rounded-lg bg-meta-card cursor-move hover:border-meta-accent transition-colors"
     >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="font-medium text-meta-light">
-            {competitor.first_name} {competitor.last_name}
-          </p>
-          {competitor.grade && (
-            <p className="text-sm text-meta-muted">Grade {competitor.grade}</p>
-          )}
-        </div>
-        <Badge variant="outline" className="border-meta-border text-meta-muted">
-          Available
-        </Badge>
+      <div>
+        <p className="font-medium text-meta-light">
+          {competitor.first_name} {competitor.last_name}
+        </p>
+        {competitor.grade && (
+          <p className="text-sm text-meta-muted">Grade {competitor.grade}</p>
+        )}
       </div>
     </div>
   );
 }
 
-// Droppable Team Component
-function DroppableTeam({ team, teamMembers, onDeleteTeam, onRemoveMember, allCollapsed }: { 
+// Droppable Team Card
+function DroppableTeamCard({ 
+  team, 
+  teamMembers, 
+  onDeleteTeam, 
+  onRemoveMember,
+  onImageUpload 
+}: { 
   team: Team; 
   teamMembers: TeamMember[];
   onDeleteTeam: (teamId: string) => void;
   onRemoveMember: (teamId: string, competitorId: string) => void;
-  allCollapsed: boolean;
+  onImageUpload: (teamId: string, file: File) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: team.id,
   });
-  
-  const [collapsed, setCollapsed] = useState(allCollapsed);
+  const [expanded, setExpanded] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
 
-  // Update collapsed state when allCollapsed changes
-  useEffect(() => {
-    setCollapsed(allCollapsed);
-  }, [allCollapsed]);
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setImageUploading(true);
+      await onImageUpload(team.id, file);
+      setImageUploading(false);
+    }
+  };
 
   return (
-    <div
+    <Card 
       ref={setNodeRef}
-      className={`p-3 border rounded-lg transition-colors ${
+      className={`bg-meta-card border transition-colors ${
         isOver 
           ? 'border-meta-accent bg-meta-accent/20 border-2' 
           : 'border-meta-border hover:border-meta-accent'
       }`}
-      data-team-id={team.id}
     >
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="text-meta-accent hover:text-meta-light transition-colors"
-          >
-            {collapsed ? '▶' : '▼'}
-          </button>
-          <h3 className="font-medium text-meta-light">{team.name}</h3>
-          <Badge className="bg-meta-accent text-white">
-            {team.member_count}/6
-          </Badge>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => onDeleteTeam(team.id)}
-          className="text-red-600 border-red-300 hover:bg-red-50 h-6 w-6 p-0"
-        >
-          <X className="h-3 w-3" />
-        </Button>
-      </div>
+      <CardContent className="p-4">
+        {/* Team Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setExpanded(!expanded)}
+              className="p-1 h-6 w-6"
+            >
+              {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </Button>
 
-      {/* Team Members - Collapsible */}
-      {!collapsed && (
-        <div className="space-y-1">
-          {teamMembers.map((member) => (
-            <div key={member.id} className="flex items-center justify-between p-2 bg-meta-dark rounded text-sm">
-              <div className="flex items-center space-x-2">
-                <span className="w-5 h-5 bg-meta-accent text-white rounded-full flex items-center justify-center text-xs">
-                  {member.position}
-                </span>
-                <span className="text-meta-light">
-                  {member.competitor.first_name} {member.competitor.last_name}
-                </span>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onRemoveMember(team.id, member.competitor_id)}
-                className="text-red-600 border-red-300 hover:bg-red-50 h-5 w-5 p-0"
-              >
-                <Minus className="h-3 w-3" />
-              </Button>
+            {/* Team Image */}
+            <div className="relative">
+              <TeamImage teamId={team.id} teamName={team.name} hasImage={!!team.image_url} />
+              
+              {/* Upload Overlay */}
+              <label className="absolute inset-0 cursor-pointer opacity-0 hover:opacity-100 transition-opacity">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                  disabled={imageUploading}
+                />
+                <div className="w-24 h-24 rounded bg-black/50 flex items-center justify-center">
+                  <Upload className="h-6 w-6 text-white" />
+                </div>
+              </label>
             </div>
-          ))}
-          
-          {/* Drop Zone Indicator */}
-          {isOver && (
-            <div className="p-2 bg-meta-accent/20 border border-meta-accent rounded text-center text-meta-accent text-sm">
-              Drop here to add student
+
+            <div>
+              <h3 className="font-medium text-meta-light">{team.name}</h3>
+              <p className="text-sm text-meta-muted">
+                {team.member_count}/6
+              </p>
             </div>
-          )}
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onDeleteTeam(team.id)}
+            disabled={team.member_count > 0}
+            className={`text-red-600 border-red-300 hover:bg-red-50 h-6 w-6 p-0 ${
+              team.member_count > 0 ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+            title={team.member_count > 0 ? 'Remove all members first' : 'Delete team'}
+          >
+            <X className="h-3 w-3" />
+          </Button>
         </div>
-      )}
-    </div>
+
+        {/* Expanded Content */}
+        {expanded && (
+          <div className="space-y-4 mt-4">
+            {/* Team Members */}
+            <div>
+              <h4 className="text-sm font-medium text-meta-light mb-2">Team Members</h4>
+              <div className="space-y-1">
+                {teamMembers.length === 0 ? (
+                  <p className="text-sm text-meta-muted italic">No members yet</p>
+                ) : (
+                  teamMembers.map((member) => (
+                    <div key={member.id} className="flex items-center justify-between p-2 bg-meta-dark rounded text-sm">
+                      <span className="text-meta-light">
+                        {member.competitor.first_name} {member.competitor.last_name}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onRemoveMember(team.id, member.competitor_id)}
+                        className="text-red-600 border-red-300 hover:bg-red-50 h-5 w-5 p-0"
+                      >
+                        <Minus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
 export const dynamic = 'force-dynamic';
 
 export default function TeamsPage() {
-  const [unassignedCompetitors, setUnassignedCompetitors] = useState<Competitor[]>([]);
+  const [availableCompetitors, setAvailableCompetitors] = useState<Competitor[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamMembers, setTeamMembers] = useState<Record<string, TeamMember[]>>({});
   const [newTeamName, setNewTeamName] = useState('');
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [allCollapsed, setAllCollapsed] = useState(true);
-  const [competitorSearchTerm, setCompetitorSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -202,13 +324,6 @@ export default function TeamsPage() {
       },
     })
   );
-
-  // Filter competitors based on search term
-  const filteredUnassignedCompetitors = unassignedCompetitors.filter(competitor => {
-    const fullName = `${competitor.first_name} ${competitor.last_name}`.toLowerCase();
-    const searchLower = competitorSearchTerm.toLowerCase();
-    return fullName.includes(searchLower);
-  });
 
   useEffect(() => {
     fetchData();
@@ -241,15 +356,13 @@ export default function TeamsPage() {
           .select(`
             id,
             competitor_id,
-            position,
             competitor:competitors(
               first_name,
               last_name,
               grade
             )
           `)
-          .eq('team_id', team.id)
-          .order('position', { ascending: true });
+          .eq('team_id', team.id);
 
         if (!membersError) {
           membersData[team.id] = (members || []).map(member => ({
@@ -259,19 +372,17 @@ export default function TeamsPage() {
         }
       }
 
-      // Separate unassigned competitors
-      const assignedCompetitorIds = new Set();
-      Object.values(membersData).forEach(members => {
-        members.forEach(member => assignedCompetitorIds.add(member.competitor_id));
-      });
+      // Filter available competitors: status != "pending" AND is_active = true AND team_id IS NULL
+      const available = (competitorsData.competitors || []).filter(c => 
+        c.status !== 'pending' && c.is_active && !c.team_id
+      );
 
-      const unassigned = (competitorsData.competitors || []).filter(c => !assignedCompetitorIds.has(c.id));
       const teamsWithCounts = (teamsData.teams || []).map(team => ({
         ...team,
         member_count: (membersData[team.id] || []).length
       }));
 
-      setUnassignedCompetitors(unassigned);
+      setAvailableCompetitors(available);
       setTeams(teamsWithCounts);
       setTeamMembers(membersData);
     } catch (error) {
@@ -289,7 +400,7 @@ export default function TeamsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Optimistic update - immediately update UI
+      // Optimistic update
       const tempTeam: Team = {
         id: `temp-${Date.now()}`,
         name: newTeamName.trim(),
@@ -297,234 +408,154 @@ export default function TeamsPage() {
         member_count: 0
       };
 
-      setTeams(prev => [tempTeam, ...prev]);
+      setTeams(prev => [...prev, tempTeam]);
       setTeamMembers(prev => ({ ...prev, [tempTeam.id]: [] }));
-      setNewTeamName('');
 
-      // Make API call in background
       const response = await fetch('/api/teams/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: tempTeam.name,
+          name: newTeamName.trim()
         }),
       });
 
       if (response.ok) {
-        // Update with real team ID from API response
         const { team: newTeam } = await response.json();
         setTeams(prev => prev.map(t => 
           t.id === tempTeam.id ? { ...newTeam, member_count: 0 } : t
         ));
         setTeamMembers(prev => {
           const newMembers = { ...prev };
-          newMembers[newTeam.id] = [];
           delete newMembers[tempTeam.id];
+          newMembers[newTeam.id] = [];
           return newMembers;
         });
+        setNewTeamName('');
       } else {
-        // Revert optimistic update on error
-        const errorData = await response.json();
-        alert('Failed to create team: ' + errorData.error);
-        
+        // Revert optimistic update
         setTeams(prev => prev.filter(t => t.id !== tempTeam.id));
         setTeamMembers(prev => {
           const newMembers = { ...prev };
           delete newMembers[tempTeam.id];
           return newMembers;
         });
-        setNewTeamName(tempTeam.name);
+        alert('Failed to create team');
       }
     } catch (error) {
       console.error('Error creating team:', error);
       alert('Failed to create team');
-      
-      // Revert optimistic update on error
-      setTeams(prev => prev.filter(t => t.id.startsWith('temp-')));
-      setTeamMembers(prev => {
-        const newMembers = { ...prev };
-        Object.keys(newMembers).forEach(key => {
-          if (key.startsWith('temp-')) delete newMembers[key];
-        });
-        return newMembers;
-      });
-      setNewTeamName(newTeamName);
     } finally {
       setIsCreatingTeam(false);
     }
   };
 
-  const addMemberToTeam = async (competitorId: string, teamId: string) => {
+  const addMemberToTeam = async (teamId: string, competitorId: string) => {
     try {
-      // Find next available position
-      const currentMembers = teamMembers[teamId] || [];
-      const takenPositions = currentMembers.map(m => m.position);
-      const nextPosition = [1, 2, 3, 4, 5, 6].find(p => !takenPositions.includes(p));
-      
-      if (!nextPosition) {
-        alert('Team is at maximum capacity (6 members)');
-        return;
-      }
-
-      // Optimistic update - immediately update UI
-      const competitor = unassignedCompetitors.find(c => c.id === competitorId);
-      if (!competitor) return;
-
-      const newMember: TeamMember = {
-        id: `temp-${Date.now()}`, // Temporary ID
-        competitor_id: competitorId,
-        position: nextPosition,
-        competitor: competitor
-      };
-
-      // Update state immediately
-      setUnassignedCompetitors(prev => prev.filter(c => c.id !== competitorId));
-      setTeamMembers(prev => ({
-        ...prev,
-        [teamId]: [...(prev[teamId] || []), newMember]
-      }));
-      setTeams(prev => prev.map(team => 
-        team.id === teamId 
-          ? { ...team, member_count: team.member_count + 1 }
-          : team
-      ));
-
-      // Make API call in background
       const response = await fetch(`/api/teams/${teamId}/members/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          competitor_id: competitorId,
-          position: nextPosition,
-        }),
+        body: JSON.stringify({ competitor_id: competitorId }),
       });
 
-      if (!response.ok) {
-        // Revert optimistic update on error
-        const errorData = await response.json();
-        alert('Failed to add member: ' + errorData.error);
-        
-        setUnassignedCompetitors(prev => [...prev, competitor]);
-        setTeamMembers(prev => ({
-          ...prev,
-          [teamId]: (prev[teamId] || []).filter(m => m.id !== newMember.id)
-        }));
-        setTeams(prev => prev.map(team => 
-          team.id === teamId 
-            ? { ...team, member_count: team.member_count - 1 }
-            : team
-        ));
+      if (response.ok) {
+        // Optimistic update
+        const competitor = availableCompetitors.find(c => c.id === competitorId);
+        if (competitor) {
+          setAvailableCompetitors(prev => prev.filter(c => c.id !== competitorId));
+          setTeamMembers(prev => ({
+            ...prev,
+            [teamId]: [
+              ...(prev[teamId] || []),
+              {
+                id: `temp-${Date.now()}`,
+                competitor_id: competitorId,
+                competitor: {
+                  first_name: competitor.first_name,
+                  last_name: competitor.last_name,
+                  grade: competitor.grade
+                }
+              }
+            ]
+          }));
+          setTeams(prev => prev.map(team => 
+            team.id === teamId 
+              ? { ...team, member_count: team.member_count + 1 }
+              : team
+          ));
+        }
+      } else {
+        alert('Failed to add member to team');
       }
     } catch (error) {
-      console.error('Error adding member:', error);
-      alert('Failed to add member');
-      
-      // Revert optimistic update on error
-      const competitor = unassignedCompetitors.find(c => c.id === competitorId);
-      if (competitor) {
-        setUnassignedCompetitors(prev => [...prev, competitor]);
-        setTeamMembers(prev => ({
-          ...prev,
-          [teamId]: (prev[teamId] || []).filter(m => m.competitor_id !== competitorId)
-        }));
-        setTeams(prev => prev.map(team => 
-          team.id === teamId 
-            ? { ...team, member_count: team.member_count - 1 }
-            : team
-        ));
-      }
+      console.error('Error adding member to team:', error);
+      alert('Failed to add member to team');
     }
   };
 
   const removeMemberFromTeam = async (teamId: string, competitorId: string) => {
     try {
-      // Find the member and competitor for optimistic update
-      const member = teamMembers[teamId]?.find(m => m.competitor_id === competitorId);
-      const competitor = member?.competitor;
-      
-      if (!member || !competitor) return;
-
-      // Optimistic update - immediately update UI
-      setTeamMembers(prev => ({
-        ...prev,
-        [teamId]: (prev[teamId] || []).filter(m => m.competitor_id !== competitorId)
-      }));
-      setTeams(prev => prev.map(team => 
-        team.id === teamId 
-          ? { ...team, member_count: team.member_count - 1 }
-          : team
-      ));
-      setUnassignedCompetitors(prev => [...prev, {
-        id: competitorId,
-        first_name: competitor.first_name,
-        last_name: competitor.last_name,
-        grade: competitor.grade
-      }]);
-
-      // Make API call in background
       const response = await fetch(`/api/teams/${teamId}/members/${competitorId}`, {
         method: 'DELETE',
       });
 
-      if (!response.ok) {
-        // Revert optimistic update on error
-        alert('Failed to remove member');
-        
-        setTeamMembers(prev => ({
-          ...prev,
-          [teamId]: [...(prev[teamId] || []), member]
-        }));
-        setTeams(prev => prev.map(team => 
-          team.id === teamId 
-            ? { ...team, member_count: team.member_count + 1 }
-            : team
-        ));
-        setUnassignedCompetitors(prev => prev.filter(c => c.id !== competitorId));
+      if (response.ok) {
+        // Optimistic update
+        const member = teamMembers[teamId]?.find(m => m.competitor_id === competitorId);
+        if (member) {
+          setAvailableCompetitors(prev => [...prev, {
+            id: competitorId,
+            first_name: member.competitor.first_name,
+            last_name: member.competitor.last_name,
+            grade: member.competitor.grade,
+            status: 'profile',
+            is_active: true
+          }]);
+          setTeamMembers(prev => ({
+            ...prev,
+            [teamId]: prev[teamId].filter(m => m.competitor_id !== competitorId)
+          }));
+          setTeams(prev => prev.map(team => 
+            team.id === teamId 
+              ? { ...team, member_count: team.member_count - 1 }
+              : team
+          ));
+        }
+      } else {
+        alert('Failed to remove member from team');
       }
     } catch (error) {
-      console.error('Error removing member:', error);
-      alert('Failed to remove member');
-      
-      // Revert optimistic update on error
-      const member = teamMembers[teamId]?.find(m => m.competitor_id === competitorId);
-      const competitor = member?.competitor;
-      
-      if (member && competitor) {
-        setTeamMembers(prev => ({
-          ...prev,
-          [teamId]: [...(prev[teamId] || []), member]
-        }));
-        setTeams(prev => prev.map(team => 
-          team.id === teamId 
-            ? { ...team, member_count: team.member_count + 1 }
-            : team
-        ));
-        setUnassignedCompetitors(prev => prev.filter(c => c.id !== competitorId));
-      }
+      console.error('Error removing member from team:', error);
+      alert('Failed to remove member from team');
     }
   };
 
   const deleteTeam = async (teamId: string) => {
-    if (!confirm('Are you sure you want to delete this team? All members will be unassigned.')) {
-      return;
-    }
-
     try {
-      // First remove all team members
-      const currentMembers = teamMembers[teamId] || [];
-      for (const member of currentMembers) {
-        await fetch(`/api/teams/${teamId}/members/${member.competitor_id}`, {
-          method: 'DELETE',
-        });
-      }
-
-      // Then delete the team
       const response = await fetch(`/api/teams/${teamId}`, {
         method: 'DELETE',
       });
 
       if (response.ok) {
-        fetchData();
+        // Add team members back to available competitors
+        const members = teamMembers[teamId] || [];
+        setAvailableCompetitors(prev => [
+          ...prev,
+          ...members.map(member => ({
+            id: member.competitor_id,
+            first_name: member.competitor.first_name,
+            last_name: member.competitor.last_name,
+            grade: member.competitor.grade,
+            status: 'profile',
+            is_active: true
+          }))
+        ]);
+        
+        setTeams(prev => prev.filter(team => team.id !== teamId));
+        setTeamMembers(prev => {
+          const newMembers = { ...prev };
+          delete newMembers[teamId];
+          return newMembers;
+        });
       } else {
         alert('Failed to delete team');
       }
@@ -547,12 +578,11 @@ export default function TeamsPage() {
     const overId = over.id as string;
 
     // Check if we're dragging a competitor over a team
-    const isCompetitor = unassignedCompetitors.some(c => c.id === activeId);
+    const isCompetitor = availableCompetitors.some(c => c.id === activeId);
     const isTeam = teams.some(t => t.id === overId);
 
     if (isCompetitor && isTeam) {
-      // The visual feedback is now handled by the useDroppable hook in DroppableTeam
-      // This provides automatic highlighting when dragging over teams
+      // Visual feedback is handled by the useDroppable hook
     }
   };
 
@@ -568,14 +598,63 @@ export default function TeamsPage() {
     const overId = over.id as string;
 
     // Check if we're dropping a competitor onto a team
-    const competitor = unassignedCompetitors.find(c => c.id === activeId);
+    const competitor = availableCompetitors.find(c => c.id === activeId);
     const team = teams.find(t => t.id === overId);
 
     if (competitor && team) {
-      addMemberToTeam(activeId, overId);
+      addMemberToTeam(overId, activeId);
     }
 
     setActiveId(null);
+  };
+
+  // Filter available competitors based on search term
+  const filteredAvailableCompetitors = availableCompetitors.filter(competitor =>
+    competitor.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    competitor.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    competitor.grade?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const uploadTeamImage = async (teamId: string, file: File) => {
+    try {
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // Upload using server-side API route
+      const response = await fetch(`/api/teams/${teamId}/upload-image`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const { image_url } = await response.json();
+        setTeams(prev => prev.map(team =>
+          team.id === teamId
+            ? { ...team, image_url }
+            : team
+        ));
+      } else {
+        const errorData = await response.json();
+        alert(`Failed to upload image: ${errorData.error}`);
+      }
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      alert('Failed to upload image');
+    }
+  };
+
+  const getFreshImageUrl = async (teamId: string) => {
+    try {
+      const response = await fetch(`/api/teams/${teamId}/get-image-url`);
+      if (response.ok) {
+        const { image_url } = await response.json();
+        return image_url;
+      }
+    } catch (error) {
+      console.error('Error getting fresh image URL:', error);
+    }
+    return null;
   };
 
   if (isLoading) {
@@ -603,52 +682,45 @@ export default function TeamsPage() {
         <div>
           <h1 className="text-3xl font-bold text-meta-light">Teams</h1>
           <p className="text-meta-muted mt-2">
-            Drag students to teams or use the interface below
+            Manage teams and assign competitors
           </p>
         </div>
 
-        {/* Two Box Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Box - Unassigned Students */}
+        {/* Two Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Available Competitors */}
           <Card className="bg-meta-card border-meta-border">
             <CardHeader>
-              <CardTitle className="text-meta-light text-lg">Unassigned Students</CardTitle>
+              <CardTitle className="text-meta-light text-lg">Available Competitors</CardTitle>
               <CardDescription className="text-meta-muted">
-                Students not assigned to any team ({unassignedCompetitors.length})
+                Drag to teams ({filteredAvailableCompetitors.length})
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Search Filter */}
+              {/* Search Input */}
               <div className="mb-4">
                 <Input
                   placeholder="Search competitors..."
-                  value={competitorSearchTerm}
-                  onChange={(e) => setCompetitorSearchTerm(e.target.value)}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                   className="bg-meta-dark border-meta-border text-meta-light"
                 />
               </div>
               
               <SortableContext
-                items={filteredUnassignedCompetitors.map(c => c.id)}
+                items={filteredAvailableCompetitors.map(c => c.id)}
                 strategy={verticalListSortingStrategy}
               >
                 <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {filteredUnassignedCompetitors.length === 0 ? (
+                  {filteredAvailableCompetitors.length === 0 ? (
                     <div className="text-center py-8 text-meta-muted">
-                      {unassignedCompetitors.length === 0 ? (
-                        <>
-                          <Users className="mx-auto h-8 w-8 mb-2" />
-                          <p>All students are assigned to teams</p>
-                        </>
-                      ) : (
-                        <>
-                          <Users className="mx-auto h-8 w-8 mb-2" />
-                          <p>No competitors found matching "{competitorSearchTerm}"</p>
-                        </>
-                      )}
+                      <Users className="mx-auto h-8 w-8 mb-2" />
+                      <p>
+                        {searchTerm ? 'No competitors match your search' : 'All competitors are assigned to teams'}
+                      </p>
                     </div>
                   ) : (
-                    filteredUnassignedCompetitors.map((competitor) => (
+                    filteredAvailableCompetitors.map((competitor) => (
                       <DraggableCompetitor key={competitor.id} competitor={competitor} />
                     ))
                   )}
@@ -657,8 +729,8 @@ export default function TeamsPage() {
             </CardContent>
           </Card>
 
-          {/* Right Box - Teams */}
-          <Card className="bg-meta-card border-meta-border">
+          {/* Teams */}
+          <Card className="bg-meta-card border-meta-border lg:col-span-2">
             <CardHeader>
               <CardTitle className="text-meta-light text-lg">Teams</CardTitle>
               <CardDescription className="text-meta-muted">
@@ -688,54 +760,29 @@ export default function TeamsPage() {
               </div>
 
               {/* Teams List */}
-              {teams.length > 0 && (
-                <div className="mb-3 flex justify-end">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setAllCollapsed(!allCollapsed)}
-                    className="text-meta-muted border-meta-border hover:bg-meta-accent hover:text-white"
-                  >
-                    {allCollapsed ? 'Expand All' : 'Collapse All'}
-                  </Button>
-                </div>
-              )}
-              <div className="space-y-3 max-h-80 overflow-y-auto">
+              <div className="space-y-3 max-h-96 overflow-y-auto">
                 {teams.length === 0 ? (
                   <div className="text-center py-8 text-meta-muted">
                     <Users className="mx-auto h-8 w-8 mb-2" />
                     <p>No teams created yet</p>
                     <p className="text-xs">Create your first team above</p>
                   </div>
-                                 ) : (
-                   teams.map((team) => (
-                     <DroppableTeam
-                       key={team.id}
-                       team={team}
-                       teamMembers={teamMembers[team.id] || []}
-                       onDeleteTeam={deleteTeam}
-                       onRemoveMember={removeMemberFromTeam}
-                       allCollapsed={allCollapsed}
-                     />
-                   ))
-                 )}
+                ) : (
+                  teams.map((team) => (
+                    <DroppableTeamCard
+                      key={team.id}
+                      team={team}
+                      teamMembers={teamMembers[team.id] || []}
+                      onDeleteTeam={deleteTeam}
+                      onRemoveMember={removeMemberFromTeam}
+                      onImageUpload={uploadTeamImage}
+                    />
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
         </div>
-
-        {/* Instructions */}
-        <Card className="bg-meta-card border-meta-border">
-          <CardContent className="pt-6">
-            <div className="text-center text-sm text-meta-muted">
-              <p className="mb-2"><strong>How to use:</strong></p>
-              <p>1. <strong>Drag & Drop:</strong> Drag students from left box and drop onto teams</p>
-              <p>2. <strong>Create Team:</strong> Type team name and click + button</p>
-              <p>3. <strong>Remove:</strong> Use - buttons to remove students, X buttons to delete teams</p>
-              <p>4. <strong>Visual Feedback:</strong> Teams highlight when dragging over them</p>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Drag Overlay */}
@@ -743,7 +790,7 @@ export default function TeamsPage() {
         {activeId ? (
           <div className="p-3 border border-meta-accent rounded-lg bg-meta-card shadow-lg">
             <p className="text-meta-light font-medium">
-              {unassignedCompetitors.find(c => c.id === activeId)?.first_name} {unassignedCompetitors.find(c => c.id === activeId)?.last_name}
+              {availableCompetitors.find(c => c.id === activeId)?.first_name} {availableCompetitors.find(c => c.id === activeId)?.last_name}
             </p>
           </div>
         ) : null}

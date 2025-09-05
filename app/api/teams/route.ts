@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('teams')
-      .select('id, name, coach_id')
+      .select('id, name, coach_id, image_url')
       .order('name', { ascending: true });
 
     if (!isAdmin) {
@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
     const transformedTeams = teams?.map(team => ({
       id: team.id,
       name: team.name,
+      image_url: team.image_url,
       ...(isAdmin && { coach_id: team.coach_id })
     })) || [];
 

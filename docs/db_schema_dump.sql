@@ -375,11 +375,16 @@ CREATE TABLE IF NOT EXISTS "public"."teams" (
     "division" "text",
     "status" "public"."team_status" DEFAULT 'forming'::"public"."team_status",
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "image_url" "text"
 );
 
 
 ALTER TABLE "public"."teams" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."teams"."image_url" IS 'URL to team image stored in Supabase Storage';
+
 
 
 CREATE OR REPLACE VIEW "public"."comp_team_view" WITH ("security_invoker"='on') AS
@@ -594,6 +599,10 @@ CREATE INDEX "idx_team_members_competitor_id" ON "public"."team_members" USING "
 
 
 CREATE INDEX "idx_team_members_team_id" ON "public"."team_members" USING "btree" ("team_id");
+
+
+
+CREATE INDEX "idx_teams_image_url" ON "public"."teams" USING "btree" ("image_url");
 
 
 

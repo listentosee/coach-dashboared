@@ -12,20 +12,19 @@ export async function GET(
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    // Use RPC to include profile fields and enforce membership
     const { data, error } = await supabase
-      .from('conversation_members')
-      .select('user_id, profiles ( id, first_name, last_name, email )')
-      .eq('conversation_id', params.id)
-      .returns<any>()
+      .rpc('list_members_with_profile', { p_conversation_id: params.id })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
-    // Normalize nested profiles
     const members = (data || []).map((r: any) => ({
       user_id: r.user_id,
-      first_name: r.profiles?.first_name ?? null,
-      last_name: r.profiles?.last_name ?? null,
-      email: r.profiles?.email ?? null,
+      first_name: r.first_name,
+      last_name: r.last_name,
+      email: r.email,
+      role: r.role,
+      joined_at: r.joined_at,
     }))
     return NextResponse.json({ members })
   } catch (e) {

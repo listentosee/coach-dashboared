@@ -11,10 +11,9 @@ export async function POST(req: NextRequest) {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const adminId = session.user.id
-    const isAdmin = await isUserAdmin(supabase, adminId)
-    if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    // Allow any authenticated user to start a DM with a valid target
 
-    const { userId: coachId } = await req.json() as { userId?: string }
+    const { userId: coachId, title } = await req.json() as { userId?: string, title?: string }
     if (!coachId) return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
     if (coachId === adminId) return NextResponse.json({ error: 'Cannot DM self' }, { status: 400 })
 
@@ -40,7 +39,7 @@ export async function POST(req: NextRequest) {
       const sharedIds = new Set((shared || []).map(s => s.conversation_id))
       // Ensure it is a 'dm'
       if (sharedIds.size > 0) {
-        const { data: dmConvos } = await supabase
+      const { data: dmConvos } = await supabase
           .from('conversations')
           .select('id, type')
           .in('id', Array.from(sharedIds))
@@ -55,7 +54,7 @@ export async function POST(req: NextRequest) {
     // 2) Create new DM and add both members (RLS allows admin)
     const { data: convo, error: convoErr } = await supabase
       .from('conversations')
-      .insert({ type: 'dm', title: null, created_by: adminId })
+      .insert({ type: 'dm', title: title || null, created_by: adminId })
       .select('id')
       .single()
 
@@ -74,4 +73,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

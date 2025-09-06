@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -11,6 +11,7 @@ import { DataTable } from '@/components/ui/data-table'
 import { createConversationColumns, ConversationRow } from '@/components/messaging/conversations-columns'
 import { createDirectoryColumns, DirectoryRow } from '@/components/messaging/directory-columns'
 import { createParticipantsColumns, ParticipantRow } from '@/components/messaging/participants-columns'
+import { MessageSquare, Megaphone } from 'lucide-react'
 
 type Conversation = {
   id: string
@@ -39,28 +40,42 @@ export default function MessagesPage() {
   const [composeOpen, setComposeOpen] = useState(false)
   const [selectedRecipient, setSelectedRecipient] = useState<string>('')
   const [isAdmin, setIsAdmin] = useState(false)
-  const [broadcastBody, setBroadcastBody] = useState('')
-  const [adminToolsOpen, setAdminToolsOpen] = useState(false)
-  const [coachFilter, setCoachFilter] = useState('')
   const [participantsOpen, setParticipantsOpen] = useState(false)
   const [participants, setParticipants] = useState<{ user_id: string; first_name?: string; last_name?: string; email?: string }[]>([])
   const [admins, setAdmins] = useState<{ id: string; first_name?: string; last_name?: string; email?: string }[]>([])
   const [me, setMe] = useState<{ id: string; first_name?: string | null; last_name?: string | null; email?: string | null } | null>(null)
-  // Group compose helpers (used by Start group from this). We only keep setters to avoid unused state warnings.
-  const [, setComposeRecipients] = useState<Record<string, boolean>>({})
-  const [, setComposeTitle] = useState<string>('')
+  // Group compose helpers (used by Start group from this and Admin New)
+  const [composeRecipients, setComposeRecipients] = useState<Record<string, boolean>>({})
+  const [composeTitle, setComposeTitle] = useState<string>('')
+  const [composerOpen, setComposerOpen] = useState(false)
+  const [composerMode, setComposerMode] = useState<'dm'|'group'|'announcement'|'reply'>('dm')
+  const [composerSubject, setComposerSubject] = useState('')
+  const [composerBody, setComposerBody] = useState('')
+  const [composerPreview, setComposerPreview] = useState(false)
+  const [composerTarget, setComposerTarget] = useState<string>('') // for DM single target
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  // Markdown helpers for admin broadcast toolbar
-  const mdInsert = (syntax: 'bold'|'italic'|'link'|'ul'|'ol') => {
-    setBroadcastBody(prev => {
-      if (syntax === 'bold') return prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + '**bold** '
-      if (syntax === 'italic') return prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + '*italic* '
-      if (syntax === 'link') return prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + '[title](https://example.com) '
-      if (syntax === 'ul') return prev + '\n- item\n- item\n'
-      if (syntax === 'ol') return prev + '\n1. item\n2. item\n'
-      return prev
-    })
+  const handleFilesSelected = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    for (const file of Array.from(files)) {
+      try {
+        const form = new FormData()
+        form.append('file', file)
+        const res = await fetch('/api/messaging/upload', { method: 'POST', body: form })
+        if (!res.ok) continue
+        const json = await res.json()
+        const path = json.path as string
+        const ct = (json.contentType as string) || file.type
+        const name = json.name || file.name
+        const signedRoute = `/api/messaging/file?path=${encodeURIComponent(path)}`
+        const snippet = ct?.startsWith('image/') ? `\n![${name}](${signedRoute})\n` : `\n[${name}](${signedRoute})\n`
+        setComposerBody(prev => prev + snippet)
+      } catch {}
+    }
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
+
+  // No inline markdown toolbar; composer handles formatting
 
   const fetchConversations = async () => {
     const res = await fetch('/api/messaging/conversations')
@@ -71,9 +86,7 @@ export default function MessagesPage() {
         unread_count: Math.max(0, Number(c.unread_count ?? 0))
       }))
       setConversations(normalized)
-      if (!selectedId && json.conversations?.length > 0) {
-        setSelectedId(json.conversations[0].id)
-      }
+      // Do not auto-select; wait for explicit user click
     }
   }
 
@@ -189,18 +202,81 @@ export default function MessagesPage() {
     }
   }
 
-  const sendBroadcast = async () => {
-    if (!isAdmin || broadcastBody.trim().length === 0) return
+  const createDMFromId = async (id: string) => {
     setLoading(true)
     try {
-      const res = await fetch('/api/messaging/announcements/send', {
+      const res = await fetch('/api/messaging/conversations/dm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: broadcastBody }),
+        body: JSON.stringify({ userId: id }),
       })
       if (res.ok) {
-        setBroadcastBody('')
+        const json = await res.json()
+        setComposeOpen(false)
         await fetchConversations()
+        setSelectedId(json.conversationId)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Broadcast handled by unified composer
+
+  // Unified composer send handler
+  const sendFromComposer = async () => {
+    setLoading(true)
+    try {
+      if (composerMode === 'reply') {
+        if (!selectedId) return
+        await fetch(`/api/messaging/conversations/${selectedId}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: composerBody }) })
+        await fetchMessages(selectedId)
+        await fetchConversations()
+        setComposerOpen(false)
+        setComposerBody('')
+        return
+      }
+
+      if (composerMode === 'announcement') {
+        const res = await fetch('/api/messaging/announcements/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: composerSubject, body: composerBody }) })
+        if (res.ok) {
+          const json = await res.json()
+          await fetchConversations()
+          setSelectedId(json.conversationId)
+          await fetchMessages(json.conversationId)
+          setComposerOpen(false)
+          setComposerBody('')
+        }
+        return
+      }
+
+      if (composerMode === 'dm') {
+        const res = await fetch('/api/messaging/conversations/dm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: composerTarget, title: composerSubject }) })
+        if (res.ok) {
+          const json = await res.json()
+          await fetch(`/api/messaging/conversations/${json.conversationId}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: composerBody }) })
+          await fetchConversations()
+          setSelectedId(json.conversationId)
+          await fetchMessages(json.conversationId)
+          setComposerOpen(false)
+          setComposerBody('')
+        }
+        return
+      }
+
+      if (composerMode === 'group') {
+        const ids = Object.entries(composeRecipients).filter(([, v]) => v).map(([id]) => id)
+        const res = await fetch('/api/messaging/conversations/group', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userIds: ids, title: composerSubject }) })
+        if (res.ok) {
+          const json = await res.json()
+          await fetch(`/api/messaging/conversations/${json.conversationId}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: composerBody }) })
+          await fetchConversations()
+          setSelectedId(json.conversationId)
+          await fetchMessages(json.conversationId)
+          setComposerOpen(false)
+          setComposerBody('')
+        }
+        return
       }
     } finally {
       setLoading(false)
@@ -228,22 +304,41 @@ export default function MessagesPage() {
 
   const replyPrivately = async () => {
     if (!selectedId) return
-    // Prefer last message sender as author; fallback to conversation creator; fallback to first admin
-    const last = messages[messages.length - 1]
-    let targetId: string | undefined = last?.sender_id
-    if (!targetId) {
-      const conv = conversations.find(c => c.id === selectedId)
-      targetId = conv?.created_by
-    }
+    // Open composer for DM to author with editable subject
+    const conv = conversations.find(c => c.id === selectedId)
+    let targetId: string | undefined = conv?.created_by
     if (!targetId && admins[0]) targetId = admins[0].id
     if (!targetId) return
     const { data: { user } } = await supabase.auth.getUser()
     if (user?.id === targetId && admins[0]) targetId = admins[0].id
-    const res = await fetch('/api/messaging/conversations/dm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: targetId }) })
-    if (res.ok) {
-      const json = await res.json()
-      await fetchConversations()
-      setSelectedId(json.conversationId)
+    setComposerMode('dm')
+    setComposerSubject(`Re: ${conv?.title || 'Message'}`)
+    setComposerBody('')
+    setComposerTarget(targetId!)
+    setComposerPreview(false)
+    setComposerOpen(true)
+  }
+
+  const startAdminGroup = async () => {
+    const ids = Object.entries(composeRecipients).filter(([, v]) => v).map(([id]) => id)
+    if (ids.length === 0) return
+    setLoading(true)
+    try {
+      const res = await fetch('/api/messaging/conversations/group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: ids, title: composeTitle || undefined }),
+      })
+      if (res.ok) {
+        const json = await res.json()
+        setComposeOpen(false)
+        setComposeRecipients({})
+        setComposeTitle('')
+        await fetchConversations()
+        setSelectedId(json.conversationId)
+      }
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -287,43 +382,18 @@ export default function MessagesPage() {
       <div className="col-span-12 lg:col-span-4 border border-meta-border rounded-md overflow-hidden">
         <div className="p-3 font-medium bg-meta-card flex items-center justify-between">
           <span>Conversations</span>
-          <Dialog open={composeOpen} onOpenChange={setComposeOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" variant="secondary">New</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>New Direct Message</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3">
-                <DataTable columns={createDirectoryColumns((id) => setSelectedRecipient(id))} data={directory} onRowClick={(row) => setSelectedRecipient((row as any).id)} initialSortId="name" />
-                <div className="flex justify-end gap-2">
-                  <Button variant="ghost" onClick={() => setComposeOpen(false)}>Cancel</Button>
-                  <Button onClick={createDM} disabled={loading || !selectedRecipient}>Start DM</Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-        {isAdmin && (
-          <div className="p-3 border-b border-meta-border space-y-2 bg-meta-dark/40">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-meta-light">Admin Tools</div>
-              <Button size="sm" variant="ghost" onClick={() => setAdminToolsOpen(v => !v)}>{adminToolsOpen ? 'Hide' : 'Show'}</Button>
-            </div>
-            {adminToolsOpen && (
-              <div className="space-y-2">
-                <Input placeholder="Search coaches" value={coachFilter} onChange={e => setCoachFilter(e.target.value)} />
-                <DataTable columns={createDirectoryColumns(async (id) => {
-                  const res = await fetch('/api/messaging/conversations/dm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: id }) })
-                  if (res.ok) {
-                    const json = await res.json(); await fetchConversations(); setSelectedId(json.conversationId)
-                  }
-                })} data={directory.filter(c => (c.name + ' ' + c.email).toLowerCase().includes(coachFilter.toLowerCase()))} onRowClick={(row) => setSelectedRecipient((row as any).id)} initialSortId="name" />
-              </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={() => { setComposerMode(isAdmin ? 'group' : 'dm'); setComposerSubject(''); setComposerBody(''); setComposerPreview(false); setComposerTarget(''); setComposeRecipients({}); setComposerOpen(true) }} title={isAdmin ? 'New group or DM' : 'New DM'}>
+              <MessageSquare className="h-4 w-4" />
+            </Button>
+            {isAdmin && (
+              <Button size="sm" variant="secondary" onClick={() => { setComposerMode('announcement'); setComposerSubject(''); setComposerBody(''); setComposerPreview(false); setComposerOpen(true) }} title="New announcement">
+                <Megaphone className="h-4 w-4" />
+              </Button>
             )}
           </div>
-        )}
+        </div>
+        {/* Admin Tools removed per updated design */}
         <div className="p-3">
           <DataTable
             columns={createConversationColumns(
@@ -340,17 +410,15 @@ export default function MessagesPage() {
       <div className="col-span-12 lg:col-span-8 border border-meta-border rounded-md flex flex-col min-h-[60vh]">
         <div className="p-3 font-medium bg-meta-card flex items-center justify-between">
           <span>Messages</span>
-          {isAdmin && (
-            <div className="flex items-center gap-2 text-xs text-meta-muted">
-              Markdown supported
-            </div>
-          )}
           <div className="ml-auto">
             <Button size="sm" variant="secondary" onClick={startGroupFromSelected} disabled={!selectedId}>Start group from this</Button>
+            {(selectedId && ((conversations.find(c => c.id === selectedId)?.type !== 'announcement') || isAdmin)) && (
+              <Button size="sm" className="ml-2" onClick={() => { setComposerMode('reply'); setComposerSubject(''); setComposerBody(''); setComposerPreview(false); setComposerOpen(true) }}>Reply</Button>
+            )}
             {!isAdmin && (conversations.find(c => c.id === selectedId)?.type === 'announcement') && (
               <Button size="sm" className="ml-2" onClick={replyPrivately}>Reply privately</Button>
             )}
-            {isAdmin && (
+            {isAdmin && (conversations.find(c => c.id === selectedId)?.type !== 'dm') && (
               <Button size="sm" variant="ghost" className="ml-2" onClick={async () => { setParticipantsOpen(v => !v); if (!participantsOpen) await loadParticipants() }} disabled={!selectedId}>
                 {participantsOpen ? 'Hide participants' : 'Show participants'}
               </Button>
@@ -363,30 +431,7 @@ export default function MessagesPage() {
             <DataTable columns={createParticipantsColumns(muteUser)} data={participants as ParticipantRow[]} />
           </div>
         )}
-        {isAdmin && (
-          <div className="p-3 border-b border-meta-border space-y-2">
-            <div className="text-sm font-medium text-meta-light">Broadcast to all coaches</div>
-            <div className="flex flex-wrap gap-2 text-xs">
-              <Button variant="secondary" size="sm" onClick={() => mdInsert('bold')}>Bold</Button>
-              <Button variant="secondary" size="sm" onClick={() => mdInsert('italic')}>Italic</Button>
-              <Button variant="secondary" size="sm" onClick={() => mdInsert('link')}>Link</Button>
-              <Button variant="secondary" size="sm" onClick={() => mdInsert('ul')}>Bulleted</Button>
-              <Button variant="secondary" size="sm" onClick={() => mdInsert('ol')}>Numbered</Button>
-            </div>
-            <textarea className="w-full h-24 rounded-md border border-meta-border bg-meta-dark text-meta-light p-2 text-sm" placeholder="Write an announcement (Markdown supported)" value={broadcastBody} onChange={(e) => setBroadcastBody(e.target.value)} />
-            {broadcastBody.trim().length > 0 && (
-              <div className="border border-meta-border rounded-md p-3 bg-meta-card">
-                <div className="text-xs text-meta-muted mb-2">Preview</div>
-                <div className="prose prose-invert max-w-none text-sm">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{broadcastBody}</ReactMarkdown>
-                </div>
-              </div>
-            )}
-            <div className="flex justify-end">
-              <Button size="sm" onClick={sendBroadcast} disabled={loading || broadcastBody.trim().length === 0}>Send Broadcast</Button>
-            </div>
-          </div>
-        )}
+        {/* Inline broadcast removed; unified composer handles all composing */}
         <div className="flex-1 p-4 space-y-3 overflow-auto">
           {messages.map(m => (
             <div key={m.id} className="text-sm">
@@ -404,19 +449,68 @@ export default function MessagesPage() {
             <div className="text-sm text-meta-muted">No messages yet</div>
           )}
         </div>
-        <div className="p-3 border-t border-meta-border flex gap-2">
-          <Input
-            placeholder={(!isAdmin && conversations.find(c => c.id === selectedId)?.type === 'announcement') ? 'Announcements are read-only. Use Reply privately.' : 'Type a message'}
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') send() }}
-            disabled={!selectedId || (!isAdmin && conversations.find(c => c.id === selectedId)?.type === 'announcement')}
-          />
-          <Button onClick={send} disabled={loading || !selectedId || newMessage.trim().length === 0 || (!isAdmin && conversations.find(c => c.id === selectedId)?.type === 'announcement')}>
-            Send
-          </Button>
-        </div>
+        {/* Inline reply removed; use modal composer */}
       </div>
+      {/* Unified Composer Modal */}
+      <Dialog open={composerOpen} onOpenChange={(v) => setComposerOpen(v)}>
+        <DialogContent onEscapeKeyDown={(e) => e.preventDefault()} onInteractOutside={(e) => e.preventDefault()} className={composerMode === 'announcement' ? 'sm:max-w-[75vw]' : undefined}>
+          <DialogHeader>
+            <DialogTitle>
+              {composerMode === 'announcement' ? 'New Announcement' : composerMode === 'group' ? 'New Group Message' : composerMode === 'dm' ? 'New Direct Message' : 'Reply'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {composerMode !== 'reply' && (
+              <Input placeholder="Subject" value={composerSubject} onChange={(e) => setComposerSubject(e.target.value)} />
+            )}
+            {composerMode === 'reply' && (
+              <Input value={conversations.find(c => c.id === selectedId)?.title || ''} readOnly />
+            )}
+            {(composerMode === 'dm' || composerMode === 'group') && (
+              <div className="max-h-52 overflow-auto border border-meta-border rounded">
+                {directory.map((u) => (
+                  <label key={u.id} className="flex items-center gap-3 p-2 border-b border-meta-border last:border-b-0 cursor-pointer">
+                    {composerMode === 'group' ? (
+                      <input type="checkbox" className="accent-blue-600" checked={!!composeRecipients[u.id]} onChange={(e) => setComposeRecipients(prev => ({ ...prev, [u.id]: e.target.checked }))} />
+                    ) : (
+                      <input type="radio" name="dm-target" className="accent-blue-600" checked={composerTarget === u.id} onChange={() => setComposerTarget(u.id)} />
+                    )}
+                    <div className="flex-1">
+                      <div className="text-sm">{u.name}</div>
+                      <div className="text-xs text-meta-muted">{u.email} · {u.role}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Button variant="secondary" size="sm" onClick={() => setComposerBody(prev => prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + '**bold** ')}>Bold</Button>
+              <Button variant="secondary" size="sm" onClick={() => setComposerBody(prev => prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + '*italic* ')}>Italic</Button>
+              <Button variant="secondary" size="sm" onClick={() => setComposerBody(prev => prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + '[title](https://example.com) ')}>Link</Button>
+              <Button variant="secondary" size="sm" onClick={() => setComposerBody(prev => prev + '\n- item\n- item\n')}>Bulleted</Button>
+              <Button variant="secondary" size="sm" onClick={() => setComposerBody(prev => prev + '\n1. item\n2. item\n')}>Numbered</Button>
+              <input ref={fileInputRef} type="file" multiple hidden onChange={(e) => handleFilesSelected(e.target.files)} />
+              <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>Attach</Button>
+              <label className="ml-auto text-xs flex items-center gap-2">
+                <input type="checkbox" checked={composerPreview} onChange={(e) => setComposerPreview(e.target.checked)} /> Preview
+              </label>
+            </div>
+            <textarea className={`w-full ${composerMode === 'announcement' ? 'h-[60vh]' : 'h-40'} rounded-md border border-meta-border bg-meta-dark text-meta-light p-2 text-sm`} placeholder="Write your message" value={composerBody} onChange={(e) => setComposerBody(e.target.value)} />
+            {composerPreview && (
+              <div className="border border-meta-border rounded-md p-3 bg-meta-card">
+                <div className="text-xs text-meta-muted mb-2">Preview</div>
+                <div className="prose prose-invert max-w-none text-sm">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{composerBody}</ReactMarkdown>
+                </div>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setComposerOpen(false)}>Cancel</Button>
+              <Button onClick={async () => { await sendFromComposer() }} disabled={loading || (composerMode !== 'reply' && composerSubject.trim().length === 0) || (composerMode === 'dm' && !composerTarget) || (composerMode === 'group' && Object.values(composeRecipients).every(v => !v)) || composerBody.trim().length === 0}>Send</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

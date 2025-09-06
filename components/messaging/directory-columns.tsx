@@ -11,13 +11,14 @@ export type DirectoryRow = {
 }
 
 export function createDirectoryColumns(
-  onStartDM: (userId: string) => void
+  onStartDM: (userId: string) => void,
+  opts?: { showActionButton?: boolean }
 ): ColumnDef<DirectoryRow, any>[] {
+  const showAction = opts?.showActionButton !== false
   return [
     { accessorKey: 'name', header: 'Name' },
     { accessorKey: 'email', header: 'Email' },
     { accessorKey: 'role', header: 'Role', cell: ({ row }) => <span className="text-xs text-meta-muted">{row.original.role}</span> },
-    { id: 'actions', header: '', cell: ({ row }) => <div className="text-right"><Button size="sm" onClick={() => onStartDM(row.original.id)}>Start DM</Button></div> }
+    ...(showAction ? [{ id: 'actions', header: '', cell: ({ row }: any) => <div className="text-right"><Button size="sm" onClick={() => onStartDM(row.original.id)}>Start DM</Button></div> }] : []) as any
   ]
 }
-

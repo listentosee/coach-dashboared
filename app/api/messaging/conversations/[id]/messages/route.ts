@@ -15,12 +15,9 @@ export async function GET(
     const url = new URL(req.url)
     const limit = parseInt(url.searchParams.get('limit') || '50', 10)
 
+    // Use RPC that includes sender profile data and enforces membership
     const { data: messages, error } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('conversation_id', params.id)
-      .order('created_at', { ascending: true })
-      .limit(Math.min(Math.max(limit, 1), 200))
+      .rpc('list_messages_with_sender', { p_conversation_id: params.id, p_limit: Math.min(Math.max(limit, 1), 200) })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     return NextResponse.json({ messages })
@@ -58,4 +55,3 @@ export async function POST(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

@@ -7,7 +7,7 @@ import { MessageSquare, Megaphone, Users } from "lucide-react"
 
 export type ConversationRow = {
   id: string
-  type: 'dm' | 'announcement'
+  type: 'dm' | 'announcement' | 'group'
   title: string | null
   unread_count?: number
   last_message_at?: string | null
@@ -22,18 +22,20 @@ export function createConversationColumns(
     {
       id: 'conversation',
       header: 'Conversation',
-      cell: ({ row }) => (
-        <div className="space-y-1" onClick={() => onOpen(row.original.id)}>
-          <div className="flex items-center gap-2">
-            {row.original.type === 'announcement' ? <Megaphone className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}
-            <span className="text-sm">{row.original.type === 'announcement' ? 'Announcements' : 'Direct Message'}</span>
-          </div>
-          <div className={`text-xs text-meta-muted leading-snug break-words ${row.original.unread_count && row.original.unread_count > 0 ? 'font-medium text-meta-light' : ''}`}>
-            {row.original.title || (row.original.type === 'announcement' ? 'Announcements' : 'DM')}
-          </div>
-          {/* Actions omitted to keep list compact; open on row click */}
-        </div>
-      )
+      cell: ({ row }) => {
+        const t = row.original.type
+        const title = row.original.title || (t === 'announcement' ? 'Announcement' : t === 'group' ? 'Group' : 'Direct Message')
+        const Icon = t === 'announcement' ? Megaphone : t === 'group' ? Users : MessageSquare
+        const isUnread = (row.original.unread_count ?? 0) > 0
+        return (
+          <button type="button" className="w-full text-left" onClick={() => onOpen(row.original.id)}>
+            <div className={`flex items-center gap-2 ${isUnread ? 'font-medium text-meta-light' : ''}`}>
+              <Icon className="h-4 w-4" />
+              <span className="text-sm truncate" title={title}>{title}</span>
+            </div>
+          </button>
+        )
+      }
     },
     {
       accessorKey: 'unread_count',

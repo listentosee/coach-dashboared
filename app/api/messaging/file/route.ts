@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 
-// Streams a private Storage object from bucket 'message' to authenticated users (no signed URL).
+// Streams a private Storage object from bucket 'messages' to authenticated users (no signed URL).
 export async function GET(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies })
@@ -13,7 +13,10 @@ export async function GET(req: NextRequest) {
     const path = url.searchParams.get('path')
     if (!path) return NextResponse.json({ error: 'Missing path' }, { status: 400 })
 
-    const { data: blob, error } = await supabase.storage.from('message').download(path)
+    // Ensure the Storage bucket name matches your Supabase bucket.
+    // Configure via env var SUPABASE_MESSAGES_BUCKET (defaults to 'messages').
+    const bucket = process.env.SUPABASE_MESSAGES_BUCKET || 'messages'
+    const { data: blob, error } = await supabase.storage.from(bucket).download(path)
     if (error || !blob) return NextResponse.json({ error: error?.message || 'Not found' }, { status: 404 })
 
     const arr = await blob.arrayBuffer()

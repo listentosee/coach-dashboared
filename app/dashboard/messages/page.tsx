@@ -7,7 +7,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { supabase } from '@/lib/supabase/client'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
 import { DataTable } from '@/components/ui/data-table'
+import MarkdownEditor from '@/components/ui/markdown-editor'
 import { createConversationColumns, ConversationRow } from '@/components/messaging/conversations-columns'
 import { createDirectoryColumns, DirectoryRow } from '@/components/messaging/directory-columns'
 import { createParticipantsColumns, ParticipantRow } from '@/components/messaging/participants-columns'
@@ -15,7 +17,7 @@ import { MessageSquare, Megaphone } from 'lucide-react'
 
 type Conversation = {
   id: string
-  type: 'dm' | 'announcement'
+  type: 'dm' | 'announcement' | 'group'
   title: string | null
   created_by?: string
   created_at: string
@@ -407,7 +409,7 @@ export default function MessagesPage() {
         </div>
       </div>
 
-      <div className="col-span-12 lg:col-span-8 border border-meta-border rounded-md flex flex-col min-h-[60vh]">
+      <div className="col-span-12 lg:col-span-8 border border-meta-border rounded-md flex flex-col min-h-[60vh] max-h-[90vh] overflow-hidden">
         <div className="p-3 font-medium bg-meta-card flex items-center justify-between">
           <span>Messages</span>
           <div className="ml-auto">
@@ -440,8 +442,9 @@ export default function MessagesPage() {
                 <span className="mx-1">•</span>
                 {new Date(m.created_at).toLocaleString()}
               </div>
-              <div className="prose prose-invert max-w-none text-sm">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.body}</ReactMarkdown>
+              <div className="prose prose-invert max-w-none text-sm markdown-body">
+                {/* Enable soft line breaks and GitHub-flavored Markdown */}
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{m.body}</ReactMarkdown>
               </div>
             </div>
           ))}
@@ -453,7 +456,16 @@ export default function MessagesPage() {
       </div>
       {/* Unified Composer Modal */}
       <Dialog open={composerOpen} onOpenChange={(v) => setComposerOpen(v)}>
-        <DialogContent onEscapeKeyDown={(e) => e.preventDefault()} onInteractOutside={(e) => e.preventDefault()} className={composerMode === 'announcement' ? 'sm:max-w-[75vw]' : undefined}>
+        {/* Constrain modal to viewport and allow internal scrolling */}
+        <DialogContent
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          className={
+            composerMode === 'announcement'
+              ? 'sm:max-w-[75vw] max-h-[90vh] overflow-y-auto'
+              : 'max-h-[90vh] overflow-y-auto'
+          }
+        >
           <DialogHeader>
             <DialogTitle>
               {composerMode === 'announcement' ? 'New Announcement' : composerMode === 'group' ? 'New Group Message' : composerMode === 'dm' ? 'New Direct Message' : 'Reply'}
@@ -484,23 +496,30 @@ export default function MessagesPage() {
               </div>
             )}
             <div className="flex flex-wrap gap-2 text-xs">
-              <Button variant="secondary" size="sm" onClick={() => setComposerBody(prev => prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + '**bold** ')}>Bold</Button>
-              <Button variant="secondary" size="sm" onClick={() => setComposerBody(prev => prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + '*italic* ')}>Italic</Button>
-              <Button variant="secondary" size="sm" onClick={() => setComposerBody(prev => prev + (prev.endsWith(' ') || prev.length === 0 ? '' : ' ') + '[title](https://example.com) ')}>Link</Button>
-              <Button variant="secondary" size="sm" onClick={() => setComposerBody(prev => prev + '\n- item\n- item\n')}>Bulleted</Button>
-              <Button variant="secondary" size="sm" onClick={() => setComposerBody(prev => prev + '\n1. item\n2. item\n')}>Numbered</Button>
               <input ref={fileInputRef} type="file" multiple hidden onChange={(e) => handleFilesSelected(e.target.files)} />
               <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>Attach</Button>
               <label className="ml-auto text-xs flex items-center gap-2">
                 <input type="checkbox" checked={composerPreview} onChange={(e) => setComposerPreview(e.target.checked)} /> Preview
               </label>
             </div>
-            <textarea className={`w-full ${composerMode === 'announcement' ? 'h-[60vh]' : 'h-40'} rounded-md border border-meta-border bg-meta-dark text-meta-light p-2 text-sm`} placeholder="Write your message" value={composerBody} onChange={(e) => setComposerBody(e.target.value)} />
+            <div className="rounded-md border border-meta-border bg-meta-dark p-1">
+              <MarkdownEditor
+                value={composerBody}
+                onChange={setComposerBody}
+                preview={composerPreview}
+                // Keep editor within viewport; leave space for header/controls
+                height={
+                  composerMode === 'announcement'
+                    ? 'min(60vh, calc(100vh - 340px))'
+                    : 280
+                }
+              />
+            </div>
             {composerPreview && (
               <div className="border border-meta-border rounded-md p-3 bg-meta-card">
                 <div className="text-xs text-meta-muted mb-2">Preview</div>
-                <div className="prose prose-invert max-w-none text-sm">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{composerBody}</ReactMarkdown>
+                <div className="prose prose-invert max-w-none text-sm markdown-body">
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{composerBody}</ReactMarkdown>
                 </div>
               </div>
             )}

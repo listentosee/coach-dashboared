@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
 
     const { data: convo, error: convoErr } = await supabase
       .from('conversations')
-      .insert({ type: 'dm', title: title || null, created_by: session.user.id })
+      .insert({ type: 'group', title: title || null, created_by: session.user.id })
       .select('id')
       .single()
     if (convoErr || !convo) return NextResponse.json({ error: convoErr?.message || 'Failed to create conversation' }, { status: 400 })
@@ -35,4 +35,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

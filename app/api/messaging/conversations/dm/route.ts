@@ -51,23 +51,13 @@ export async function POST(req: NextRequest) {
 
     if (existingId) return NextResponse.json({ conversationId: existingId })
 
-    // 2) Create new DM and add both members (RLS allows admin)
-    const { data: convo, error: convoErr } = await supabase
-      .from('conversations')
-      .insert({ type: 'dm', title: title || null, created_by: adminId })
-      .select('id')
-      .single()
-
-    if (convoErr || !convo) return NextResponse.json({ error: convoErr?.message || 'Failed to create conversation' }, { status: 400 })
-
-    const members = [
-      { conversation_id: convo.id, user_id: adminId, role: 'admin' },
-      { conversation_id: convo.id, user_id: coachId, role: 'member' },
-    ]
-    const { error: memErr } = await supabase.from('conversation_members').insert(members)
-    if (memErr) return NextResponse.json({ error: memErr.message }, { status: 400 })
-
-    return NextResponse.json({ conversationId: convo.id })
+    // 2) Create-or-get via SECURITY DEFINER RPC to bypass RLS safely
+    const { data: convId, error: rpcErr } = await supabase.rpc('create_or_get_dm', {
+      p_other_user_id: coachId,
+      p_title: title || null,
+    })
+    if (rpcErr || !convId) return NextResponse.json({ error: rpcErr?.message || 'Failed to create DM' }, { status: 400 })
+    return NextResponse.json({ conversationId: convId })
   } catch (e) {
     console.error('Create DM error', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

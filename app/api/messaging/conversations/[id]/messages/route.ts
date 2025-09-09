@@ -15,9 +15,9 @@ export async function GET(
     const url = new URL(req.url)
     const limit = parseInt(url.searchParams.get('limit') || '50', 10)
 
-    // Use RPC that includes sender profile data and enforces membership
+    // Use V2 RPC that hides private replies from other users
     const { data: messages, error } = await supabase
-      .rpc('list_messages_with_sender', { p_conversation_id: params.id, p_limit: Math.min(Math.max(limit, 1), 200) })
+      .rpc('list_messages_with_sender_v2', { p_conversation_id: params.id, p_limit: Math.min(Math.max(limit, 1), 200) })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     return NextResponse.json({ messages })
@@ -37,14 +37,40 @@ export async function POST(
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { body } = await req.json() as { body?: string }
+    const { body, parentMessageId, privateTo } = await req.json() as { body?: string; parentMessageId?: number; privateTo?: string }
     if (!body || body.trim().length === 0) {
       return NextResponse.json({ error: 'Message body required' }, { status: 400 })
     }
 
+    // Private reply path (e.g., announcements): use RPC to bypass RLS safely
+    if (privateTo) {
+      // Confirm conversation type is announcement; otherwise fall back to normal insert
+      const { data: conv, error: convErr } = await supabase
+        .from('conversations')
+        .select('type')
+        .eq('id', params.id)
+        .single()
+      if (!convErr && conv?.type === 'announcement') {
+        const { data, error } = await supabase.rpc('post_private_reply', {
+          p_conversation_id: params.id,
+          p_body: body,
+          p_recipient: privateTo,
+          p_parent_message_id: parentMessageId ?? null
+        })
+        if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+        return NextResponse.json({ ok: true, id: data })
+      }
+      // Not an announcement; proceed to normal insert below
+    }
+
+    const payload: Record<string, any> = { conversation_id: params.id, sender_id: session.user.id, body }
+    if (typeof parentMessageId === 'number' && Number.isFinite(parentMessageId)) {
+      payload.parent_message_id = parentMessageId
+    }
+
     const { data: inserted, error } = await supabase
       .from('messages')
-      .insert({ conversation_id: params.id, sender_id: session.user.id, body })
+      .insert(payload)
       .select('id, created_at')
       .single()
 

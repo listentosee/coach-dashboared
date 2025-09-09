@@ -12,9 +12,13 @@ export async function POST(
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Prefer RPC if available (bypasses RLS complexity and uses DB timestamps)
-    const { error: rpcErr } = await supabase.rpc('mark_conversation_read', { p_conversation_id: params.id })
+    // Prefer new watermark RPC; fallback to legacy if missing
+    let { error: rpcErr } = await supabase.rpc('mark_conversation_read_v2', { p_conversation_id: params.id })
     if (!rpcErr) return NextResponse.json({ ok: true })
+
+    // Legacy fallback
+    const legacy = await supabase.rpc('mark_conversation_read', { p_conversation_id: params.id })
+    if (!legacy.error) return NextResponse.json({ ok: true })
 
     // Fallback: direct update using the latest message timestamp
     const { data: lastMsg, error: msgErr } = await supabase

@@ -19,6 +19,8 @@ type Conversation = {
   created_by?: string
   created_at: string
   unread_count?: number
+  last_message_at?: string | null
+  display_title?: string | null
 }
 
 type Thread = {
@@ -52,6 +54,7 @@ export default function MessagesV2Page() {
   // State
   const [loading, setLoading] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [selectedChannel, setSelectedChannel] = useState<'dm'|'group'|'announcement'>('dm')
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [threads, setThreads] = useState<Thread[]>([])
   const [selectedThreadRoot, setSelectedThreadRoot] = useState<number | null>(null)
@@ -72,10 +75,14 @@ export default function MessagesV2Page() {
   const [privateReply, setPrivateReply] = useState(false)
   const [privateRecipient, setPrivateRecipient] = useState<string>('')
   const composerFileInputRef = useRef<HTMLInputElement | null>(null)
+  // Cache conversation members per conversation for titles in channel views
+  const [convMembers, setConvMembers] = useState<Record<string, { user_id: string; first_name?: string; last_name?: string; email?: string }[]>>({})
   // Reader pop-out state
   const [readerModalOpen, setReaderModalOpen] = useState(false)
   const [readerOverflow, setReaderOverflow] = useState(false)
   const readerScrollRef = useRef<HTMLDivElement | null>(null)
+  // Track whether we've applied the initial auto-channel selection
+  const channelBootstrappedRef = useRef(false)
 
   const handleComposerFilesSelected = async (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -122,15 +129,43 @@ export default function MessagesV2Page() {
   const isAdmin = (me?.role || '') === 'admin'
   const selectedConversation = conversations.find(c => c.id === selectedConversationId)
   const isAnnouncement = selectedConversation?.type === 'announcement'
+  const conversationsByChannel = useMemo(() => {
+    const map: Record<'dm'|'group'|'announcement', Conversation[]> = { dm: [], group: [], announcement: [] }
+    for (const c of conversations) map[c.type as 'dm'|'group'|'announcement'].push(c)
+    return map
+  }, [conversations])
+  const unreadByChannel = useMemo(() => ({
+    dm: (conversationsByChannel.dm || []).reduce((a,c)=>a+(c.unread_count||0),0),
+    group: (conversationsByChannel.group || []).reduce((a,c)=>a+(c.unread_count||0),0),
+    announcement: (conversationsByChannel.announcement || []).reduce((a,c)=>a+(c.unread_count||0),0),
+  }), [conversationsByChannel])
+
+  const displayTitleForConversation = (c: Conversation): string => {
+    if ((c.display_title || '').trim()) return (c.display_title as string)
+    if (c.type === 'announcement') return c.title || 'Announcement'
+    const members = convMembers[c.id] || []
+    if (c.type === 'dm') {
+      const other = members.find(m => m.user_id !== me?.id)
+      const n = other ? `${other.first_name||''} ${other.last_name||''}`.trim() || other.email || 'Direct Message' : 'Direct Message'
+      return n
+    }
+    const names = members.filter(m => m.user_id !== me?.id).map(m => `${m.first_name||''} ${m.last_name||''}`.trim() || m.email || 'Member')
+    if (c.title && c.title.trim()) return c.title
+    return names.length ? names.join(', ') : 'Group Conversation'
+  }
 
   // Data loaders
   const fetchConversations = async () => {
     const res = await fetch('/api/messaging/conversations')
     if (res.ok) {
       const json = await res.json()
-      setConversations(json.conversations || [])
-      if (!selectedConversationId && (json.conversations?.length || 0) > 0) {
-        setSelectedConversationId(json.conversations[0].id)
+      const list: Conversation[] = json.conversations || []
+      setConversations(list)
+      // Only set the default channel once on initial load
+      if (!channelBootstrappedRef.current && list.length > 0) {
+        const latest = [...list].sort((a,b) => new Date(b.last_message_at || b.created_at).getTime() - new Date(a.last_message_at || a.created_at).getTime())[0]
+        if (latest?.type) setSelectedChannel(latest.type)
+        channelBootstrappedRef.current = true
       }
     }
   }
@@ -154,11 +189,9 @@ export default function MessagesV2Page() {
       const rows: ThreadMessage[] = json.messages || []
       setMessages(rows)
       setSelectedMessageId(rootId)
-      setTimeout(() => setupObserver(), 0)
-      if (receiptsEnabled && (!receiptsGroupsOnly || conversations.find(c => c.id === selectedConversationId)?.type === 'group')) {
-        const ids = rows.map((m) => m.id).slice(-100)
-        if (ids.length > 0) await loadReadStatus(ids)
-      }
+      // Always load read status for message-level indicators
+      const ids = rows.map((m) => m.id).slice(-200)
+      if (ids.length > 0) await loadReadStatus(ids)
     } else {
       setMessages([])
     }
@@ -193,28 +226,33 @@ export default function MessagesV2Page() {
     } catch {}
   }
 
-  // Observer for batching read receipts
-  const setupObserver = () => {
-    if (!receiptsEnabled || !batchReadEnabled) return
-    if (observerRef.current) observerRef.current.disconnect()
-    const obs = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        const id = Number((entry.target as HTMLElement).dataset.messageId)
-        if (!Number.isFinite(id)) continue
-        if (entry.isIntersecting) visibleIdsRef.current.add(id)
-      }
-    }, { threshold: 0.6 })
-    observerRef.current = obs
-    Object.values(nodesRef.current).forEach(el => { if (el) obs.observe(el) })
-  }
-
-  const setMsgRef = (id: number) => (el: HTMLElement | null) => {
-    nodesRef.current[id] = el
-    if (observerRef.current && el) observerRef.current.observe(el)
-  }
+  // No viewport-based read marking anymore; reads are explicit on leave
+  const setMsgRef = (_id: number) => (_el: HTMLElement | null) => {}
 
   // Effects
   useEffect(() => { loadDirectory(); fetchConversations() }, [])
+
+  // Prefetch members for conversations when display_title is not available (fallback)
+  useEffect(() => {
+    const run = async () => {
+      if (!me?.id) return
+      const inChan = conversations.filter(c => c.type === selectedChannel && !c.display_title)
+      const missing = inChan.filter(c => !convMembers[c.id])
+      if (missing.length === 0) return
+      const entries: [string, any[]][] = []
+      await Promise.all(missing.map(async (c) => {
+        try {
+          const r = await fetch(`/api/messaging/conversations/${c.id}/members`)
+          if (r.ok) {
+            const { members } = await r.json()
+            entries.push([c.id, members || []])
+          }
+        } catch {}
+      }))
+      if (entries.length) setConvMembers(prev => ({ ...prev, ...Object.fromEntries(entries) }))
+    }
+    run()
+  }, [selectedChannel, conversations, me])
 
   useEffect(() => {
     if (!selectedConversationId) return
@@ -228,23 +266,26 @@ export default function MessagesV2Page() {
         setSelectedThreadRoot(null)
         setMessages([])
       }
-      await fetch(`/api/messaging/conversations/${selectedConversationId}/read`, { method: 'POST' })
     })()
   }, [selectedConversationId])
 
+  // When channel changes, ensure a conversation in that channel is selected
   useEffect(() => {
-    if (!receiptsEnabled || !batchReadEnabled) return
-    const handle = setInterval(async () => {
-      const ids = Array.from(visibleIdsRef.current)
-      if (ids.length === 0) return
-      visibleIdsRef.current.clear()
-      try {
-        await fetch('/api/messaging/read-receipts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageIds: ids }) })
-        await loadReadStatus(ids)
-      } catch {}
-    }, 1200)
-    return () => clearInterval(handle)
-  }, [receiptsEnabled, batchReadEnabled])
+    const list = conversations.filter(c => c.type === selectedChannel)
+    if (list.length === 0) {
+      setSelectedConversationId(null)
+      setThreads([])
+      setMessages([])
+      setSelectedThreadRoot(null)
+      setSelectedMessageId(null)
+      return
+    }
+    if (!selectedConversationId || !list.find(c => c.id === selectedConversationId)) {
+      setSelectedConversationId(list[0].id)
+    }
+  }, [selectedChannel, conversations])
+
+  // Remove auto-read by focus/visibility
 
   useEffect(() => {
     // Realtime: thread messages of current thread
@@ -256,6 +297,11 @@ export default function MessagesV2Page() {
         // Only update if the new message is in the selected thread
         if (row.thread_root_id === selectedThreadRoot || row.id === selectedThreadRoot) {
           await fetchThreadMessages(selectedThreadRoot)
+        }
+        // Update conversations list and thread stats for unread indicators
+        if (row.sender_id !== me?.id) {
+          await fetchConversations()
+          await fetchThreads(selectedConversationId)
         }
       })
       .subscribe()
@@ -272,6 +318,12 @@ export default function MessagesV2Page() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_read_receipts', filter }, async (payload) => {
         const mid = (payload.new as any)?.message_id
         if (typeof mid === 'number') await loadReadStatus([mid])
+        // Receipt inserts should refresh conversation/thread unread counts for this user
+        if ((payload.new as any)?.user_id === me?.id) {
+          await fetchConversations()
+          if (selectedConversationId) await fetchThreads(selectedConversationId)
+          window.dispatchEvent(new Event('unread-refresh'))
+        }
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
@@ -292,7 +344,52 @@ export default function MessagesV2Page() {
     return () => { window.removeEventListener('resize', check); clearTimeout(t); ro.disconnect() }
   }, [messages, selectedMessageId])
 
+  // Global receipts subscription for this user to keep channel/conversation counts fresh
+  useEffect(() => {
+    if (!me?.id) return
+    const channel = supabase
+      .channel(`receipts-self-${me.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_read_receipts', filter: `user_id=eq.${me.id}` }, async () => {
+        await fetchConversations()
+        if (selectedConversationId) await fetchThreads(selectedConversationId)
+        window.dispatchEvent(new Event('unread-refresh'))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [me?.id, selectedConversationId])
+
   // Actions
+  const markMessagesRead = async (ids: number[]) => {
+    try {
+      if (!ids || ids.length === 0) return
+      await fetch('/api/messaging/read-receipts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageIds: ids })
+      })
+      await loadReadStatus(ids)
+      // Refresh counts across the UI
+      await fetchConversations()
+      if (selectedConversationId) await fetchThreads(selectedConversationId)
+      window.dispatchEvent(new Event('unread-refresh'))
+    } catch {}
+  }
+
+  // Mark current message as read when user navigates away to another message/thread/conversation
+  const prevSelectedRef = useRef<number | null>(null)
+  useEffect(() => {
+    const prev = prevSelectedRef.current
+    if (prev && prev !== selectedMessageId) {
+      markMessagesRead([prev])
+    }
+    prevSelectedRef.current = selectedMessageId
+  }, [selectedMessageId])
+
+  // When switching conversation, mark the current selected message read
+  useEffect(() => {
+    if (!selectedConversationId) return
+    const current = prevSelectedRef.current
+    if (current) markMessagesRead([current])
+  }, [selectedConversationId])
+
   const sendReply = async () => {
     if (!selectedConversationId || !selectedThreadRoot) return
     const text = replyText.trim()
@@ -363,78 +460,68 @@ export default function MessagesV2Page() {
   // UI
   return (
     <div className="grid grid-cols-12 gap-4">
-      {/* Top row: Conversations | Threads | Messages list */}
-      {/* Conversations */}
+      {/* Top row: Channels | Conversations | Messages list */}
+      {/* Channels */}
       <div className="col-span-12 lg:col-span-4 border border-meta-border rounded-md overflow-hidden h-[45vh] flex flex-col">
         <div className="p-3 font-medium bg-meta-card flex items-center justify-between">
           <span>Channels</span>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="secondary" title="New DM"
-              onClick={() => { setComposerOpen(true); setComposerMode('dm'); setComposerBody(''); setComposerSubject(''); setComposerPreview(false); setComposerTarget(''); setComposeRecipients({}); setLockRecipient(false); setComposerFromChannel(true) }}>
+              onClick={() => { setSelectedChannel('dm'); setComposerOpen(true); setComposerMode('dm'); setComposerBody(''); setComposerSubject(''); setComposerPreview(false); setComposerTarget(''); setComposeRecipients({}); setLockRecipient(false); setComposerFromChannel(true) }}>
               <MessageSquare className="h-4 w-4" />
             </Button>
             <Button size="sm" variant="secondary" title="New Group"
-              onClick={() => { setComposerOpen(true); setComposerMode('group'); setComposerBody(''); setComposerSubject(''); setComposerPreview(false); setComposeRecipients({}); setComposerTarget(''); setLockRecipient(false); setComposerFromChannel(true) }}>
+              onClick={() => { setSelectedChannel('group'); setComposerOpen(true); setComposerMode('group'); setComposerBody(''); setComposerSubject(''); setComposerPreview(false); setComposeRecipients({}); setComposerTarget(''); setLockRecipient(false); setComposerFromChannel(true) }}>
               <Users className="h-4 w-4" />
             </Button>
             {isAdmin && (
               <Button size="sm" variant="secondary" title="New Announcement"
-                onClick={() => { setComposerOpen(true); setComposerMode('announcement'); setComposerBody(''); setComposerSubject(''); setComposerPreview(false); setComposerFromChannel(true) }}>
+                onClick={() => { setSelectedChannel('announcement'); setComposerOpen(true); setComposerMode('announcement'); setComposerBody(''); setComposerSubject(''); setComposerPreview(false); setComposerFromChannel(true) }}>
                 <Megaphone className="h-4 w-4" />
               </Button>
             )}
           </div>
         </div>
         <div className="p-2 space-y-2 overflow-auto">
-          {conversations.map((c) => (
-            <button key={c.id}
-              className={`w-full text-left p-3 rounded border ${selectedConversationId === c.id ? 'border-blue-500 bg-blue-500/10' : 'border-meta-border bg-meta-card'}`}
-              onClick={() => setSelectedConversationId(c.id)}
+          {(['announcement','dm','group'] as const).map((ch) => (
+            <button key={ch}
+              className={`w-full text-left p-3 rounded border ${selectedChannel === ch ? 'border-blue-500 bg-blue-500/10' : 'border-meta-border bg-meta-card'}`}
+              onClick={() => setSelectedChannel(ch)}
             >
               <div className="flex items-center justify-between text-xs text-meta-muted">
                 <span className="uppercase flex items-center gap-2">
-                  {c.unread_count ? <span className="inline-block h-2 w-2 rounded-full bg-red-500" /> : null}
-                  {c.type === 'group' ? 'GROUP CHATS' : c.type === 'dm' ? 'DIRECT MESSAGES' : 'ANNOUNCEMENTS'}
+                  {unreadByChannel[ch] ? <span className="inline-block h-2 w-2 rounded-full bg-red-500" /> : null}
+                  {ch === 'group' ? 'GROUP CHATS' : ch === 'dm' ? 'DIRECT MESSAGES' : 'ANNOUNCEMENTS'}
                 </span>
+                {unreadByChannel[ch] ? <span className="text-blue-400">{unreadByChannel[ch]} unread</span> : <span />}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Conversations (filtered by selected channel) */}
+      <div className="col-span-12 lg:col-span-3 border border-meta-border rounded-md overflow-hidden h-[45vh] flex flex-col">
+        <div className="p-3 font-medium bg-meta-card">Conversations</div>
+        <div className="p-2 space-y-2 overflow-auto">
+          {conversations.filter(c => c.type === selectedChannel).map((c) => (
+            <button key={c.id}
+              className={`w-full text-left p-3 rounded border ${selectedConversationId === c.id ? 'border-blue-500 bg-blue-500/10' : 'border-meta-border bg-meta-card'}`}
+              onClick={async () => { setSelectedConversationId(c.id) }}
+              title={displayTitleForConversation(c)}
+            >
+              <div className="text-sm font-medium text-meta-light flex items-center gap-2">
+                {c.unread_count ? <span className="inline-block h-2 w-2 rounded-full bg-red-500" /> : null}
+                <span>{displayTitleForConversation(c)}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-meta-muted mt-0.5">
+                <span>{new Date(c.last_message_at || c.created_at).toLocaleString()}</span>
                 {c.unread_count ? <span className="text-blue-400">{c.unread_count} unread</span> : <span />}
               </div>
             </button>
           ))}
-          {conversations.length === 0 && (
+          {conversations.filter(c => c.type === selectedChannel).length === 0 && (
             <div className="text-sm text-meta-muted p-3">No conversations</div>
-          )}
-        </div>
-      </div>
-
-      {/* Threads */}
-      <div className="col-span-12 lg:col-span-3 border border-meta-border rounded-md overflow-hidden h-[45vh] flex flex-col">
-        <div className="p-3 font-medium bg-meta-card">Conversations</div>
-        <div className="p-2 space-y-2 overflow-auto">
-          {threads.map((t) => (
-            <button key={t.root_id}
-              className={`w-full text-left p-3 rounded border ${selectedThreadRoot === t.root_id ? 'border-blue-500 bg-blue-500/10' : 'border-meta-border bg-meta-card'}`}
-              onClick={async () => { setSelectedThreadRoot(t.root_id); await fetchThreadMessages(t.root_id) }}
-              title={(selectedConversation?.type === 'announcement' && selectedConversation?.title) ? selectedConversation.title : (userNameMap[t.sender_id] || 'Thread')}
-            >
-              <div className="text-sm font-medium text-meta-light flex items-center gap-2">
-                {t.unread_count ? <span className="inline-block h-2 w-2 rounded-full bg-red-500" /> : null}
-                <span>{(selectedConversation?.type === 'announcement' && selectedConversation?.title) ? selectedConversation.title : (userNameMap[t.sender_id] || 'Unknown')}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs text-meta-muted mt-0.5">
-                <span>
-                  {(selectedConversation?.type === 'announcement') ? (userNameMap[t.sender_id] || 'Unknown') + ' • ' : ''}
-                  {new Date(t.last_reply_at || t.created_at).toLocaleString()}
-                </span>
-                <span>
-                  {t.reply_count} repl{t.reply_count === 1 ? 'y' : 'ies'}
-                  {typeof t.unread_count === 'number' && t.unread_count > 0 ? ` • ${t.unread_count} unread` : ''}
-                </span>
-              </div>
-              {receiptsEnabled && <div className="text-[11px] text-meta-muted mt-1">Seen by {t.read_count || 0}</div>}
-            </button>
-          ))}
-          {threads.length === 0 && (
-            <div className="text-sm text-meta-muted p-3">No threads yet</div>
           )}
         </div>
       </div>
@@ -447,9 +534,8 @@ export default function MessagesV2Page() {
           <div className="divide-y divide-meta-border">
             {messages.map((m) => {
               const isSelected = selectedMessageId === m.id
-              const showReceipts = receiptsEnabled && (!receiptsGroupsOnly || conversations.find(c => c.id === selectedConversationId)?.type === 'group')
-              const hasMeRead = showReceipts ? !!readStatus[m.id]?.readers?.some(r => r.user_id === (me?.id || '')) : true
-              const isUnread = showReceipts ? (!hasMeRead && m.sender_id !== (me?.id || '')) : false
+              const hasMeRead = !!readStatus[m.id]?.readers?.some(r => r.user_id === (me?.id || ''))
+              const isUnread = !hasMeRead && m.sender_id !== (me?.id || '')
               return (
                 <button
                   key={m.id}

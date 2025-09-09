@@ -350,7 +350,7 @@ CREATE OR REPLACE FUNCTION "public"."get_thread_messages"("p_thread_root_id" big
   with root as (
     select case
       when m.thread_root_id is not null then m.thread_root_id
-      when m.parent_message_id is not null then (select coalesce(mm.thread_root_id, m.parent_message_id) from public.messages mm where mm.id = m.parent_message_id)
+      when m.parent_message_id is not null then (select coalesce(mm.thread_root_id, mm.id) from public.messages mm where mm.id = m.parent_message_id)
       else m.id
     end as rid,
     m.conversation_id
@@ -368,7 +368,11 @@ CREATE OR REPLACE FUNCTION "public"."get_thread_messages"("p_thread_root_id" big
   from public.messages m
   join root r on true
   join public.profiles p on p.id = m.sender_id
-  where (m.id = r.rid or m.thread_root_id = r.rid)
+  where (
+      m.id = r.rid
+      or m.thread_root_id = r.rid
+      or m.parent_message_id = r.rid
+  )
     and exists (
       select 1 from public.conversation_members cm
       where cm.conversation_id = r.conversation_id and cm.user_id = auth.uid()
@@ -859,13 +863,17 @@ CREATE OR REPLACE FUNCTION "public"."update_thread_stats"() RETURNS "trigger"
     AS $$
 begin
   if new.parent_message_id is not null then
-    update public.messages 
-      set thread_reply_count = thread_reply_count + 1,
-          thread_last_reply_at = new.created_at
-      where id = new.parent_message_id;
+    -- bump parent stats
+    update public.messages
+       set thread_reply_count = coalesce(thread_reply_count, 0) + 1,
+           thread_last_reply_at = new.created_at
+     where id = new.parent_message_id;
 
-    select coalesce(thread_root_id, parent_message_id) into new.thread_root_id
-      from public.messages where id = new.parent_message_id;
+    -- set thread root to parent's root or the parent id
+    select coalesce(m.thread_root_id, m.id)
+      into new.thread_root_id
+      from public.messages m
+     where m.id = new.parent_message_id;
   end if;
   return new;
 end; $$;

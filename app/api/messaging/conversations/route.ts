@@ -9,12 +9,21 @@ export async function GET(req: NextRequest) {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { data: conversations, error } = await supabase
-      .rpc('list_conversations_with_unread', { p_user_id: session.user.id })
+    // Prefer enriched RPC with display_title; fallback to original
+    let conversations: any[] | null = null
+    let error: any = null
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    const enriched = await supabase.rpc('list_conversations_enriched', { p_user_id: session.user.id })
+    if (!enriched.error) {
+      conversations = enriched.data as any[]
+    } else {
+      const legacy = await supabase.rpc('list_conversations_with_unread', { p_user_id: session.user.id })
+      error = legacy.error
+      conversations = legacy.data as any[]
+    }
 
-    // Defensive normalization: if there are no messages (last_message_at is null), unread must be 0.
+    if (error && !conversations) return NextResponse.json({ error: error.message }, { status: 400 })
+
     const normalized = (conversations || []).map((c: any) => ({
       ...c,
       unread_count: c.last_message_at ? Math.max(0, Number(c.unread_count ?? 0)) : 0,

@@ -610,7 +610,8 @@ export default function MessagesV2Page() {
         </div>
         {(() => {
           const convType = selectedConversation?.type
-          if (!receiptsEnabled || !['group','announcement'].includes(convType as any)) return null
+          // Always show for groups/announcements, even if the feature flag is off (admin/testing contexts)
+          if (!['group','announcement'].includes(convType as any)) return null
           const m = messages.find((x) => x.id === selectedMessageId) || (selectedThreadRoot ? messages.find(x => x.id === selectedThreadRoot) : undefined)
           if (!m) return null
           const members = convMembers[selectedConversationId || ''] || []
@@ -654,7 +655,7 @@ export default function MessagesV2Page() {
               <div className="prose prose-invert max-w-none text-sm markdown-body mt-2">
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{m.body}</ReactMarkdown>
               </div>
-              {receiptsEnabled && (['group','announcement'].includes((conversations.find(c => c.id === selectedConversationId)?.type as any))) && (
+              {(['group','announcement'].includes((conversations.find(c => c.id === selectedConversationId)?.type as any))) && (
                 <div className="mt-2 text-[11px] text-meta-muted">
                   {(() => {
                     const status = readStatus[m.id]
@@ -690,7 +691,7 @@ export default function MessagesV2Page() {
                 <div className="markdown-body prose prose-invert max-w-none text-sm max-h-[70vh] overflow-auto">
                   <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{m.body}</ReactMarkdown>
                 </div>
-                {receiptsEnabled && (['group','announcement'].includes((selectedConversation?.type as any))) && (
+                {(['group','announcement'].includes((selectedConversation?.type as any))) && (
                   <div className="text-[11px] text-meta-muted">
                     {(() => {
                       const status = readStatus[m.id]

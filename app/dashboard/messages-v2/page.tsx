@@ -83,6 +83,8 @@ export default function MessagesV2Page() {
   const readerScrollRef = useRef<HTMLDivElement | null>(null)
   // Track whether we've applied the initial auto-channel selection
   const channelBootstrappedRef = useRef(false)
+  // Reader roster view preference
+  const [showNotSeen, setShowNotSeen] = useState(true)
 
   const handleComposerFilesSelected = async (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -253,6 +255,22 @@ export default function MessagesV2Page() {
     }
     run()
   }, [selectedChannel, conversations, me])
+
+  // Ensure full member list loaded for active conversation (for Seen/Not Seen roster)
+  useEffect(() => {
+    const loadMembers = async () => {
+      if (!selectedConversationId) return
+      if (convMembers[selectedConversationId]) return
+      try {
+        const r = await fetch(`/api/messaging/conversations/${selectedConversationId}/members`)
+        if (r.ok) {
+          const { members } = await r.json()
+          setConvMembers(prev => ({ ...prev, [selectedConversationId]: members || [] }))
+        }
+      } catch {}
+    }
+    loadMembers()
+  }, [selectedConversationId])
 
   useEffect(() => {
     if (!selectedConversationId) return
@@ -590,6 +608,33 @@ export default function MessagesV2Page() {
             )}
           </div>
         </div>
+        {(() => {
+          const convType = selectedConversation?.type
+          if (!receiptsEnabled || !['group','announcement'].includes(convType as any)) return null
+          const m = messages.find((x) => x.id === selectedMessageId) || (selectedThreadRoot ? messages.find(x => x.id === selectedThreadRoot) : undefined)
+          if (!m) return null
+          const members = convMembers[selectedConversationId || ''] || []
+          const status = readStatus[m.id]
+          const readerIds = new Set((status?.readers || []).map(r => r.user_id))
+          const name = (u: any) => `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Member'
+          const seen = members.filter(u => u.user_id && u.user_id !== m.sender_id && u.user_id !== me?.id && readerIds.has(u.user_id)).map(name)
+          const notSeen = members.filter(u => u.user_id && u.user_id !== m.sender_id && u.user_id !== me?.id && !readerIds.has(u.user_id)).map(name)
+          const list = showNotSeen ? notSeen : seen
+          const label = showNotSeen ? 'Not seen by' : 'Seen by'
+          return (
+            <div className="px-4 py-1 border-b border-meta-border text-[11px] text-meta-muted bg-meta-card/50 flex items-center gap-2">
+              <span className="uppercase tracking-wide">{label}:</span>
+              <span className="whitespace-pre-wrap break-words">
+                {list.length > 0 ? list.join(', ') : (showNotSeen ? 'Everyone has seen this' : 'No viewers yet')}
+              </span>
+              <span className="ml-auto">
+                <button className="underline hover:text-meta-light" onClick={() => setShowNotSeen(v => !v)}>
+                  {showNotSeen ? 'Show seen' : 'Show not seen'}
+                </button>
+              </span>
+            </div>
+          )
+        })()}
         <div ref={readerScrollRef} className="flex-1 p-4 overflow-auto min-h-0">
         {(() => {
           const m = messages.find((x) => x.id === selectedMessageId) || (selectedThreadRoot ? messages.find(x => x.id === selectedThreadRoot) : undefined)

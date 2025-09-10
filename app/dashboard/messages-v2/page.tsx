@@ -486,7 +486,7 @@ export default function MessagesV2Page() {
           {(['announcement','dm','group'] as const).map((ch) => (
             <button key={ch}
               className={`w-full text-left p-3 rounded border ${selectedChannel === ch ? 'border-blue-500 bg-blue-500/10' : 'border-meta-border bg-meta-card'}`}
-              onClick={() => setSelectedChannel(ch)}
+              onClick={async () => { setSelectedChannel(ch); await fetchConversations() }}
             >
               <div className="flex items-center justify-between text-xs text-meta-muted">
                 <span className="uppercase flex items-center gap-2">
@@ -507,7 +507,7 @@ export default function MessagesV2Page() {
           {conversations.filter(c => c.type === selectedChannel).map((c) => (
             <button key={c.id}
               className={`w-full text-left p-3 rounded border ${selectedConversationId === c.id ? 'border-blue-500 bg-blue-500/10' : 'border-meta-border bg-meta-card'}`}
-              onClick={async () => { setSelectedConversationId(c.id) }}
+              onClick={async () => { setSelectedConversationId(c.id); await fetchConversations() }}
               title={displayTitleForConversation(c)}
             >
               <div className="text-sm font-medium text-meta-light flex items-center gap-2">
@@ -532,30 +532,34 @@ export default function MessagesV2Page() {
         {/* Message list */}
         <div className="flex-1 overflow-auto">
           <div className="divide-y divide-meta-border">
-            {messages.map((m) => {
-              const isSelected = selectedMessageId === m.id
-              const hasMeRead = !!readStatus[m.id]?.readers?.some(r => r.user_id === (me?.id || ''))
-              const isUnread = !hasMeRead && m.sender_id !== (me?.id || '')
-              return (
-                <button
-                  key={m.id}
-                  ref={((el: any) => setMsgRef(m.id)(el)) as any}
-                  data-message-id={m.id}
-                  onClick={() => setSelectedMessageId(m.id)}
-                  className={`w-full text-left p-3 ${isSelected ? 'bg-blue-500/10' : ''}`}
-                  title={userNameMap[m.sender_id] || ''}
-                >
-                  <div className="text-xs text-meta-muted flex items-center justify-between">
-                    <div className="flex items-center">
-                      {isUnread ? <span className="inline-block h-2 w-2 rounded-full bg-red-500 mr-2" /> : null}
-                      <span className="font-medium text-meta-light">{m.sender_name || userNameMap[m.sender_id] || 'Unknown'}</span>
-                      <span className="mx-1">•</span>
-                      {new Date(m.created_at).toLocaleString()}
+            {(() => {
+              const selThread = threads.find(t => t.root_id === selectedThreadRoot)
+              const forceAllRead = (selThread && typeof selThread.unread_count === 'number' && selThread.unread_count <= 0)
+              return messages.map((m) => {
+                const isSelected = selectedMessageId === m.id
+                const hasMeRead = !!readStatus[m.id]?.readers?.some(r => r.user_id === (me?.id || ''))
+                const isUnread = !forceAllRead && !hasMeRead && m.sender_id !== (me?.id || '')
+                return (
+                  <button
+                    key={m.id}
+                    ref={((el: any) => setMsgRef(m.id)(el)) as any}
+                    data-message-id={m.id}
+                    onClick={() => setSelectedMessageId(m.id)}
+                    className={`w-full text-left p-3 ${isSelected ? 'bg-blue-500/10' : ''}`}
+                    title={userNameMap[m.sender_id] || ''}
+                  >
+                    <div className="text-xs text-meta-muted flex items-center justify-between">
+                      <div className="flex items-center">
+                        {isUnread ? <span className="inline-block h-2 w-2 rounded-full bg-red-500 mr-2" /> : null}
+                        <span className="font-medium text-meta-light">{m.sender_name || userNameMap[m.sender_id] || 'Unknown'}</span>
+                        <span className="mx-1">•</span>
+                        {new Date(m.created_at).toLocaleString()}
+                      </div>
                     </div>
-                  </div>
-                </button>
-              )
-            })}
+                  </button>
+                )
+              })
+            })()}
             {messages.length === 0 && (
               <div className="text-sm text-meta-muted p-4">No messages yet</div>
             )}
@@ -605,7 +609,7 @@ export default function MessagesV2Page() {
               <div className="prose prose-invert max-w-none text-sm markdown-body mt-2">
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{m.body}</ReactMarkdown>
               </div>
-              {receiptsEnabled && (!receiptsGroupsOnly || (conversations.find(c => c.id === selectedConversationId)?.type === 'group')) && (
+              {receiptsEnabled && (['group','announcement'].includes((conversations.find(c => c.id === selectedConversationId)?.type as any))) && (
                 <div className="mt-2 text-[11px] text-meta-muted">
                   {(() => {
                     const status = readStatus[m.id]
@@ -641,6 +645,17 @@ export default function MessagesV2Page() {
                 <div className="markdown-body prose prose-invert max-w-none text-sm max-h-[70vh] overflow-auto">
                   <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{m.body}</ReactMarkdown>
                 </div>
+                {receiptsEnabled && (['group','announcement'].includes((selectedConversation?.type as any))) && (
+                  <div className="text-[11px] text-meta-muted">
+                    {(() => {
+                      const status = readStatus[m.id]
+                      const names = (status?.readers || []).map((r: any) => `${r.first_name || ''} ${r.last_name || ''}`.trim()).filter(Boolean)
+                      const title = names.join(', ')
+                      const count = status?.read_count || 0
+                      return (<span title={title}>{count > 0 ? `Seen by ${count}` : 'Not seen yet'}</span>)
+                    })()}
+                  </div>
+                )}
               </div>
             )
           })()}

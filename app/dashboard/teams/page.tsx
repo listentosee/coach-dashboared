@@ -644,18 +644,8 @@ export default function TeamsPage() {
     }
   };
 
-  const getFreshImageUrl = async (teamId: string) => {
-    try {
-      const response = await fetch(`/api/teams/${teamId}/get-image-url`);
-      if (response.ok) {
-        const { image_url } = await response.json();
-        return image_url;
-      }
-    } catch (error) {
-      console.error('Error getting fresh image URL:', error);
-    }
-    return null;
-  };
+  // Note: Team images are served via Supabase Storage with RLS.
+  // We no longer refresh signed URLs; the stored `image_url` is used directly.
 
   if (isLoading) {
     return (

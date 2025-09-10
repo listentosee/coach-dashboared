@@ -6,11 +6,14 @@ import { z } from 'zod';
 const CompetitorSchema = z.object({
   first_name: z.string().min(1),
   last_name: z.string().min(1),
-  is_18_or_over: z.boolean(),
-  grade: z.string().optional(),
-  email_personal: z.string().email().optional(),
-  email_school: z.string().email().optional(),
-  game_platform_id: z.string().min(1, 'Student ID is required'),
+  // Some UIs post undefined/null; coerce to boolean when present
+  is_18_or_over: z.coerce.boolean().optional(),
+  grade: z.string().optional().or(z.null()),
+  email_personal: z.string().email().optional().or(z.literal('')).or(z.null()),
+  email_school: z.string().email().optional().or(z.literal('')).or(z.null()),
+  // Optional at creation; may be assigned later in the lifecycle
+  game_platform_id: z.string().min(1).optional(),
+  division: z.enum(['middle_school','high_school','college']).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -31,26 +34,34 @@ export async function POST(request: NextRequest) {
 
     console.log('Validated data:', validatedData);
 
-    // Check if student ID already exists for this coach
-    const { data: existingStudent, error: checkError } = await supabase
-      .from('competitors')
-      .select('id, first_name, last_name')
-      .eq('coach_id', session.user.id)
-      .eq('game_platform_id', validatedData.game_platform_id)
-      .single();
-
-    if (existingStudent) {
-      return NextResponse.json({ 
-        error: `Student ID ${validatedData.game_platform_id} already exists for ${existingStudent.first_name} ${existingStudent.last_name}` 
-      }, { status: 400 });
+    // Check if student ID already exists for this coach (only if provided)
+    if (validatedData.game_platform_id) {
+      const { data: existingStudent } = await supabase
+        .from('competitors')
+        .select('id, first_name, last_name')
+        .eq('coach_id', session.user.id)
+        .eq('game_platform_id', validatedData.game_platform_id)
+        .maybeSingle();
+      if (existingStudent) {
+        return NextResponse.json({ 
+          error: `Student ID ${validatedData.game_platform_id} already exists for ${existingStudent.first_name} ${existingStudent.last_name}` 
+        }, { status: 400 });
+      }
     }
 
     // Create competitor record
     const insertData = {
-      ...validatedData,
       coach_id: session.user.id,
+      first_name: validatedData.first_name,
+      last_name: validatedData.last_name,
+      is_18_or_over: typeof validatedData.is_18_or_over === 'boolean' ? validatedData.is_18_or_over : null,
+      grade: validatedData.grade || null,
+      email_personal: validatedData.email_personal || null,
+      email_school: validatedData.email_school || null,
+      game_platform_id: validatedData.game_platform_id || null,
+      division: validatedData.division || null,
       status: 'pending'
-    };
+    } as any;
     
     console.log('Inserting competitor with data:', insertData);
 

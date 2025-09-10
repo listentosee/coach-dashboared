@@ -34,6 +34,7 @@ const formSchema = z.object({
   grade: z.string().optional(),
   email_personal: z.string().email('Invalid email').optional().or(z.literal('')),
   email_school: z.string().email('Invalid email').optional().or(z.literal('')),
+  division: z.enum(['middle_school','high_school','college'], { required_error: 'Division is required' }),
 });
 
 export function CompetitorForm({ onSuccess, variant = 'default' }: { onSuccess?: () => void; variant?: 'default' | 'compact' }) {
@@ -52,13 +53,17 @@ export function CompetitorForm({ onSuccess, variant = 'default' }: { onSuccess?:
       grade: '',
       email_personal: '',
       email_school: '',
+      division: 'high_school',
     },
   });
 
-  // Check for duplicate names when form values change
+  // Check for duplicate names when first/last change (stable deps)
+  const firstNameWatch = form.watch('first_name');
+  const lastNameWatch = form.watch('last_name');
   useEffect(() => {
     const checkDuplicates = async () => {
-      const { first_name, last_name } = form.getValues();
+      const first_name = (firstNameWatch || '').trim();
+      const last_name = (lastNameWatch || '').trim();
       if (first_name.length >= 2 && last_name.length >= 2) {
         try {
           const response = await fetch('/api/competitors/check-duplicates', {
@@ -66,7 +71,6 @@ export function CompetitorForm({ onSuccess, variant = 'default' }: { onSuccess?:
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ first_name, last_name }),
           });
-          
           if (response.ok) {
             const data = await response.json();
             if (data.duplicates && data.duplicates.length > 0) {
@@ -80,12 +84,14 @@ export function CompetitorForm({ onSuccess, variant = 'default' }: { onSuccess?:
         } catch (error) {
           console.error('Error checking duplicates:', error);
         }
+      } else {
+        setDuplicateWarning(null);
+        setExistingCompetitors([]);
       }
     };
-
-    const debounceTimer = setTimeout(checkDuplicates, 500);
+    const debounceTimer = setTimeout(checkDuplicates, 300);
     return () => clearTimeout(debounceTimer);
-  }, [form.watch(['first_name', 'last_name'])]);
+  }, [firstNameWatch, lastNameWatch]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
@@ -268,6 +274,29 @@ export function CompetitorForm({ onSuccess, variant = 'default' }: { onSuccess?:
                         onCheckedChange={field.onChange}
                       />
                     </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="division"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-gray-700">Division</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                          <SelectValue placeholder="Select division" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="bg-white border-gray-300 text-gray-900">
+                        <SelectItem value="middle_school">Middle School</SelectItem>
+                        <SelectItem value="high_school">High School</SelectItem>
+                        <SelectItem value="college">College</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
                   </FormItem>
                 )}
               />

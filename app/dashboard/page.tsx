@@ -19,6 +19,7 @@ interface Competitor {
   email_school?: string;
   is_18_or_over?: boolean;
   grade?: string;
+  division?: 'middle_school' | 'high_school' | 'college' | null;
   status: string;
   media_release_signed: boolean;
   media_release_date?: string;
@@ -61,6 +62,7 @@ export default function DashboardPage() {
   const [showInactive, setShowInactive] = useState(true);
   const [session, setSession] = useState<any>(null);
   const [coachProfile, setCoachProfile] = useState<any>(null);
+  const [divisionFilter, setDivisionFilter] = useState<'all' | 'middle_school' | 'high_school' | 'college'>('all');
 
   const fetchData = async () => {
     try {
@@ -173,7 +175,8 @@ export default function DashboardPage() {
     const matchesSearch = competitor.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          competitor.last_name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesActiveFilter = showInactive || competitor.is_active;
-    return matchesSearch && matchesActiveFilter;
+    const matchesDivision = divisionFilter === 'all' || competitor.division === divisionFilter;
+    return matchesSearch && matchesActiveFilter && matchesDivision;
   });
 
   const getStatusColor = (status: string) => {
@@ -417,6 +420,30 @@ export default function DashboardPage() {
                 />
                 <span>Show Inactive Competitors</span>
               </label>
+              {/* Division filter shows only divisions with active competitors */}
+              {(() => {
+                const present = new Set((competitors || []).filter(c => c.is_active).map(c => c.division).filter(Boolean) as string[])
+                const options = [
+                  { value: 'all', label: 'All Divisions' },
+                  ...(present.has('middle_school') ? [{ value: 'middle_school', label: 'Middle School' }] : []),
+                  ...(present.has('high_school') ? [{ value: 'high_school', label: 'High School' }] : []),
+                  ...(present.has('college') ? [{ value: 'college', label: 'College' }] : []),
+                ] as { value: any; label: string }[]
+                return (
+                  <label className="flex items-center space-x-2 text-sm text-meta-light">
+                    <span>Division</span>
+                    <select
+                      value={divisionFilter}
+                      onChange={(e) => setDivisionFilter(e.target.value as any)}
+                      className="rounded border-meta-border bg-meta-card text-meta-light py-1 px-2"
+                    >
+                      {options.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                )
+              })()}
             </div>
             <div className="text-sm text-meta-muted">
               Showing {filteredCompetitors.length} of {competitors.length} competitors

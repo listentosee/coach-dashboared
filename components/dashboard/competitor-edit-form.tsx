@@ -33,6 +33,7 @@ const editFormSchema = z.object({
   email_school: z.string().email('Invalid email').optional().or(z.literal('')),
   is_18_or_over: z.boolean(),
   grade: z.string().optional(),
+  division: z.enum(['middle_school','high_school','college']).optional(),
 });
 
 interface CompetitorEditFormProps {
@@ -54,6 +55,7 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
       last_name: competitor?.last_name || '',
       is_18_or_over: competitor?.is_18_or_over || false,
       grade: competitor?.grade || '',
+      division: (competitor as any)?.division || 'high_school',
     },
   });
 
@@ -68,19 +70,32 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
         last_name: competitor.last_name || '',
         is_18_or_over: competitor.is_18_or_over || false,
         grade: competitor.grade || '',
+        division: (competitor as any).division || 'high_school',
       });
     }
   }, [competitor, form]);
+
+  // Ensure submit state resets whenever the dialog opens
+  useEffect(() => {
+    if (open) {
+      setIsSubmitting(false);
+    }
+  }, [open]);
 
   async function onSubmit(values: z.infer<typeof editFormSchema>) {
     setIsSubmitting(true);
     
     try {
+      // Hard timeout to avoid UI hanging if a request stalls
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 15000);
       const response = await fetch(`/api/competitors/${competitor.id}/update`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(values),
+        signal: controller.signal,
       });
+      clearTimeout(t);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -89,8 +104,14 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
       
       onSuccess();
       onOpenChange(false);
-    } catch (error) {
-      console.error('Error updating competitor:', error);
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        console.error('Update timed out');
+        alert('Update timed out. Please try again.');
+      } else {
+        console.error('Error updating competitor:', error);
+        alert(`Failed to update competitor: ${error?.message || 'Unknown error'}`);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -174,6 +195,28 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
               </div>
 
               <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="division"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-gray-700">Division</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                            <SelectValue placeholder="Select division" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent className="bg-white border-gray-300 text-gray-900">
+                          <SelectItem value="middle_school">Middle School</SelectItem>
+                          <SelectItem value="high_school">High School</SelectItem>
+                          <SelectItem value="college">College</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <FormField
                   control={form.control}
                   name="is_18_or_over"

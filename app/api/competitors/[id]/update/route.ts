@@ -3,14 +3,17 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
+import { isUserAdmin } from '@/lib/utils/admin-check';
+export const dynamic = 'force-dynamic';
 
 const UpdateCompetitorSchema = z.object({
-  email_personal: z.string().email('Invalid email').optional().or(z.literal('')),
-  email_school: z.string().email('Invalid email').optional().or(z.literal('')),
+  email_personal: z.string().email('Invalid email').optional().or(z.literal('')).or(z.null()),
+  email_school: z.string().email('Invalid email').optional().or(z.literal('')).or(z.null()),
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
   last_name: z.string().min(2, 'Last name must be at least 2 characters'),
-  is_18_or_over: z.boolean(),
-  grade: z.string().optional(),
+  is_18_or_over: z.coerce.boolean().optional(),
+  grade: z.string().optional().or(z.null()),
+  division: z.enum(['middle_school','high_school','college']).optional(),
 });
 
 export async function PUT(
@@ -30,37 +33,59 @@ export async function PUT(
     const body = await request.json();
     const validatedData = UpdateCompetitorSchema.parse(body);
 
-    // Verify the competitor belongs to the authenticated coach
-    const { data: existingCompetitor, error: checkError } = await supabase
+    // Allow admins to edit any competitor; coaches only their own
+    const isAdmin = await isUserAdmin(supabase, session.user.id);
+    let verifyQuery = supabase
       .from('competitors')
       .select('id')
-      .eq('id', params.id)
-      .eq('coach_id', session.user.id)
-      .single();
+      .eq('id', params.id);
+    if (!isAdmin) verifyQuery = verifyQuery.eq('coach_id', session.user.id);
+    const { data: existingCompetitor, error: checkError } = await verifyQuery.single();
 
     if (checkError || !existingCompetitor) {
       return NextResponse.json({ error: 'Competitor not found or access denied' }, { status: 404 });
     }
 
-    // Update competitor record
-    const { data: competitor, error } = await supabase
-      .from('competitors')
-      .update({
-        email_personal: validatedData.email_personal || null,
-        email_school: validatedData.email_school || null,
-        first_name: validatedData.first_name,
-        last_name: validatedData.last_name,
-        is_18_or_over: validatedData.is_18_or_over,
-        grade: validatedData.grade || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', params.id)
-      .select()
-      .single();
+    // Build update payload and only include division if provided
+    const updatePayload: any = {
+      email_personal: validatedData.email_personal || null,
+      email_school: validatedData.email_school || null,
+      first_name: validatedData.first_name,
+      last_name: validatedData.last_name,
+      // if not provided, leave unchanged
+      updated_at: new Date().toISOString(),
+    }
+    if (typeof validatedData.is_18_or_over !== 'undefined') {
+      updatePayload.is_18_or_over = validatedData.is_18_or_over as boolean
+    }
+    if (typeof validatedData.grade !== 'undefined') {
+      updatePayload.grade = validatedData.grade || null
+    }
+    if (typeof validatedData.division !== 'undefined') {
+      updatePayload.division = validatedData.division
+    }
 
-    if (error) {
-      console.error('Database error:', error);
-      return NextResponse.json({ error: 'Failed to update competitor: ' + error.message }, { status: 400 });
+    // Update competitor record (no returning row to avoid any RLS return friction)
+    const { error: upErr } = await supabase
+      .from('competitors')
+      .update(updatePayload)
+      .eq('id', params.id);
+
+    if (upErr) {
+      console.error('Competitor update error:', upErr, 'payload:', updatePayload);
+      return NextResponse.json({ error: 'Failed to update competitor: ' + upErr.message }, { status: 400 });
+    }
+
+    // Fetch the updated competitor row for response and status calc
+    const { data: competitor, error: fetchErr } = await supabase
+      .from('competitors')
+      .select('*')
+      .eq('id', params.id)
+      .maybeSingle();
+
+    if (fetchErr || !competitor) {
+      console.error('Competitor fetch after update error:', fetchErr);
+      return NextResponse.json({ error: 'Updated competitor not found' }, { status: 400 });
     }
 
     // Calculate and update status

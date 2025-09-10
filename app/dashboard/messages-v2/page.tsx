@@ -609,9 +609,12 @@ export default function MessagesV2Page() {
           </div>
         </div>
         {(() => {
-          const convType = selectedConversation?.type
-          // Always show for groups/announcements, even if the feature flag is off (admin/testing contexts)
-          if (!['group','announcement'].includes(convType as any)) return null
+          const conv = selectedConversation
+          if (!conv) return null
+          const isGroup = conv.type === 'group'
+          const isAnn = conv.type === 'announcement'
+          const canShow = isAdmin || (isGroup && conv.created_by === me?.id) || (isAnn && isAdmin)
+          if (!canShow) return null
           const m = messages.find((x) => x.id === selectedMessageId) || (selectedThreadRoot ? messages.find(x => x.id === selectedThreadRoot) : undefined)
           if (!m) return null
           const members = convMembers[selectedConversationId || ''] || []
@@ -655,17 +658,23 @@ export default function MessagesV2Page() {
               <div className="prose prose-invert max-w-none text-sm markdown-body mt-2">
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{m.body}</ReactMarkdown>
               </div>
-              {(['group','announcement'].includes((conversations.find(c => c.id === selectedConversationId)?.type as any))) && (
-                <div className="mt-2 text-[11px] text-meta-muted">
-                  {(() => {
-                    const status = readStatus[m.id]
-                    const names = (status?.readers || []).map((r: any) => `${r.first_name || ''} ${r.last_name || ''}`.trim()).filter(Boolean)
-                    const title = names.join(', ')
-                    const count = status?.read_count || 0
-                    return (<span title={title}>{count > 0 ? `Seen by ${count}` : 'Not seen yet'}</span>)
-                  })()}
-                </div>
-              )}
+              {(() => {
+                const conv = conversations.find(c => c.id === selectedConversationId)
+                const isGroup = conv?.type === 'group'
+                const isAnn = conv?.type === 'announcement'
+                const canShow = isAdmin || (isGroup && conv?.created_by === me?.id) || (isAnn && isAdmin)
+                return canShow ? (
+                  <div className="mt-2 text-[11px] text-meta-muted">
+                    {(() => {
+                      const status = readStatus[m.id]
+                      const names = (status?.readers || []).map((r: any) => `${r.first_name || ''} ${r.last_name || ''}`.trim()).filter(Boolean)
+                      const title = names.join(', ')
+                      const count = status?.read_count || 0
+                      return (<span title={title}>{count > 0 ? `Seen by ${count}` : 'Not seen yet'}</span>)
+                    })()}
+                  </div>
+                ) : null
+              })()}
             </div>
           )
         })()}
@@ -691,7 +700,12 @@ export default function MessagesV2Page() {
                 <div className="markdown-body prose prose-invert max-w-none text-sm max-h-[70vh] overflow-auto">
                   <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{m.body}</ReactMarkdown>
                 </div>
-                {(['group','announcement'].includes((selectedConversation?.type as any))) && (
+                {(() => {
+                  const conv = selectedConversation
+                  const isGroup = conv?.type === 'group'
+                  const isAnn = conv?.type === 'announcement'
+                  const canShow = isAdmin || (isGroup && conv?.created_by === me?.id) || (isAnn && isAdmin)
+                  return canShow ? (
                   <div className="text-[11px] text-meta-muted">
                     {(() => {
                       const status = readStatus[m.id]
@@ -701,7 +715,8 @@ export default function MessagesV2Page() {
                       return (<span title={title}>{count > 0 ? `Seen by ${count}` : 'Not seen yet'}</span>)
                     })()}
                   </div>
-                )}
+                  ) : null
+                })()}
               </div>
             )
           })()}

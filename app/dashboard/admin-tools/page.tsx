@@ -1,10 +1,10 @@
 import { redirect } from 'next/navigation';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import CoachAssistTool from '@/components/dashboard/coach-assist-tool';
 
 export default async function AdminToolsPage() {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = createServerComponentClient({ cookies });
   
   // Check if user is authenticated
   const { data: { session } } = await supabase.auth.getSession();

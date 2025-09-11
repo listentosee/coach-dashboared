@@ -11,6 +11,7 @@ export async function middleware(req: NextRequest) {
   // Protect dashboard routes
   if (req.nextUrl.pathname.startsWith('/dashboard')) {
     if (!session) {
+      console.log('[middleware] No session for path', req.nextUrl.pathname, 'cookies:', req.cookies.getAll().length);
       return NextResponse.redirect(new URL('/auth/login', req.url));
     }
 
@@ -23,6 +24,7 @@ export async function middleware(req: NextRequest) {
         .single();
 
       if (profile?.role !== 'admin') {
+        console.log('[middleware] Non-admin attempted admin route', req.nextUrl.pathname, 'user:', session.user.id);
         return NextResponse.redirect(new URL('/dashboard', req.url));
       }
     }

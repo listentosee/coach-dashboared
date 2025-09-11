@@ -36,7 +36,8 @@ export async function POST(request: NextRequest) {
 
     // Important: redirect to our auth callback so we can exchange the code
     // for a session cookie, then land the coach on Profile & Settings
-    const redirectUrl = `${baseUrl}/auth/callback?next=/dashboard/settings`;
+    // Include assisted flag so the settings page can show a no-old-password reset flow
+    const redirectUrl = `${baseUrl}/auth/callback?next=/dashboard/settings?assisted=1`;
 
     // Debug: Log ALL environment variables to see what Vercel actually provides
     console.log('=== ENVIRONMENT VARIABLE DEBUG ===');

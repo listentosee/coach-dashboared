@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +29,9 @@ interface Profile {
 }
 
 export default function CoachToolsPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const assisted = (searchParams?.get('assisted') ?? '') === '1';
   const [isUpdatingStatuses, setIsUpdatingStatuses] = useState(false);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -110,7 +114,7 @@ export default function CoachToolsPage() {
 
   const handleChangePassword = async () => {
     try {
-      if (!passwordForm.current_password) {
+      if (!assisted && !passwordForm.current_password) {
         alert('Current password is required');
         return;
       }
@@ -128,16 +132,17 @@ export default function CoachToolsPage() {
       setIsChangingPassword(true);
 
       // First verify the current password by attempting to sign in
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: profile?.email || '',
-        password: passwordForm.current_password,
-      });
-
-      if (signInError) {
-        throw new Error('Current password is incorrect');
+      if (!assisted) {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: profile?.email || '',
+          password: passwordForm.current_password,
+        });
+        if (signInError) {
+          throw new Error('Current password is incorrect');
+        }
       }
 
-      // Now update the password
+      // Update the password (assisted sessions can set directly)
       const { error } = await supabase.auth.updateUser({
         password: passwordForm.new_password
       });
@@ -145,11 +150,12 @@ export default function CoachToolsPage() {
       if (error) throw error;
 
       alert('Password changed successfully!');
-      setPasswordForm({
-        current_password: '',
-        new_password: '',
-        confirm_password: '',
-      });
+      setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
+
+      // Clean assisted flag from URL after success
+      if (assisted) {
+        router.replace('/dashboard/settings');
+      }
     } catch (error: any) {
       console.error('Error changing password:', error);
       alert('Failed to change password: ' + error.message);
@@ -328,24 +334,28 @@ export default function CoachToolsPage() {
         <CardHeader>
           <CardTitle className="text-meta-light flex items-center">
             <Lock className="h-5 w-5 mr-2" />
-            Change Password
+            {assisted ? 'Set New Password (Assisted)' : 'Change Password'}
           </CardTitle>
           <CardDescription className="text-meta-muted">
-            Update your account password for enhanced security
+            {assisted
+              ? 'You are signed in via an assisted access link. Set a new password below to regain access.'
+              : 'Update your account password for enhanced security'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="current_password" className="text-meta-light">Current Password</Label>
-            <Input
-              id="current_password"
-              type="password"
-              value={passwordForm.current_password}
-              onChange={(e) => setPasswordForm(prev => ({ ...prev, current_password: e.target.value }))}
-              className="bg-meta-card border-meta-border text-meta-light"
-              placeholder="Enter your current password"
-            />
-          </div>
+          {!assisted && (
+            <div>
+              <Label htmlFor="current_password" className="text-meta-light">Current Password</Label>
+              <Input
+                id="current_password"
+                type="password"
+                value={passwordForm.current_password}
+                onChange={(e) => setPasswordForm(prev => ({ ...prev, current_password: e.target.value }))}
+                className="bg-meta-card border-meta-border text-meta-light"
+                placeholder="Enter your current password"
+              />
+            </div>
+          )}
           <div>
             <Label htmlFor="new_password" className="text-meta-light">New Password</Label>
             <Input
@@ -373,7 +383,7 @@ export default function CoachToolsPage() {
             className="bg-meta-accent hover:bg-blue-600 text-white"
             disabled={isChangingPassword}
           >
-            {isChangingPassword ? 'Changing...' : 'Change Password'}
+            {isChangingPassword ? 'Changing...' : assisted ? 'Set Password' : 'Change Password'}
           </Button>
         </CardContent>
       </Card>

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase/client';
 import { CompetitorForm } from '@/components/dashboard/competitor-form';
 import { CompetitorEditForm } from '@/components/dashboard/competitor-edit-form';
-import { Edit, UserCheck, Gamepad2, Ban, Plus, Link as LinkIcon, ChevronDown } from 'lucide-react';
+import { Edit, UserCheck, Gamepad2, Ban, LogIn, Link as LinkIcon, ChevronDown } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table';
 import { createCompetitorColumns, Competitor as CompetitorType } from '@/components/dashboard/competitor-columns';
 
@@ -340,7 +340,10 @@ export default function DashboardPage() {
         <Card className="bg-meta-card border-meta-border">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-meta-light">Total Competitors</CardTitle>
-            <CompetitorForm onSuccess={fetchData} variant="compact" />
+            {/* Add competitor (tooltip) */}
+            <div title="Create new competitor">
+              <CompetitorForm onSuccess={fetchData} variant="compact" />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-meta-light">{stats.totalCompetitors}</div>
@@ -377,9 +380,9 @@ export default function DashboardPage() {
         <Card className="bg-meta-card border-meta-border">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-meta-light">Total Teams</CardTitle>
-            <Link href="/dashboard/teams">
-              <Button size="sm" className="h-8 w-8 p-0 bg-meta-accent hover:bg-blue-600">
-                <Plus className="h-4 w-4" />
+            <Link href="/dashboard/teams" title="Open team management">
+              <Button size="sm" className="h-8 w-8 p-0 bg-meta-accent hover:bg-blue-600" aria-label="Open team management">
+                <LogIn className="h-4 w-4" />
               </Button>
             </Link>
           </CardHeader>
@@ -420,28 +423,31 @@ export default function DashboardPage() {
                 />
                 <span>Show Inactive Competitors</span>
               </label>
-              {/* Division filter shows only divisions with active competitors */}
+              {/* Division filter as simple tabs */}
               {(() => {
                 const present = new Set((competitors || []).filter(c => c.is_active).map(c => c.division).filter(Boolean) as string[])
-                const options = [
-                  { value: 'all', label: 'All Divisions' },
-                  ...(present.has('middle_school') ? [{ value: 'middle_school', label: 'Middle School' }] : []),
-                  ...(present.has('high_school') ? [{ value: 'high_school', label: 'High School' }] : []),
+                const order: Array<{value: any; label: string}> = [
+                  { value: 'all', label: 'All' },
+                  ...(present.has('middle_school') ? [{ value: 'middle_school', label: 'Middle' }] : []),
+                  ...(present.has('high_school') ? [{ value: 'high_school', label: 'High' }] : []),
                   ...(present.has('college') ? [{ value: 'college', label: 'College' }] : []),
-                ] as { value: any; label: string }[]
+                ]
                 return (
-                  <label className="flex items-center space-x-2 text-sm text-meta-light">
-                    <span>Division</span>
-                    <select
-                      value={divisionFilter}
-                      onChange={(e) => setDivisionFilter(e.target.value as any)}
-                      className="rounded border-meta-border bg-meta-card text-meta-light py-1 px-2"
-                    >
-                      {options.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  <div className="flex items-center text-sm">
+                    <span className="mr-2 text-meta-light">Division:</span>
+                    <div className="flex rounded-md overflow-hidden border border-meta-border">
+                      {order.map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setDivisionFilter(opt.value as any)}
+                          className={`px-3 py-1 ${divisionFilter === opt.value ? 'bg-meta-accent text-white' : 'bg-meta-card text-meta-light hover:bg-meta-dark'}`}
+                          title={`Show ${opt.label} division`}
+                        >
+                          {opt.label}
+                        </button>
                       ))}
-                    </select>
-                  </label>
+                    </div>
+                  </div>
                 )
               })()}
             </div>

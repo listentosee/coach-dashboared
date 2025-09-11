@@ -743,6 +743,7 @@ export default function TeamsPage() {
                     disabled={!newTeamName.trim() || isCreatingTeam}
                     size="sm"
                     className="bg-meta-accent hover:bg-blue-600"
+                    title="Create new team"
                   >
                     {isCreatingTeam ? 'Creating...' : <Plus className="h-4 w-4" />}
                   </Button>

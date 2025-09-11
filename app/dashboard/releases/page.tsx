@@ -424,6 +424,7 @@ export default function ReleaseManagementPage() {
               <>
                 <Button
                   size="sm"
+                  title="Send for digital signature"
                   onClick={() => sendRelease(competitor.id, 'email')}
                   disabled={sending === competitor.id}
                   className="bg-meta-accent hover:bg-meta-accent/90 text-white"
@@ -441,12 +442,13 @@ export default function ReleaseManagementPage() {
                 <Button
                   size="sm"
                   variant="outline"
+                  title="For manual signature and upload"
                   onClick={() => sendRelease(competitor.id, 'print')}
                   disabled={sending === competitor.id}
                   className="text-meta-light border-meta-border hover:bg-meta-accent"
                 >
-                  <FileText className="h-4 w-4 mr-1" />
-                  Print Pre-filled
+                 <FileText className="h-4 w-4 mr-1" />
+                 Print Pre-filled
                 </Button>
               </>
             )}

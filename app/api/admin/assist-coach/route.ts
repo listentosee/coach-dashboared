@@ -27,13 +27,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Coach not found' }, { status: 404 });
     }
 
-    // Use Vercel system environment variables for redirect URL
-    // VERCEL_PROJECT_PRODUCTION_URL is the custom domain in production
-    const redirectUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL 
-      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/dashboard`
-      : process.env.VERCEL_URL 
-        ? `https://${process.env.VERCEL_URL}/dashboard`
-        : 'http://localhost:3000/dashboard';
+    // Build base URL using Vercel env vars (fallback to localhost)
+    const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : 'http://localhost:3000';
+
+    // Important: redirect to our auth callback so we can exchange the code
+    // for a session cookie, then land the coach on Profile & Settings
+    const redirectUrl = `${baseUrl}/auth/callback?next=/dashboard/settings`;
 
     // Debug: Log ALL environment variables to see what Vercel actually provides
     console.log('=== ENVIRONMENT VARIABLE DEBUG ===');
@@ -64,6 +67,8 @@ export async function POST(request: NextRequest) {
       type: 'magiclink',
       email: coach.email,
       options: {
+        // Ensure Supabase redirects back to our callback with the code,
+        // where we call exchangeCodeForSession to establish a user session
         redirectTo: redirectUrl
       }
     });

@@ -16,9 +16,10 @@ interface Coach {
 export default function CoachAssistTool() {
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [selectedCoachId, setSelectedCoachId] = useState<string>('');
-  const [duration, setDuration] = useState<string>('24');
   const [isLoading, setIsLoading] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string; link?: string } | null>(null);
+  const [resetResult, setResetResult] = useState<{ type: 'success' | 'error'; message: string; temp?: string } | null>(null);
 
   useEffect(() => {
     fetchCoaches();
@@ -39,48 +40,7 @@ export default function CoachAssistTool() {
     }
   };
 
-  const generateAccessLink = async () => {
-    if (!selectedCoachId) {
-      setResult({ type: 'error', message: 'Please select a coach' });
-      return;
-    }
-
-    setIsLoading(true);
-    setResult(null);
-
-    try {
-      const response = await fetch('/api/admin/assist-coach', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          coachId: selectedCoachId,
-          duration: parseInt(duration)
-        })
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setResult({
-          type: 'success',
-          message: data.message,
-          link: data.data.accessLink
-        });
-      } else {
-        setResult({
-          type: 'error',
-          message: data.error
-        });
-      }
-    } catch (error) {
-      setResult({
-        type: 'error',
-        message: 'Failed to generate access link'
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Magic link generation removed.
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -91,15 +51,47 @@ export default function CoachAssistTool() {
     }
   };
 
+  const resetPassword = async () => {
+    if (!selectedCoachId) {
+      setResetResult({ type: 'error', message: 'Please select a coach' });
+      return;
+    }
+    setIsResetting(true);
+    setResetResult(null);
+    try {
+      const res = await fetch('/api/admin/reset-coach-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coachId: selectedCoachId })
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to reset password')
+      setResetResult({ type: 'success', message: 'Temporary password generated. Share securely with the coach.', temp: json.tempPassword })
+    } catch (e: any) {
+      setResetResult({ type: 'error', message: e.message || 'Failed to reset password' })
+    } finally {
+      setIsResetting(false)
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>👥 Coach Access Assistant</CardTitle>
         <CardDescription>
-          Generate temporary access links for coaches to help them with their accounts.
+          Admin-only password reset. Issue a temporary password; the coach signs in and is forced to set a new one.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="rounded-md border p-3 text-sm bg-amber-50 border-amber-200 text-amber-900">
+          <p className="font-medium mb-1">Instructions</p>
+          <ol className="list-decimal ml-5 space-y-1">
+            <li>Select the coach and click “Reset Password (Admin)”.</li>
+            <li>Copy the temporary password and share it via a secure channel.</li>
+            <li>The coach signs in with email + temporary password.</li>
+            <li>They are redirected to set a new password before entering the app.</li>
+          </ol>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Select Coach</label>
@@ -116,58 +108,41 @@ export default function CoachAssistTool() {
               </SelectContent>
             </Select>
           </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Link Duration</label>
-            <Select value={duration} onValueChange={setDuration}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">1 hour</SelectItem>
-                <SelectItem value="6">6 hours</SelectItem>
-                <SelectItem value="24">24 hours</SelectItem>
-                <SelectItem value="72">3 days</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Magic-link duration removed */}
         </div>
 
-        <Button 
-          onClick={generateAccessLink} 
-          disabled={isLoading || !selectedCoachId}
-          className="w-full"
-        >
-          {isLoading ? 'Generating...' : 'Generate Access Link'}
-        </Button>
+        <div className="grid grid-cols-1 md:grid-cols-1 gap-2">
+          <Button
+            onClick={resetPassword}
+            disabled={isResetting || !selectedCoachId}
+            className="w-full"
+            variant="secondary"
+          >
+            {isResetting ? 'Resetting...' : 'Reset Password (Admin)'}
+          </Button>
+        </div>
+        {/* Magic-link UI removed */}
 
-        {result && (
-          <Card className={`${result.type === 'success' ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
-            <CardContent className="pt-6">
-              <p className={result.type === 'success' ? 'text-green-800' : 'text-red-800'}>
-                {result.message}
+        {resetResult && (
+          <Card className={`${resetResult.type === 'success' ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+            <CardContent className="pt-6 space-y-2">
+              <p className={resetResult.type === 'success' ? 'text-green-800' : 'text-red-800'}>
+                {resetResult.message}
               </p>
-              
-              {result.link && (
-                <div className="mt-4 p-3 bg-white rounded border">
-                  <p className="text-sm text-gray-600 mb-2">Access Link:</p>
+              {resetResult.temp && (
+                <div className="mt-1 p-3 bg-white rounded border">
+                  <p className="text-sm text-gray-600 mb-2">Temporary Password:</p>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
-                      value={result.link}
+                      value={resetResult.temp}
                       readOnly
                       className="flex-1 p-2 text-sm border rounded bg-gray-50 text-gray-900"
                     />
-                    <Button
-                      size="sm"
-                      onClick={() => copyToClipboard(result.link!)}
-                      variant="outline"
-                    >
-                      Copy
-                    </Button>
+                    <Button size="sm" onClick={() => copyToClipboard(resetResult.temp!)} variant="outline">Copy</Button>
                   </div>
                   <p className="text-xs text-gray-500 mt-2">
-                    Send this link to the coach. They can click it to access their dashboard.
+                    Share this securely. The coach must use it to sign in and will be forced to set a new password.
                   </p>
                 </div>
               )}

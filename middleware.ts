@@ -15,6 +15,12 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL('/auth/login', req.url));
     }
 
+    // If admin has flagged the account for mandatory reset, force redirect
+    const mustChange = (session.user as any)?.user_metadata?.must_change_password;
+    if (mustChange) {
+      return NextResponse.redirect(new URL('/auth/force-reset', req.url));
+    }
+
     // Check user role for admin routes
     if (req.nextUrl.pathname.startsWith('/dashboard/admin')) {
       const { data: profile } = await supabase

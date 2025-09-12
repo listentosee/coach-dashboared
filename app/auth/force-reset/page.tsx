@@ -34,6 +34,8 @@ export default function ForceResetPage() {
       if (upErr) throw upErr
       // Clear the must_change flag via a trusted server route using service role
       await fetch('/api/auth/clear-must-change', { method: 'POST' })
+      // Refresh the session so middleware sees updated app_metadata immediately
+      await supabase.auth.refreshSession()
       router.replace('/dashboard')
     } catch (e: any) {
       const msg = e?.message || 'Failed to update password'

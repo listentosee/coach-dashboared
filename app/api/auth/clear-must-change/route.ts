@@ -22,6 +22,9 @@ export async function POST(req: NextRequest) {
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
+    // Refresh the user's session so updated app_metadata is embedded in the JWT cookie
+    await authed.auth.refreshSession()
+
     return NextResponse.json({ success: true })
   } catch (e: any) {
     console.error('clear-must-change error', e)

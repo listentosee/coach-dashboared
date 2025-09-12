@@ -16,7 +16,7 @@ export async function middleware(req: NextRequest) {
     }
 
     // If admin has flagged the account for mandatory reset, force redirect
-    const mustChange = (session.user as any)?.user_metadata?.must_change_password;
+    const mustChange = (session.user as any)?.app_metadata?.must_change_password;
     if (mustChange) {
       return NextResponse.redirect(new URL('/auth/force-reset', req.url));
     }

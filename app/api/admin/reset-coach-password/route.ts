@@ -34,10 +34,17 @@ export async function POST(request: NextRequest) {
     // Generate a strong temporary password (url-safe)
     const tempPassword = crypto.randomBytes(24).toString('base64url')
 
-    // Set temp password and require change on next login via user_metadata flag
+    // Preserve existing app_metadata and set an admin-enforced flag there
+    const { data: existing, error: getErr } = await service.auth.admin.getUserById(coachId)
+    if (getErr) {
+      return NextResponse.json({ error: getErr.message }, { status: 400 })
+    }
+    const currentAppMeta = (existing?.user?.app_metadata as any) || {}
+
+    // Set temp password and require change on next login via app_metadata (user cannot modify this)
     const { error: updateError } = await service.auth.admin.updateUserById(coachId, {
       password: tempPassword,
-      user_metadata: { must_change_password: true }
+      app_metadata: { ...currentAppMeta, must_change_password: true }
     })
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 400 })
@@ -57,4 +64,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

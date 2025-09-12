@@ -13,8 +13,12 @@ export async function POST(req: NextRequest) {
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
+    // Merge existing app_metadata and clear the flag
+    const { data: existing, error: getErr } = await service.auth.admin.getUserById(session.user.id)
+    if (getErr) return NextResponse.json({ error: getErr.message }, { status: 400 })
+    const currentAppMeta = (existing?.user?.app_metadata as any) || {}
     const { error } = await service.auth.admin.updateUserById(session.user.id, {
-      user_metadata: { must_change_password: false }
+      app_metadata: { ...currentAppMeta, must_change_password: false }
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
@@ -24,4 +28,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

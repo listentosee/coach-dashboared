@@ -41,6 +41,8 @@ interface DashboardStats {
   totalTeams: number;
   activeCompetitors: number;
   pendingCompetitors: number;
+  profileCompetitors?: number;
+  complianceCompetitors?: number;
 }
 
 export const dynamic = 'force-dynamic';
@@ -131,13 +133,17 @@ export default function DashboardPage() {
       const totalCompetitors = transformedCompetitors.length;
       const activeCompetitors = transformedCompetitors.filter(c => c.status === 'complete').length;
       const pendingCompetitors = transformedCompetitors.filter(c => c.status === 'pending').length;
+      const profileCompetitors = transformedCompetitors.filter(c => c.status === 'profile').length;
+      const complianceCompetitors = transformedCompetitors.filter(c => c.status === 'compliance').length;
 
       // Use teams count from API response
       setStats({
         totalCompetitors,
         totalTeams: teamsData.teams?.length || 0,
         activeCompetitors,
-        pendingCompetitors
+        pendingCompetitors,
+        profileCompetitors,
+        complianceCompetitors
       });
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -353,27 +359,31 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-meta-card border-meta-border">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-meta-light">Complete</CardTitle>
+        {/* Status breakdown replaces the center two blocks */}
+        <Card className="bg-meta-card border-meta-border md:col-span-2">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-meta-light">Status Breakdown</CardTitle>
+            <CardDescription className="text-meta-muted">Pending, Profile, Compliance, Complete</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-400">{stats.activeCompetitors}</div>
-            <p className="text-xs text-meta-muted">
-              Game platform integrated
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-meta-card border-meta-border">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-meta-light">Pending</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-400">{stats.pendingCompetitors}</div>
-            <p className="text-xs text-meta-muted">
-              Coach initiated record
-            </p>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="bg-meta-dark rounded p-3">
+                <div className="text-xs text-meta-muted">Pending</div>
+                <div className="text-xl font-bold text-yellow-400">{stats.pendingCompetitors}</div>
+              </div>
+              <div className="bg-meta-dark rounded p-3">
+                <div className="text-xs text-meta-muted">Profile</div>
+                <div className="text-xl font-bold text-blue-400">{stats.profileCompetitors}</div>
+              </div>
+              <div className="bg-meta-dark rounded p-3">
+                <div className="text-xs text-meta-muted">Compliance</div>
+                <div className="text-xl font-bold text-purple-400">{stats.complianceCompetitors}</div>
+              </div>
+              <div className="bg-meta-dark rounded p-3">
+                <div className="text-xs text-meta-muted">Complete</div>
+                <div className="text-xl font-bold text-green-400">{stats.activeCompetitors}</div>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -425,12 +435,14 @@ export default function DashboardPage() {
               </label>
               {/* Division filter as simple tabs */}
               {(() => {
-                const present = new Set((competitors || []).filter(c => c.is_active).map(c => c.division).filter(Boolean) as string[])
+                const base = (competitors || []).filter(c => (showInactive || c.is_active))
+                const present = new Set(base.map(c => c.division).filter(Boolean) as string[])
+                const count = (d?: string) => base.filter(c => (!d || c.division===d)).length
                 const order: Array<{value: any; label: string}> = [
-                  { value: 'all', label: 'All' },
-                  ...(present.has('middle_school') ? [{ value: 'middle_school', label: 'Middle' }] : []),
-                  ...(present.has('high_school') ? [{ value: 'high_school', label: 'High' }] : []),
-                  ...(present.has('college') ? [{ value: 'college', label: 'College' }] : []),
+                  { value: 'all', label: 'All (' + count() + ')' },
+                  ...(present.has('middle_school') ? [{ value: 'middle_school', label: 'Middle (' + count('middle_school') + ')' }] : []),
+                  ...(present.has('high_school') ? [{ value: 'high_school', label: 'High (' + count('high_school') + ')' }] : []),
+                  ...(present.has('college') ? [{ value: 'college', label: 'College (' + count('college') + ')' }] : []),
                 ]
                 return (
                   <div className="flex items-center text-sm">

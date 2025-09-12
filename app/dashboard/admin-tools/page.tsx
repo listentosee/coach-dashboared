@@ -33,6 +33,11 @@ export default async function AdminToolsPage() {
       </div>
 
       <div className="space-y-8">
+        <div className="bg-white border rounded p-4">
+          <h2 className="text-xl font-semibold mb-2">Analytics</h2>
+          <p className="text-gray-600 mb-4">View program-wide metrics and status breakdowns.</p>
+          <a href="/dashboard/admin-tools/analytics" className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Open Analytics Dashboard</a>
+        </div>
         <CoachAssistTool />
         
         {/* Add other admin tools here */}

@@ -47,11 +47,11 @@ export default function ForceResetPage() {
       // Refresh the session so middleware sees updated app_metadata immediately
       await supabase.auth.refreshSession()
 
-      // Mark success and navigate shortly after to avoid double-click
+      // Mark success and let user proceed manually
       setSuccess(true)
       setPwd('')
       setConfirm('')
-      setTimeout(() => router.replace('/dashboard'), 600)
+      // No auto-redirect; user will click Proceed
     } catch (e: any) {
       const msg = e?.message || 'Failed to update password'
       setError(msg)
@@ -77,9 +77,13 @@ export default function ForceResetPage() {
           <Input type="password" placeholder="New password" value={pwd} onChange={e => setPwd(e.target.value)} />
           <Input type="password" placeholder="Confirm new password" value={confirm} onChange={e => setConfirm(e.target.value)} />
           {error && <div className="text-red-600 text-sm">{error}</div>}
-          {success && <div className="text-green-600 text-sm">Password updated. Redirecting…</div>}
-          <Button className="w-full" onClick={handleSubmit} disabled={submitting}>
-            {submitting ? 'Updating…' : 'Update Password'}
+          {success && <div className="text-green-600 text-sm">Password updated. You can proceed to the dashboard.</div>}
+          <Button
+            className="w-full"
+            onClick={() => (success ? router.replace('/dashboard') : handleSubmit())}
+            disabled={submitting}
+          >
+            {success ? 'Proceed to Dashboard' : (submitting ? 'Updating…' : 'Update Password')}
           </Button>
         </CardContent>
       </Card>

@@ -27,17 +27,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Coach not found' }, { status: 404 });
     }
 
-    // Build base URL using Vercel env vars (fallback to localhost)
-    const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
-      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-      : process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : 'http://localhost:3000';
-
-    // Important: redirect to our auth callback so we can exchange the code
-    // for a session cookie, then land the coach on Profile & Settings
-    // Include assisted flag so the settings page can show a no-old-password reset flow
-    const redirectUrl = `${baseUrl}/auth/callback?next=/dashboard/settings?assisted=1`;
+    // Build redirect using the incoming request origin to ensure cookies
+    // are set on the same host the link is consumed from
+    const origin = request.nextUrl.origin;
+    const redirectUrl = `${origin}/auth/callback?next=/dashboard/settings`;
 
     // Debug: Log ALL environment variables to see what Vercel actually provides
     console.log('=== ENVIRONMENT VARIABLE DEBUG ===');

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,9 +29,10 @@ interface Profile {
 }
 
 export default function CoachToolsPage() {
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const assisted = (searchParams?.get('assisted') ?? '') === '1';
+  // Build-only safe default; assisted reset flow will be reintroduced
+  // via a server-set cookie in a later step
+  const assisted = false;
   const [isUpdatingStatuses, setIsUpdatingStatuses] = useState(false);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);

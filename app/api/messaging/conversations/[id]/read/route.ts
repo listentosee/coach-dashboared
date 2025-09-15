@@ -9,8 +9,8 @@ export async function POST(
 ) {
   try {
     const supabase = createRouteHandlerClient({ cookies })
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     // Prefer new watermark RPC; fallback to legacy if missing
     let { error: rpcErr } = await supabase.rpc('mark_conversation_read_v2', { p_conversation_id: params.id })
@@ -36,7 +36,7 @@ export async function POST(
       .from('conversation_members')
       .update({ last_read_at: targetTs as any })
       .eq('conversation_id', params.id)
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
     return NextResponse.json({ ok: true })

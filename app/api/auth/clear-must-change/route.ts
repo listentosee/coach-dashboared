@@ -6,18 +6,18 @@ import { createClient } from '@supabase/supabase-js'
 export async function POST(req: NextRequest) {
   try {
     const authed = createRouteHandlerClient({ cookies })
-    const { data: { session } } = await authed.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: { user } } = await authed.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const service = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
     // Merge existing app_metadata and clear the flag
-    const { data: existing, error: getErr } = await service.auth.admin.getUserById(session.user.id)
+    const { data: existing, error: getErr } = await service.auth.admin.getUserById(user.id)
     if (getErr) return NextResponse.json({ error: getErr.message }, { status: 400 })
     const currentAppMeta = (existing?.user?.app_metadata as any) || {}
-    const { error } = await service.auth.admin.updateUserById(session.user.id, {
+    const { error } = await service.auth.admin.updateUserById(user.id, {
       app_metadata: { ...currentAppMeta, must_change_password: false }
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })

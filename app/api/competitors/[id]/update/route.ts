@@ -23,9 +23,9 @@ export async function PUT(
   try {
     const supabase = createRouteHandlerClient({ cookies });
     
-    // Verify authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    // Verify authentication (validated)
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -34,12 +34,12 @@ export async function PUT(
     const validatedData = UpdateCompetitorSchema.parse(body);
 
     // Allow admins to edit any competitor; coaches only their own
-    const isAdmin = await isUserAdmin(supabase, session.user.id);
+    const isAdmin = await isUserAdmin(supabase, user.id);
     let verifyQuery = supabase
       .from('competitors')
       .select('id')
       .eq('id', params.id);
-    if (!isAdmin) verifyQuery = verifyQuery.eq('coach_id', session.user.id);
+    if (!isAdmin) verifyQuery = verifyQuery.eq('coach_id', user.id);
     const { data: existingCompetitor, error: checkError } = await verifyQuery.single();
 
     if (checkError || !existingCompetitor) {
@@ -104,13 +104,13 @@ export async function PUT(
     await supabase
       .from('activity_logs')
       .insert({
-        user_id: session.user.id,
+        user_id: user.id,
         action: 'competitor_updated',
         entity_type: 'competitor',
         entity_id: competitor.id,
         metadata: { 
           competitor_name: `${competitor.first_name} ${competitor.last_name}`,
-          coach_id: session.user.id
+          coach_id: user.id
         }
       });
 

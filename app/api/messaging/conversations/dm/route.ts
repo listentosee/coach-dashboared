@@ -1,38 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
-import { isUserAdmin } from '@/lib/utils/admin-check'
 
-// Create or get a distinct DM conversation between admin (current user) and target coach
+// Create or get a distinct DM conversation between current user and target user
 export async function POST(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies })
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const adminId = session.user.id
+    const currentUserId = user.id
     // Allow any authenticated user to start a DM with a valid target
 
-    const { userId: coachId, title } = await req.json() as { userId?: string, title?: string }
-    if (!coachId) return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
-    if (coachId === adminId) return NextResponse.json({ error: 'Cannot DM self' }, { status: 400 })
+    const { userId: otherUserId, title } = await req.json() as { userId?: string, title?: string }
+    if (!otherUserId) return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
+    if (otherUserId === currentUserId) return NextResponse.json({ error: 'Cannot DM self' }, { status: 400 })
 
     // 1) Find existing DM that both are members of
-    const { data: adminConvos, error: adminConvosErr } = await supabase
+    const { data: myConvos, error: myConvosErr } = await supabase
       .from('conversation_members')
       .select('conversation_id')
-      .eq('user_id', adminId)
+      .eq('user_id', currentUserId)
 
-    if (adminConvosErr) return NextResponse.json({ error: adminConvosErr.message }, { status: 400 })
+    if (myConvosErr) return NextResponse.json({ error: myConvosErr.message }, { status: 400 })
 
-    const convoIds = (adminConvos || []).map(c => c.conversation_id)
+    const convoIds = (myConvos || []).map(c => c.conversation_id)
     let existingId: string | null = null
     if (convoIds.length > 0) {
       const { data: shared, error: sharedErr } = await supabase
         .from('conversation_members')
         .select('conversation_id')
         .in('conversation_id', convoIds)
-        .eq('user_id', coachId)
+        .eq('user_id', otherUserId)
 
       if (sharedErr) return NextResponse.json({ error: sharedErr.message }, { status: 400 })
 
@@ -53,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     // 2) Create-or-get via SECURITY DEFINER RPC to bypass RLS safely
     const { data: convId, error: rpcErr } = await supabase.rpc('create_or_get_dm', {
-      p_other_user_id: coachId,
+      p_other_user_id: otherUserId,
       p_title: title || null,
     })
     if (rpcErr || !convId) return NextResponse.json({ error: rpcErr?.message || 'Failed to create DM' }, { status: 400 })

@@ -10,14 +10,14 @@ export async function DELETE(
   try {
     const supabase = createRouteHandlerClient({ cookies });
     
-    // Get the authenticated user session
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    // Get authenticated user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Check if user is admin
-    const isAdmin = await isUserAdmin(supabase, session.user.id);
+    const isAdmin = await isUserAdmin(supabase, user.id);
 
     // Verify the team exists and user has access
     let query = supabase
@@ -26,7 +26,7 @@ export async function DELETE(
       .eq('id', params.id);
 
     if (!isAdmin) {
-      query = query.eq('coach_id', session.user.id);
+      query = query.eq('coach_id', user.id);
     }
 
     const { data: team, error: teamError } = await query.single();
@@ -63,7 +63,7 @@ export async function DELETE(
     await supabase
       .from('activity_logs')
       .insert({
-        user_id: session.user.id,
+        user_id: user.id,
         action: 'team_member_removed',
         entity_type: 'team_member',
         entity_id: teamMember.id,

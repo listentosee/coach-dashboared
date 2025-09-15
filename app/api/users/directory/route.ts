@@ -6,16 +6,19 @@ import { cookies } from 'next/headers'
 export async function GET(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies })
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    // Admin only (directory can reveal emails)
+    const { data: me } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+    if (me?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const { data, error } = await supabase.rpc('list_users_minimal')
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    const filtered = (data || []).filter((u: any) => u.id !== session.user.id)
+    const filtered = (data || []).filter((u: any) => u.id !== user.id)
     return NextResponse.json({ users: filtered })
   } catch (e) {
     console.error('List directory error', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

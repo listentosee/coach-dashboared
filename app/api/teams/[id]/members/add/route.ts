@@ -17,13 +17,13 @@ export async function POST(
     const supabase = createRouteHandlerClient({ cookies });
     
     // Get the authenticated user session
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Check if user is admin
-    const isAdmin = await isUserAdmin(supabase, session.user.id);
+    const isAdmin = await isUserAdmin(supabase, user.id);
 
     // Parse and validate request body
     const body = await request.json();
@@ -36,7 +36,7 @@ export async function POST(
       .eq('id', params.id);
 
     if (!isAdmin) {
-      teamQuery = teamQuery.eq('coach_id', session.user.id);
+      teamQuery = teamQuery.eq('coach_id', user.id);
     }
 
     const { data: team, error: teamError } = await teamQuery.single();
@@ -52,7 +52,7 @@ export async function POST(
       .eq('id', validatedData.competitor_id);
 
     if (!isAdmin) {
-      competitorQuery = competitorQuery.eq('coach_id', session.user.id);
+      competitorQuery = competitorQuery.eq('coach_id', user.id);
     }
 
     const { data: competitor, error: competitorError } = await competitorQuery.single();
@@ -137,7 +137,7 @@ export async function POST(
     await supabase
       .from('activity_logs')
       .insert({
-        user_id: session.user.id,
+        user_id: user.id,
         action: 'team_member_added',
         entity_type: 'team_member',
         entity_id: teamMember.id,

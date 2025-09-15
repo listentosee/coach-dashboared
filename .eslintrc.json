@@ -2,5 +2,20 @@
   "extends": [
     "next/core-web-vitals",
     "next/typescript"
+  ],
+  "overrides": [
+    {
+      "files": [
+        "app/api/**/*.{ts,tsx}",
+        "app/**/route.ts",
+        "middleware.ts"
+      ],
+      "rules": {
+        "no-restricted-properties": [
+          "error",
+          { "object": "auth", "property": "getSession", "message": "Use supabase.auth.getUser() in server routes/middleware for authenticated user data." }
+        ]
+      }
+    }
   ]
 }

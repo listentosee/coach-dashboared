@@ -200,11 +200,18 @@ export default function MessagesV2Page() {
   }
 
   const loadDirectory = async () => {
-    // Reuse directory endpoints from the app
-    const res = await fetch('/api/users/directory')
-    if (res.ok) {
-      const { users } = await res.json()
-      setDirectory(users || [])
+    // Messaging-scoped minimal directory (id + name + role)
+    try {
+      const res = await fetch('/api/messaging/users', { headers: { 'x-messaging-client': '1' } })
+      if (res.ok) {
+        const { users } = await res.json()
+        const mapped = (users || []).map((u: any) => ({ id: u.id, first_name: u.name, last_name: '', email: undefined, role: u.role }))
+        setDirectory(mapped)
+      } else {
+        setDirectory([])
+      }
+    } catch {
+      setDirectory([])
     }
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {

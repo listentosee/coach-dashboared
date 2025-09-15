@@ -6,17 +6,17 @@ import { cookies } from 'next/headers'
 export async function GET(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies })
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     // Prefer receipts-based unread counter; fallback to legacy last_read_at
     let data: any = null
     let error: any = null
-    const v2 = await supabase.rpc('count_unread_by_receipts', { p_user_id: session.user.id })
+    const v2 = await supabase.rpc('count_unread_by_receipts', { p_user_id: user.id })
     if (!v2.error) {
       data = v2.data
     } else {
-      const v1 = await supabase.rpc('count_unread_messages', { p_user_id: session.user.id })
+      const v1 = await supabase.rpc('count_unread_messages', { p_user_id: user.id })
       data = v1.data
       error = v1.error
     }
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
       const { data: rows, error: qErr } = await supabase
         .from('conversation_members')
         .select('conversation_id, last_read_at')
-        .eq('user_id', session.user.id)
+        .eq('user_id', user.id)
       if (qErr) return NextResponse.json({ error: qErr.message }, { status: 400 })
       // Receipts-based fallback: count messages without a receipt per convo
       let total = 0
@@ -37,12 +37,12 @@ export async function GET(req: NextRequest) {
           .eq('conversation_id', row.conversation_id)
         const mine = new Set<number>()
         for (const m of ids || []) {
-          if (m.sender_id === session.user.id) continue
+          if (m.sender_id === user.id) continue
           const { count } = await supabase
             .from('message_read_receipts')
             .select('*', { count: 'exact', head: true })
             .eq('message_id', (m as any).id)
-            .eq('user_id', session.user.id)
+            .eq('user_id', user.id)
           if ((count || 0) === 0) total += 1
         }
       }

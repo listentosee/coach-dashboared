@@ -25,3 +25,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local-only admin setup notes (contains plaintext hints; do not track)
+docs/Admin\ Setup.md

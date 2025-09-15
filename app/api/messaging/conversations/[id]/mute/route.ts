@@ -11,10 +11,10 @@ export async function POST(
 ) {
   try {
     const supabase = createRouteHandlerClient({ cookies })
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const adminId = session.user.id
+    const adminId = user.id
     const isAdmin = await isUserAdmin(supabase, adminId)
     if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -45,4 +45,3 @@ export async function POST(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

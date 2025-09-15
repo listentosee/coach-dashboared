@@ -20,13 +20,13 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies });
     
-    // Verify authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    // Verify authentication (server-validated)
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('Session user ID:', session.user.id);
+    console.log('Session user ID:', user.id);
 
     // Parse and validate request body
     const body = await request.json();
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       const { data: existingStudent } = await supabase
         .from('competitors')
         .select('id, first_name, last_name')
-        .eq('coach_id', session.user.id)
+        .eq('coach_id', user.id)
         .eq('game_platform_id', validatedData.game_platform_id)
         .maybeSingle();
       if (existingStudent) {
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     // Create competitor record
     const insertData = {
-      coach_id: session.user.id,
+      coach_id: user.id,
       first_name: validatedData.first_name,
       last_name: validatedData.last_name,
       is_18_or_over: typeof validatedData.is_18_or_over === 'boolean' ? validatedData.is_18_or_over : null,
@@ -86,13 +86,13 @@ export async function POST(request: NextRequest) {
     await supabase
       .from('activity_logs')
       .insert({
-        user_id: session.user.id,
+        user_id: user.id,
         action: 'competitor_created',
         entity_type: 'competitor',
         entity_id: competitor.id,
         metadata: { 
           competitor_name: `${competitor.first_name} ${competitor.last_name}`,
-          coach_id: session.user.id
+          coach_id: user.id
         }
       });
 

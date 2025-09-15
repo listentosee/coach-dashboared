@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Buffer } from 'node:buffer'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 
@@ -7,15 +6,15 @@ import { cookies } from 'next/headers'
 export async function POST(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies })
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const form = await req.formData()
     const file = form.get('file') as File | null
     if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 })
 
     // Store using the original file name under the user's folder; overwrite existing via upsert
-    const filePath = `${session.user.id}/${file.name}`
+    const filePath = `${user.id}/${file.name}`
 
     // Ensure the Storage bucket name matches your Supabase bucket.
     // Configure via env var SUPABASE_MESSAGES_BUCKET (defaults to 'messages').

@@ -6,18 +6,18 @@ import { cookies } from 'next/headers'
 export async function GET(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies })
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     // Prefer enriched RPC with display_title; fallback to original
     let conversations: any[] | null = null
     let error: any = null
 
-    const enriched = await supabase.rpc('list_conversations_enriched', { p_user_id: session.user.id })
+    const enriched = await supabase.rpc('list_conversations_enriched', { p_user_id: user.id })
     if (!enriched.error) {
       conversations = enriched.data as any[]
     } else {
-      const legacy = await supabase.rpc('list_conversations_with_unread', { p_user_id: session.user.id })
+      const legacy = await supabase.rpc('list_conversations_with_unread', { p_user_id: user.id })
       error = legacy.error
       conversations = legacy.data as any[]
     }

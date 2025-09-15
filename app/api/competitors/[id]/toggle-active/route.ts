@@ -14,9 +14,9 @@ export async function PUT(
   try {
     const supabase = createRouteHandlerClient({ cookies });
     
-    // Verify authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    // Verify authentication (validated with Auth server)
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -29,7 +29,7 @@ export async function PUT(
       .from('competitors')
       .select('id')
       .eq('id', params.id)
-      .eq('coach_id', session.user.id)
+      .eq('coach_id', user.id)
       .single();
 
     if (checkError || !existingCompetitor) {

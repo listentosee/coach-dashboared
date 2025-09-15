@@ -6,9 +6,9 @@ import CoachAssistTool from '@/components/dashboard/coach-assist-tool';
 export default async function AdminToolsPage() {
   const supabase = createServerComponentClient({ cookies });
   
-  // Check if user is authenticated
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
+  // Check if user is authenticated (verified by Supabase Auth)
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
     redirect('/auth/login');
   }
 
@@ -16,7 +16,7 @@ export default async function AdminToolsPage() {
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
-    .eq('id', session.user.id)
+    .eq('id', user.id)
     .single();
 
   if (!profile || profile.role !== 'admin') {

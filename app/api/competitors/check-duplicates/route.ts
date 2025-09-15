@@ -13,8 +13,8 @@ export async function POST(request: NextRequest) {
     const supabase = createRouteHandlerClient({ cookies });
     
     // Verify authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     const { data: duplicates, error } = await supabase
       .from('competitors')
       .select('id, first_name, last_name, email_school, grade, status')
-      .eq('coach_id', session.user.id)
+      .eq('coach_id', user.id)
       .or(`first_name.ilike.${first_name},last_name.ilike.${last_name}`)
       .limit(5);
 

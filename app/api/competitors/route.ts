@@ -7,14 +7,14 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies });
     
-    // Get the authenticated user session
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    // Authenticate user with Supabase Auth server
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Check if user is admin
-    const isAdmin = await isUserAdmin(supabase, session.user.id);
+    const isAdmin = await isUserAdmin(supabase, user.id);
 
     // Build the query - admins see all, coaches see only their own
     let query = supabase
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     // Apply coach filtering only for non-admin users
     if (!isAdmin) {
-      query = query.eq('coach_id', session.user.id);
+      query = query.eq('coach_id', user.id);
     }
 
     // Execute the query

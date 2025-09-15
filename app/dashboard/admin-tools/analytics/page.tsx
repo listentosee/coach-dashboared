@@ -7,8 +7,8 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   const supabase = createServerComponentClient({ cookies })
 
   // Auth check
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
     return <div className="p-6 text-meta-light">Unauthorized</div>
   }
 

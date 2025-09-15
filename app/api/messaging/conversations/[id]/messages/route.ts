@@ -9,8 +9,8 @@ export async function GET(
 ) {
   try {
     const supabase = createRouteHandlerClient({ cookies })
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const url = new URL(req.url)
     const limit = parseInt(url.searchParams.get('limit') || '50', 10)
@@ -34,8 +34,8 @@ export async function POST(
 ) {
   try {
     const supabase = createRouteHandlerClient({ cookies })
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { body, parentMessageId, privateTo } = await req.json() as { body?: string; parentMessageId?: number; privateTo?: string }
     if (!body || body.trim().length === 0) {
@@ -63,7 +63,7 @@ export async function POST(
       // Not an announcement; proceed to normal insert below
     }
 
-    const payload: Record<string, any> = { conversation_id: params.id, sender_id: session.user.id, body }
+    const payload: Record<string, any> = { conversation_id: params.id, sender_id: user.id, body }
     if (typeof parentMessageId === 'number' && Number.isFinite(parentMessageId)) {
       payload.parent_message_id = parentMessageId
     }

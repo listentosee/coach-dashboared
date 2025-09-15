@@ -13,13 +13,13 @@ export async function POST(request: NextRequest) {
 
     // Verify caller is an authenticated admin using cookie-bound client
     const authed = createRouteHandlerClient({ cookies })
-    const { data: { session } } = await authed.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: { user } } = await authed.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { data: profile } = await authed
       .from('profiles')
       .select('role')
-      .eq('id', session.user.id)
+      .eq('id', user.id)
       .single()
     if (profile?.role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     // Log the admin action (best-effort)
     await service.from('activity_logs').insert({
-      user_id: session.user.id,
+      user_id: user.id,
       action: 'admin_reset_coach_password',
       entity_type: 'profiles',
       metadata: { coach_id: coachId }

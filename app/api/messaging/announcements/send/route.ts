@@ -8,11 +8,10 @@ import { isUserAdmin } from '@/lib/utils/admin-check'
 export async function POST(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies })
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const adminId = session.user.id
-    const isAdmin = await isUserAdmin(supabase, adminId)
+    const isAdmin = await isUserAdmin(supabase, user.id)
     if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const { title, body } = await req.json() as { title?: string, body?: string }

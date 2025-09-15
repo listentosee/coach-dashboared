@@ -10,9 +10,9 @@ export async function POST(
   try {
     const supabase = createRouteHandlerClient({ cookies });
     
-    // Get the authenticated user session
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    // Authenticate user with Supabase Auth server
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -21,7 +21,7 @@ export async function POST(
       .from('competitors')
       .select('id, first_name, last_name')
       .eq('id', params.id)
-      .eq('coach_id', session.user.id)
+      .eq('coach_id', user.id)
       .single();
 
     if (fetchError || !competitor) {
@@ -60,13 +60,13 @@ export async function POST(
     await supabase
       .from('activity_logs')
       .insert({
-        user_id: session.user.id,
+        user_id: user.id,
         action: 'profile_link_regenerated',
         entity_type: 'competitor',
         entity_id: competitor.id,
         metadata: { 
           competitor_name: `${competitor.first_name} ${competitor.last_name}`,
-          coach_id: session.user.id
+          coach_id: user.id
         }
       });
 

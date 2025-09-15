@@ -8,8 +8,8 @@ export async function POST(request: NextRequest) {
     const supabase = createRouteHandlerClient({ cookies });
     
     // Verify authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
-      .eq('id', session.user.id)
+      .eq('id', user.id)
       .single();
 
     if (!profile || profile.role !== 'coach') {
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     await supabase
       .from('activity_logs')
       .insert({
-        user_id: session.user.id,
+        user_id: user.id,
         action: 'bulk_status_update',
         entity_type: 'competitors',
         metadata: { 
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
           errors: result.errors,
           total: result.total,
           errorDetails: result.errorDetails,
-          coach_id: session.user.id
+          coach_id: user.id
         }
       });
 

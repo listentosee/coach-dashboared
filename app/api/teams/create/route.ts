@@ -15,21 +15,21 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies });
     
-    // Get the authenticated user session
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    // Get authenticated user (verified)
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Check if user is admin
-    const isAdmin = await isUserAdmin(supabase, session.user.id);
+    const isAdmin = await isUserAdmin(supabase, user.id);
 
     // Parse and validate request body
     const body = await request.json();
     const validatedData = CreateTeamSchema.parse(body);
 
     // Determine which coach_id to use
-    const coachId = isAdmin && validatedData.coach_id ? validatedData.coach_id : session.user.id;
+    const coachId = isAdmin && validatedData.coach_id ? validatedData.coach_id : user.id;
 
     // Check if team name already exists for this coach
     const { data: existingTeam, error: checkError } = await supabase
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     await supabase
       .from('activity_logs')
       .insert({
-        user_id: session.user.id,
+        user_id: user.id,
         action: 'team_created',
         entity_type: 'team',
         entity_id: team.id,

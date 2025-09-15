@@ -7,8 +7,8 @@ import { cookies } from 'next/headers'
 export async function POST(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies })
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { userIds, title } = await req.json() as { userIds?: string[], title?: string }
     if (!Array.isArray(userIds) || userIds.length === 0) {
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Ensure creator is included
-    const uniqueIds = Array.from(new Set([session.user.id, ...userIds]))
+    const uniqueIds = Array.from(new Set([user.id, ...userIds]))
 
     const { data: newId, error: rpcErr } = await supabase.rpc('create_group_conversation', {
       p_user_ids: uniqueIds,

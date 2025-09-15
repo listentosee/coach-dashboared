@@ -7,12 +7,12 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies });
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const isAdmin = await isUserAdmin(supabase, session.user.id);
+    const isAdmin = await isUserAdmin(supabase, user.id);
 
     let query = supabase
       .from('teams')
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       .order('name', { ascending: true });
 
     if (!isAdmin) {
-      query = query.eq('coach_id', session.user.id);
+      query = query.eq('coach_id', user.id);
     }
 
     const { data: teams, error: teamsError } = await query;

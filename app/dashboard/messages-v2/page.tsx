@@ -189,7 +189,9 @@ export default function MessagesV2Page() {
     if (res.ok) {
       const json = await res.json()
       const rows: ThreadMessage[] = json.messages || []
-      setMessages(rows)
+      // Newest first in the Messages panel
+      const sorted = [...rows].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      setMessages(sorted)
       setSelectedMessageId(rootId)
       // Always load read status for message-level indicators
       const ids = rows.map((m) => m.id).slice(-200)
@@ -529,7 +531,10 @@ export default function MessagesV2Page() {
       <div className="col-span-12 lg:col-span-3 border border-meta-border rounded-md overflow-hidden h-[45vh] flex flex-col">
         <div className="p-3 font-medium bg-meta-card">Conversations</div>
         <div className="p-2 space-y-2 overflow-auto">
-          {conversations.filter(c => c.type === selectedChannel).map((c) => (
+          {[...conversations]
+            .filter(c => c.type === selectedChannel)
+            .sort((a,b) => new Date(b.last_message_at || b.created_at).getTime() - new Date(a.last_message_at || a.created_at).getTime())
+            .map((c) => (
             <button key={c.id}
               className={`w-full text-left p-3 rounded border ${selectedConversationId === c.id ? 'border-blue-500 bg-blue-500/10' : 'border-meta-border bg-meta-card'}`}
               onClick={async () => { setSelectedConversationId(c.id); await fetchConversations() }}

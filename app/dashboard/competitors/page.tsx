@@ -31,8 +31,8 @@ export default function CompetitorsPage() {
   const fetchCompetitors = async () => {
     try {
       // Check authentication first
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
         console.error('No session found');
         return;
       }
@@ -40,7 +40,7 @@ export default function CompetitorsPage() {
       const { data, error } = await supabase
         .from('competitors')
         .select('*')
-        .eq('coach_id', session.user.id)
+        .eq('coach_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -52,12 +52,14 @@ export default function CompetitorsPage() {
     }
   };
 
-  const filteredCompetitors = competitors.filter(competitor =>
-    competitor.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    competitor.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    competitor.email_personal?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    competitor.email_school?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredCompetitors = competitors.filter(competitor => {
+    const term = searchTerm.toLowerCase();
+    const nameStarts = competitor.first_name.toLowerCase().startsWith(term) ||
+      competitor.last_name.toLowerCase().startsWith(term);
+    const emailMatches = competitor.email_personal?.toLowerCase().includes(term) ||
+      competitor.email_school?.toLowerCase().includes(term);
+    return nameStarts || !!emailMatches;
+  });
 
   const getStatusColor = (status: string) => {
     switch (status) {

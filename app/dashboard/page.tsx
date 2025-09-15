@@ -68,19 +68,19 @@ export default function DashboardPage() {
 
   const fetchData = async () => {
     try {
-      const { data: { session: sessionData } } = await supabase.auth.getSession();
-      if (!sessionData) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
         console.error('No session found');
         return;
       }
-      setSession(sessionData);
+      setSession({ user });
       
       // Fetch coach profile
-      if (sessionData?.user) {
+      if (user) {
         const { data: profileData } = await supabase
           .from('profiles')
           .select('first_name, last_name')
-          .eq('id', sessionData.user.id)
+          .eq('id', user.id)
           .single();
         
         setCoachProfile(profileData);
@@ -178,8 +178,9 @@ export default function DashboardPage() {
 
   // Filter competitors
   const filteredCompetitors = competitors.filter(competitor => {
-    const matchesSearch = competitor.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         competitor.last_name.toLowerCase().includes(searchTerm.toLowerCase());
+    const term = searchTerm.toLowerCase()
+    const matchesSearch = competitor.first_name.toLowerCase().startsWith(term) ||
+                         competitor.last_name.toLowerCase().startsWith(term);
     const matchesActiveFilter = showInactive || competitor.is_active;
     const matchesDivision = divisionFilter === 'all' || competitor.division === divisionFilter;
     return matchesSearch && matchesActiveFilter && matchesDivision;

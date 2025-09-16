@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 import { getZohoAccessToken } from '../_lib/token';
 
 type Body = {
@@ -15,6 +17,15 @@ export async function POST(req: NextRequest) {
   
   const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   console.log('Supabase client created');
+
+  // Enforce caller authorization (admin coach context or coach ownership)
+  const authed = createRouteHandlerClient({ cookies })
+  const { data: { user } } = await authed.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { data: profile } = await authed.from('profiles').select('role').eq('id', user.id).single()
+  const isAdmin = profile?.role === 'admin'
+  const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+  if (isAdmin && !actingCoachId) return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
 
   // Pull competitor data with coach's school from profile
   const { data: c, error } = await supabase
@@ -40,17 +51,39 @@ export async function POST(req: NextRequest) {
     console.error('Competitor fetch error:', error);
     return NextResponse.json({ error: 'Competitor not found' }, { status: 404 });
   }
+  // Ownership check
+  if (!isAdmin && c.coach_id !== user.id) {
+    return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+  }
+  if (isAdmin && actingCoachId && c.coach_id !== actingCoachId) {
+    return NextResponse.json({ error: 'Target not owned by selected coach' }, { status: 403 })
+  }
   
   console.log('Competitor data fetched:', { 
     id: c.id, 
     name: `${c.first_name} ${c.last_name}`,
     isAdult: c.is_18_or_over,
-    email: c.is_18_or_over ? c.email_school : c.parent_email,
-    profiles: c.profiles,
-    schoolName: c.profiles?.school_name
+    email: c.is_18_or_over ? c.email_school : c.parent_email
   });
 
   const isAdult = !!c.is_18_or_over;
+  // Resolve coach profile explicitly based on acting context/ownership
+  const coachProfileId = c.coach_id
+  const { data: coachProfile } = await supabase
+    .from('profiles')
+    .select('school_name')
+    .eq('id', coachProfileId)
+    .single()
+  const schoolText = (coachProfile?.school_name && String(coachProfile.school_name).trim()) || ''
+  const gradeText = (c.grade && String(c.grade).trim()) || ''
+
+  // Hard validation: school and grade are required by the template
+  if (!schoolText) {
+    return NextResponse.json({ error: 'Coach profile is missing school name. Please set the coach\'s school before sending.' }, { status: 400 })
+  }
+  if (!gradeText) {
+    return NextResponse.json({ error: 'Competitor grade is required before sending.' }, { status: 400 })
+  }
   const templateId = isAdult ? process.env.ZOHO_SIGN_TEMPLATE_ID_ADULT! : process.env.ZOHO_SIGN_TEMPLATE_ID_MINOR!;
   const templateKind = isAdult ? 'adult' : 'minor';
   
@@ -122,8 +155,8 @@ export async function POST(req: NextRequest) {
   const field_data = {
     field_text_data: {
       participant_name: `${c.first_name} ${c.last_name}`,
-      school: c.profiles?.school_name || '',
-      grade: c.grade || '',
+      school: schoolText,
+      grade: gradeText,
     },
     field_boolean_data: {},
     field_date_data: {},

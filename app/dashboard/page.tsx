@@ -10,6 +10,7 @@ import { CompetitorEditForm } from '@/components/dashboard/competitor-edit-form'
 import { Edit, UserCheck, Gamepad2, Ban, LogIn, Link as LinkIcon, ChevronDown } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table';
 import { createCompetitorColumns, Competitor as CompetitorType } from '@/components/dashboard/competitor-columns';
+import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext';
 
 interface Competitor {
   id: string;
@@ -48,6 +49,7 @@ interface DashboardStats {
 export const dynamic = 'force-dynamic';
 
 export default function DashboardPage() {
+  const { coachId, loading: ctxLoading } = useAdminCoachContext()
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
     totalCompetitors: 0,
@@ -65,6 +67,7 @@ export default function DashboardPage() {
   const [session, setSession] = useState<any>(null);
   const [coachProfile, setCoachProfile] = useState<any>(null);
   const [divisionFilter, setDivisionFilter] = useState<'all' | 'middle_school' | 'high_school' | 'college'>('all');
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const fetchData = async () => {
     try {
@@ -76,14 +79,17 @@ export default function DashboardPage() {
       setSession({ user });
       
       // Fetch coach profile
+      let amAdmin: boolean | null = null
       if (user) {
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('first_name, last_name')
+          .select('first_name, last_name, role')
           .eq('id', user.id)
           .single();
         
         setCoachProfile(profileData);
+        amAdmin = ((profileData as any)?.role === 'admin')
+        setIsAdmin(!!amAdmin)
       }
 
       // Fetch competitors through API route (enables admin access control)
@@ -101,7 +107,13 @@ export default function DashboardPage() {
         is_active: comp.is_active !== undefined ? comp.is_active : true, // Default to true if not set
       }));
 
-      setCompetitors(transformedCompetitors);
+      // Admin coach filter (client-side for Phase 1)
+      let scopedCompetitors = transformedCompetitors as any[]
+      const isAdminNow = (amAdmin === null ? isAdmin : amAdmin)
+      if (isAdminNow && !ctxLoading && coachId) {
+        scopedCompetitors = scopedCompetitors.filter((c: any) => c.coach_id === coachId)
+      }
+      setCompetitors(scopedCompetitors as any);
 
       // Fetch teams for dropdown - also through API for admin access
       const teamsResponse = await fetch('/api/teams');
@@ -121,7 +133,12 @@ export default function DashboardPage() {
       }
       
       // Transform teams data to include member count
-      const transformedTeams = (teamsData.teams || []).map((team: any) => ({
+      // Admin coach filter for teams (client-side for Phase 1)
+      const rawTeams: any[] = teamsData.teams || []
+      const scopedTeams = (isAdminNow && !ctxLoading && coachId)
+        ? rawTeams.filter((t: any) => t.coach_id === coachId)
+        : rawTeams
+      const transformedTeams = scopedTeams.map((team: any) => ({
         id: team.id,
         name: team.name,
         memberCount: teamMemberCounts.get(team.id) || 0
@@ -129,17 +146,17 @@ export default function DashboardPage() {
       
       setTeams(transformedTeams);
 
-      // Calculate stats
-      const totalCompetitors = transformedCompetitors.length;
-      const activeCompetitors = transformedCompetitors.filter(c => c.status === 'complete').length;
-      const pendingCompetitors = transformedCompetitors.filter(c => c.status === 'pending').length;
-      const profileCompetitors = transformedCompetitors.filter(c => c.status === 'profile').length;
-      const complianceCompetitors = transformedCompetitors.filter(c => c.status === 'compliance').length;
+      // Calculate stats based on scoped lists (reflect admin coach selection)
+      const totalCompetitors = scopedCompetitors.length;
+      const activeCompetitors = scopedCompetitors.filter(c => c.status === 'complete').length;
+      const pendingCompetitors = scopedCompetitors.filter(c => c.status === 'pending').length;
+      const profileCompetitors = scopedCompetitors.filter(c => c.status === 'profile').length;
+      const complianceCompetitors = scopedCompetitors.filter(c => c.status === 'compliance').length;
 
       // Use teams count from API response
       setStats({
         totalCompetitors,
-        totalTeams: teamsData.teams?.length || 0,
+        totalTeams: transformedTeams.length,
         activeCompetitors,
         pendingCompetitors,
         profileCompetitors,
@@ -152,15 +169,18 @@ export default function DashboardPage() {
     }
   };
 
+  // Initial and context-based fetch
   useEffect(() => {
-    fetchData();
+    if (!ctxLoading) fetchData();
+  }, [ctxLoading, coachId]);
 
+  // Auth-driven refresh
+  useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      fetchData();
+      if (!ctxLoading) fetchData();
     });
-
     return () => subscription.unsubscribe();
-  }, []);
+  }, [ctxLoading]);
 
   // Connect sidebar search to dashboard search
   useEffect(() => {
@@ -481,7 +501,9 @@ export default function DashboardPage() {
               openDropdown,
               setOpenDropdown,
               session?.user?.email,
-              coachProfile ? `${coachProfile.first_name} ${coachProfile.last_name}` : session?.user?.email
+              coachProfile ? `${coachProfile.first_name} ${coachProfile.last_name}` : session?.user?.email,
+              (isAdmin && !ctxLoading && coachId === null),
+              'Select a coach to edit'
             )}
             data={filteredCompetitors}
           />

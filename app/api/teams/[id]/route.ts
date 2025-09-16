@@ -16,8 +16,12 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user is admin
+    // Check if user is admin and resolve acting context
     const isAdmin = await isUserAdmin(supabase, user.id);
+    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    if (isAdmin && !actingCoachId) {
+      return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
+    }
 
     // Verify the team exists and user has access
     let query = supabase
@@ -27,6 +31,8 @@ export async function DELETE(
 
     if (!isAdmin) {
       query = query.eq('coach_id', user.id);
+    } else {
+      query = query.eq('coach_id', actingCoachId as string)
     }
 
     const { data: team, error: teamError } = await query.single();

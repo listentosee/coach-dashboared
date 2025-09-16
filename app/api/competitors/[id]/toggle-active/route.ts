@@ -20,17 +20,26 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Determine admin context
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+    const isAdmin = profile?.role === 'admin'
+    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    if (isAdmin && !actingCoachId) {
+      return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
+    }
+
     // Parse and validate request body
     const body = await request.json();
     const validatedData = ToggleActiveSchema.parse(body);
 
-    // Verify the competitor belongs to the authenticated coach
-    const { data: existingCompetitor, error: checkError } = await supabase
+    // Verify the competitor belongs to the correct coach
+    let verify = supabase
       .from('competitors')
-      .select('id')
+      .select('id, coach_id')
       .eq('id', params.id)
-      .eq('coach_id', user.id)
-      .single();
+    if (isAdmin) verify = verify.eq('coach_id', actingCoachId as string)
+    else verify = verify.eq('coach_id', user.id)
+    const { data: existingCompetitor, error: checkError } = await verify.single();
 
     if (checkError || !existingCompetitor) {
       return NextResponse.json({ error: 'Competitor not found or access denied' }, { status: 404 });

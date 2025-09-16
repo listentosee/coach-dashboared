@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,6 +15,15 @@ export async function POST(req: NextRequest) {
 
     const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
+    // Enforce caller authorization (admin coach context or coach ownership)
+    const authed = createRouteHandlerClient({ cookies })
+    const { data: { user } } = await authed.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: profile } = await authed.from('profiles').select('role').eq('id', user.id).single()
+    const isAdmin = profile?.role === 'admin'
+    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    if (isAdmin && !actingCoachId) return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
+
     // Get the agreement details
     const { data: agreement, error: agreementError } = await supabase
       .from('agreements')
@@ -22,6 +33,15 @@ export async function POST(req: NextRequest) {
 
     if (agreementError || !agreement) {
       return NextResponse.json({ error: 'Agreement not found' }, { status: 404 });
+    }
+
+    // Ownership check: ensure caller has rights to the agreement's competitor
+    const { data: comp } = await supabase.from('competitors').select('coach_id').eq('id', agreement.competitor_id).single()
+    if (!isAdmin && comp && comp.coach_id !== user.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+    if (isAdmin && actingCoachId && comp && comp.coach_id !== actingCoachId) {
+      return NextResponse.json({ error: 'Target not owned by selected coach' }, { status: 403 })
     }
 
     // Check if already completed

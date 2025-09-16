@@ -55,7 +55,9 @@ export const createCompetitorColumns = (
   openDropdown: string | null,
   setOpenDropdown: (id: string | null) => void,
   coachEmail?: string,
-  coachName?: string
+  coachName?: string,
+  disableEdits?: boolean,
+  disableTooltip?: string
 ): ColumnDef<Competitor>[] => [
   {
     accessorKey: "first_name",
@@ -192,21 +194,24 @@ export const createCompetitorColumns = (
     cell: ({ row }) => {
       const competitor = row.original;
       const isDisabled = !competitor.is_active;
+      const globalDisabled = !!disableEdits;
+      const title = globalDisabled ? (disableTooltip || 'Select a coach to edit') : undefined;
       
       return (
         <div className="relative">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => !isDisabled && setOpenDropdown(openDropdown === competitor.id ? null : competitor.id)}
-            className={`${isDisabled ? 'bg-meta-muted text-meta-muted cursor-not-allowed' : 'bg-meta-accent text-white hover:bg-blue-600'}`}
-            disabled={isDisabled}
+            onClick={() => !(isDisabled || globalDisabled) && setOpenDropdown(openDropdown === competitor.id ? null : competitor.id)}
+            className={`${(isDisabled || globalDisabled) ? 'bg-meta-muted text-meta-muted cursor-not-allowed' : 'bg-meta-accent text-white hover:bg-blue-600'}`}
+            disabled={isDisabled || globalDisabled}
+            title={title}
           >
             <span>{competitor.team_name || 'No Team'}</span>
             <ChevronDown className="ml-2 h-3 w-3" />
           </Button>
           
-          {openDropdown === competitor.id && !isDisabled && (
+          {openDropdown === competitor.id && !(isDisabled || globalDisabled) && (
             <div className="absolute top-full left-0 mt-1 bg-meta-card border border-meta-border rounded-lg shadow-lg z-10 min-w-32">
               <div className="py-1">
                 <Button
@@ -243,6 +248,9 @@ export const createCompetitorColumns = (
     cell: ({ row }) => {
       const competitor = row.original;
       const isDisabled = !competitor.is_active;
+      const globalDisabled = !!disableEdits;
+      const mergedDisabled = isDisabled || globalDisabled;
+      const title = globalDisabled ? (disableTooltip || 'Select a coach to edit') : 'Edit Competitor';
       
       return (
         <div className="flex items-center space-x-1">
@@ -250,9 +258,9 @@ export const createCompetitorColumns = (
             variant="ghost"
             size="sm"
             onClick={() => onEdit(competitor.id)}
-            title="Edit Competitor"
-            className={`p-1 ${isDisabled ? 'text-meta-muted cursor-not-allowed' : 'text-meta-light hover:text-meta-accent'}`}
-            disabled={isDisabled}
+            title={title}
+            className={`p-1 ${mergedDisabled ? 'text-meta-muted cursor-not-allowed' : 'text-meta-light hover:text-meta-accent'}`}
+            disabled={mergedDisabled}
           >
             <Edit className="h-4 w-4" />
           </Button>
@@ -273,9 +281,10 @@ export const createCompetitorColumns = (
                 }
               }
             }}
-            title="Regenerate Profile Link & Send Email"
-            className={`p-1 ${isDisabled ? 'text-meta-muted cursor-not-allowed' : 'text-meta-light hover:text-meta-accent'}`}
-            disabled={isDisabled}
+            title={globalDisabled ? (disableTooltip || 'Select a coach to edit') : 'Regenerate Profile Link & Send Email'}
+            className={`p-1 ${mergedDisabled ? 'text-meta-muted cursor-not-allowed' : 'text-meta-light hover:text-meta-accent'}`}
+            disabled={mergedDisabled}
+            aria-disabled={mergedDisabled}
           >
             <LinkIcon className="h-4 w-4" />
           </Button>
@@ -283,9 +292,10 @@ export const createCompetitorColumns = (
             variant="ghost"
             size="sm"
             onClick={() => onRegister(competitor.id)}
-            title="Register on Game Platform"
-            className={`p-1 ${isDisabled ? 'text-meta-muted cursor-not-allowed' : 'text-meta-light hover:text-meta-accent'}`}
-            disabled={isDisabled}
+            title={globalDisabled ? (disableTooltip || 'Select a coach to edit') : 'Register on Game Platform'}
+            className={`p-1 ${mergedDisabled ? 'text-meta-muted cursor-not-allowed' : 'text-meta-light hover:text-meta-accent'}`}
+            disabled={mergedDisabled}
+            aria-disabled={mergedDisabled}
           >
             <Gamepad2 className="h-4 w-4" />
           </Button>
@@ -293,8 +303,10 @@ export const createCompetitorColumns = (
             variant="ghost"
             size="sm"
             onClick={() => onDisable(competitor.id)}
-            title={competitor.is_active ? "Disable Competitor" : "Enable Competitor"}
-            className={`p-1 ${competitor.is_active ? 'text-meta-light hover:text-meta-accent' : 'text-red-500 hover:text-red-600'}`}
+            title={globalDisabled ? (disableTooltip || 'Select a coach to edit') : (competitor.is_active ? 'Disable Competitor' : 'Enable Competitor')}
+            className={`p-1 ${globalDisabled ? 'text-meta-muted cursor-not-allowed' : (competitor.is_active ? 'text-meta-light hover:text-meta-accent' : 'text-red-500 hover:text-red-600')}`}
+            disabled={globalDisabled}
+            aria-disabled={globalDisabled}
           >
             {competitor.is_active ? <Ban className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
           </Button>

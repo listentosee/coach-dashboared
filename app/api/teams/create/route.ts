@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user is admin
+    // Check if user is admin and resolve acting context
     const isAdmin = await isUserAdmin(supabase, user.id);
 
     // Parse and validate request body
@@ -29,7 +29,12 @@ export async function POST(request: NextRequest) {
     const validatedData = CreateTeamSchema.parse(body);
 
     // Determine which coach_id to use
-    const coachId = isAdmin && validatedData.coach_id ? validatedData.coach_id : user.id;
+    let coachId = user.id;
+    if (isAdmin) {
+      const actingCoachId = cookies().get('admin_coach_id')?.value || null
+      if (!actingCoachId) return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
+      coachId = actingCoachId
+    }
 
     // Check if team name already exists for this coach
     const { data: existingTeam, error: checkError } = await supabase

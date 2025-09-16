@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import ActingAsBanner from '@/components/admin/ActingAsBanner'
 import { supabase } from '@/lib/supabase/client';
+import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -62,6 +64,7 @@ interface ReleaseData {
 }
 
 export default function ReleaseManagementPage() {
+  const { coachId, loading: ctxLoading } = useAdminCoachContext()
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [agreements, setAgreements] = useState<Agreement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,45 +74,52 @@ export default function ReleaseManagementPage() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [selectedAgreement, setSelectedAgreement] = useState<Agreement | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(40)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
 
+  // Initial and context-based fetch
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (!ctxLoading) fetchData();
+  }, [ctxLoading, coachId])
 
   const fetchData = async () => {
     try {
       setLoading(true);
       
-      // Fetch competitors - coaches only see their own, admins see all
+      // Determine role and load via API for admin (server-filtered); otherwise direct for coach
       const { data: { user } } = await supabase.auth.getUser();
-      let competitorsQuery = supabase
-        .from('competitors')
-        .select('*')
-        .order('first_name', { ascending: true });
-
-      // If user is not admin, filter by coach_id
+      let role: string | null = null
       if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single();
-        
-        if (profile?.role !== 'admin') {
-          competitorsQuery = competitorsQuery.eq('coach_id', user.id);
-        }
+        const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+        role = (profile as any)?.role || null
+        setIsAdmin(role === 'admin')
       }
 
-      const { data: competitorsData } = await competitorsQuery;
-
-      // Fetch agreements
-      const { data: agreementsData } = await supabase
-        .from('agreements')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (competitorsData) setCompetitors(competitorsData);
-      if (agreementsData) setAgreements(agreementsData);
+      if (role === 'admin') {
+        const r = await fetch('/api/admin/releases')
+        if (r.ok) {
+          const j = await r.json()
+          setCompetitors(j.competitors || [])
+          setAgreements(j.agreements || [])
+        } else {
+          setCompetitors([])
+          setAgreements([])
+        }
+      } else {
+        // Coach: scoped client-side
+        const { data: competitorsData } = await supabase
+          .from('competitors')
+          .select('*')
+          .eq('coach_id', user?.id as string)
+          .order('first_name', { ascending: true })
+        const { data: agreementsData } = await supabase
+          .from('agreements')
+          .select('*')
+          .order('created_at', { ascending: false })
+        setCompetitors(competitorsData || [])
+        setAgreements(agreementsData || [])
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -128,14 +138,16 @@ export default function ReleaseManagementPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to send release');
+        let msg = 'Failed to send release'
+        try { const j = await response.json(); if (j?.error) msg = j.error } catch {}
+        throw new Error(msg);
       }
 
       // Refresh data to show new agreement
       await fetchData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending release:', error);
-      alert('Failed to send release. Please try again.');
+      alert(error?.message || 'Failed to send release. Please try again.');
     } finally {
       setSending(null);
     }
@@ -368,6 +380,7 @@ export default function ReleaseManagementPage() {
       header: "Actions",
       cell: ({ row }) => {
         const { competitor, agreement, hasLegacySigned } = row.original;
+        const disableAdminAll = isAdmin && !ctxLoading && coachId === null // admin in All-coaches → disable
         
         return (
           <div className="flex items-center space-x-2">
@@ -377,6 +390,8 @@ export default function ReleaseManagementPage() {
                 variant="outline"
                 onClick={() => downloadPDF(agreement.signed_pdf_path!, `${competitor.first_name} ${competitor.last_name}`)}
                 className="text-meta-light border-meta-border hover:bg-meta-accent"
+                disabled={disableAdminAll}
+                title={disableAdminAll ? 'Select a coach to edit' : undefined}
               >
                 <Download className="h-4 w-4 mr-1" />
                 PDF
@@ -390,6 +405,8 @@ export default function ReleaseManagementPage() {
                   variant="outline"
                   onClick={() => downloadPDF(agreement.signed_pdf_path!, `${competitor.first_name} ${competitor.last_name} - Print Ready`)}
                   className="text-meta-light border-meta-border hover:bg-meta-accent"
+                  disabled={disableAdminAll}
+                  title={disableAdminAll ? 'Select a coach to edit' : undefined}
                 >
                   <Download className="h-4 w-4 mr-1" />
                   Download Print
@@ -398,8 +415,9 @@ export default function ReleaseManagementPage() {
                   size="sm"
                   variant="outline"
                   onClick={() => openUploadModal(agreement)}
-                  disabled={uploading}
                   className="text-meta-light border-meta-border hover:bg-meta-accent"
+                  disabled={disableAdminAll || uploading}
+                  title={disableAdminAll ? 'Select a coach to edit' : undefined}
                 >
                   <Upload className="h-4 w-4 mr-1" />
                   Upload Signed
@@ -412,8 +430,9 @@ export default function ReleaseManagementPage() {
                 size="sm"
                 variant="outline"
                 onClick={() => openUploadModal(agreement)}
-                disabled={uploading}
+                disabled={disableAdminAll || uploading}
                 className="text-meta-light border-meta-border hover:bg-meta-accent"
+                title={disableAdminAll ? 'Select a coach to edit' : undefined}
               >
                 <Upload className="h-4 w-4 mr-1" />
                 Upload Signed
@@ -424,10 +443,11 @@ export default function ReleaseManagementPage() {
               <>
                 <Button
                   size="sm"
-                  title="Send for digital signature"
                   onClick={() => sendRelease(competitor.id, 'email')}
-                  disabled={sending === competitor.id}
+                  disabled={disableAdminAll || sending === competitor.id}
                   className="bg-meta-accent hover:bg-meta-accent/90 text-white"
+                  aria-disabled={disableAdminAll || sending === competitor.id}
+                  title={disableAdminAll ? 'Select a coach to edit' : 'Send for digital signature'}
                 >
                   {sending === competitor.id ? (
                     <RefreshCw className="h-4 w-4 animate-spin" />
@@ -442,10 +462,11 @@ export default function ReleaseManagementPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  title="For manual signature and upload"
                   onClick={() => sendRelease(competitor.id, 'print')}
-                  disabled={sending === competitor.id}
+                  disabled={disableAdminAll || sending === competitor.id}
                   className="text-meta-light border-meta-border hover:bg-meta-accent"
+                  aria-disabled={disableAdminAll || sending === competitor.id}
+                  title={disableAdminAll ? 'Select a coach to edit' : 'For manual signature and upload'}
                 >
                  <FileText className="h-4 w-4 mr-1" />
                  Print Pre-filled
@@ -457,6 +478,23 @@ export default function ReleaseManagementPage() {
       },
     },
   ];
+
+  // Reset paging when filters/data change (must not be conditional)
+  useEffect(() => { setVisibleCount(40) }, [searchTerm, hideCompleted, competitors.length, agreements.length])
+  // Infinite scroll sentinel (must not be conditional)
+  useEffect(() => {
+    const node = sentinelRef.current
+    if (!node) return
+    const obs = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + 20, releaseData.length))
+        }
+      }
+    }, { root: null, rootMargin: '200px', threshold: 0 })
+    obs.observe(node)
+    return () => obs.disconnect()
+  }, [releaseData.length])
 
   if (loading) {
     return (
@@ -474,6 +512,7 @@ export default function ReleaseManagementPage() {
           <p className="text-meta-muted mt-2">
             Manage release forms and track signing status. Only active competitors with complete profiles (status: profile or higher) are shown.
           </p>
+          <ActingAsBanner />
         </div>
         <Button onClick={fetchData} variant="outline" className="text-meta-light border-meta-border">
           <RefreshCw className="h-4 w-4 mr-2" />
@@ -484,26 +523,32 @@ export default function ReleaseManagementPage() {
       <Card className="bg-meta-card border-meta-border">
         <CardHeader>
           <CardTitle className="text-meta-light">Competitors & Release Status</CardTitle>
-          <div className="mt-4 flex items-center space-x-4">
-            <Input
-              placeholder="Search competitors by name, school, or grade..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="max-w-md bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
-            />
-            <label className="flex items-center space-x-2 text-sm text-meta-light">
-              <input
-                type="checkbox"
-                checked={!hideCompleted}
-                onChange={(e) => setHideCompleted(!e.target.checked)}
-                className="rounded border-meta-border bg-meta-card text-meta-accent focus:ring-meta-accent"
+          <div className="mt-4 flex items-center justify-between gap-4">
+            <div className="flex items-center space-x-4">
+              <Input
+                placeholder="Search competitors by name, school, or grade..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="max-w-md bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
               />
-              <span>Show Completed Releases</span>
-            </label>
+              <label className="flex items-center space-x-2 text-sm text-meta-light">
+                <input
+                  type="checkbox"
+                  checked={!hideCompleted}
+                  onChange={(e) => setHideCompleted(!e.target.checked)}
+                  className="rounded border-meta-border bg-meta-card text-meta-accent focus:ring-meta-accent"
+                />
+                <span>Show Completed Releases</span>
+              </label>
+            </div>
+            <div className="text-sm text-meta-muted whitespace-nowrap">
+              Showing {Math.min(visibleCount, releaseData.length)} of {releaseData.length}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
-          <DataTable columns={columns} data={releaseData} />
+          <DataTable columns={columns} data={releaseData.slice(0, visibleCount)} />
+          <div ref={sentinelRef} />
         </CardContent>
       </Card>
       

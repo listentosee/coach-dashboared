@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/lib/supabase/client';
 import { CompetitorForm } from '@/components/dashboard/competitor-form';
+import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext';
+import ActingAsBanner from '@/components/admin/ActingAsBanner';
 
 interface Competitor {
   id: string;
@@ -20,38 +22,15 @@ interface Competitor {
 }
 
 export default function CompetitorsPage() {
+  const { coachId, loading: ctxLoading } = useAdminCoachContext()
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(40)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
 
-  useEffect(() => {
-    fetchCompetitors();
-  }, []);
-
-  const fetchCompetitors = async () => {
-    try {
-      // Check authentication first
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.error('No session found');
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('competitors')
-        .select('*')
-        .eq('coach_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setCompetitors(data || []);
-    } catch (error) {
-      console.error('Error fetching competitors:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // Derived list before effects that depend on it
   const filteredCompetitors = competitors.filter(competitor => {
     const term = searchTerm.toLowerCase();
     const nameStarts = competitor.first_name.toLowerCase().startsWith(term) ||
@@ -60,6 +39,48 @@ export default function CompetitorsPage() {
       competitor.email_school?.toLowerCase().includes(term);
     return nameStarts || !!emailMatches;
   });
+
+  // Initial and context-based fetch
+  useEffect(() => {
+    if (!ctxLoading) fetchCompetitors();
+  }, [ctxLoading, coachId])
+
+  // Reset paging when data or filters change
+  useEffect(() => { setVisibleCount(40) }, [searchTerm])
+  useEffect(() => { setVisibleCount(40) }, [competitors.length])
+
+  // Infinite scroll via IntersectionObserver
+  useEffect(() => {
+    const node = sentinelRef.current
+    if (!node) return
+    const obs = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + 20, filteredCompetitors.length))
+        }
+      }
+    }, { root: null, rootMargin: '200px', threshold: 0 })
+    obs.observe(node)
+    return () => obs.disconnect()
+  }, [filteredCompetitors.length])
+
+  const fetchCompetitors = async () => {
+    try {
+      // Use server-filtered API route for both admin and coach reads
+      const r = await fetch('/api/competitors')
+      if (r.ok) {
+        const j = await r.json()
+        setCompetitors((j.competitors || []) as Competitor[])
+        setIsAdmin(!!j.isAdmin)
+      } else {
+        setCompetitors([])
+      }
+    } catch (error) {
+      console.error('Error fetching competitors:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -97,8 +118,9 @@ export default function CompetitorsPage() {
           <p className="text-gray-600 mt-2">
             Manage your competitors and track their progress
           </p>
+          <ActingAsBanner />
         </div>
-        <CompetitorForm onSuccess={fetchCompetitors} />
+        <CompetitorForm onSuccess={fetchCompetitors} disabled={isAdmin && !ctxLoading && coachId === null} disabledTooltip="Select a coach to edit" />
       </div>
 
       {/* Search and Filters */}
@@ -127,15 +149,22 @@ export default function CompetitorsPage() {
       {/* Competitors List */}
       <Card>
         <CardHeader>
-          <CardTitle>
-            All Competitors ({filteredCompetitors.length})
-          </CardTitle>
-          <CardDescription>
-            {competitors.length === 0 
-              ? 'No competitors added yet. Add your first competitor to get started!'
-              : 'View and manage all competitors in your program'
-            }
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>
+                All Competitors ({filteredCompetitors.length})
+              </CardTitle>
+              <CardDescription>
+                {competitors.length === 0 
+                  ? 'No competitors added yet. Add your first competitor to get started!'
+                  : 'View and manage all competitors in your program'
+                }
+              </CardDescription>
+            </div>
+            <div className="text-sm text-gray-500">
+              Showing {Math.min(visibleCount, filteredCompetitors.length)} of {filteredCompetitors.length}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {filteredCompetitors.length === 0 ? (
@@ -144,7 +173,7 @@ export default function CompetitorsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredCompetitors.map((competitor) => (
+              {filteredCompetitors.slice(0, visibleCount).map((competitor) => (
                 <div
                   key={competitor.id}
                   className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
@@ -180,6 +209,8 @@ export default function CompetitorsPage() {
                   </div>
                 </div>
               ))}
+              {/* Sentinel for infinite scroll */}
+              <div ref={sentinelRef} />
             </div>
           )}
         </CardContent>

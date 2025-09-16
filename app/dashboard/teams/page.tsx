@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase/client';
+import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext';
+import ActingAsBanner from '@/components/admin/ActingAsBanner';
 import { Plus, Minus, Users, X, UserPlus, ChevronDown, ChevronRight, Upload, Image as ImageIcon } from 'lucide-react';
 import {
   DndContext,
@@ -33,6 +35,7 @@ interface Competitor {
   status: string;
   is_active: boolean;
   team_id?: string;
+  coach_id?: string;
 }
 
 interface Team {
@@ -42,6 +45,7 @@ interface Team {
   status: 'forming' | 'active' | 'archived';
   member_count: number;
   image_url?: string;
+  coach_id?: string;
 }
 
 interface TeamMember {
@@ -85,15 +89,16 @@ function TeamImage({ teamId, teamName, hasImage }: { teamId: string; teamName: s
 
         // Generate signed URL for private bucket with RLS
         console.log('Generating signed URL for path:', teamData.image_url);
-        const { data: { signedUrl }, error: signedUrlError } = await supabase.storage
+        const { data: signedData, error: signedUrlError } = await supabase.storage
           .from('team-images')
           .createSignedUrl(teamData.image_url, 60 * 60 * 24 * 7); // 7 days
 
         if (signedUrlError) {
           console.error('Error generating signed URL:', signedUrlError);
         } else {
-          console.log('Generated signed URL:', signedUrl);
-          setImageUrl(signedUrl);
+          const url = signedData?.signedUrl
+          console.log('Generated signed URL:', url);
+          if (url) setImageUrl(url);
         }
       } catch (error) {
         console.error('Error fetching image URL:', error);
@@ -184,13 +189,17 @@ function DroppableTeamCard({
   teamMembers, 
   onDeleteTeam, 
   onRemoveMember,
-  onImageUpload 
+  onImageUpload,
+  disableActions,
+  tooltip
 }: { 
   team: Team; 
   teamMembers: TeamMember[];
   onDeleteTeam: (teamId: string) => void;
   onRemoveMember: (teamId: string, competitorId: string) => void;
   onImageUpload: (teamId: string, file: File) => void;
+  disableActions?: boolean;
+  tooltip?: string;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: team.id,
@@ -234,13 +243,13 @@ function DroppableTeamCard({
               <TeamImage teamId={team.id} teamName={team.name} hasImage={!!team.image_url} />
               
               {/* Upload Overlay */}
-              <label className="absolute inset-0 cursor-pointer opacity-0 hover:opacity-100 transition-opacity">
+              <label className="absolute inset-0 cursor-pointer opacity-0 hover:opacity-100 transition-opacity" title={disableActions ? (tooltip || 'Select a coach to edit') : undefined}>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={handleImageUpload}
                   className="hidden"
-                  disabled={imageUploading}
+                  disabled={imageUploading || !!disableActions}
                 />
                 <div className="w-24 h-24 rounded bg-black/50 flex items-center justify-center">
                   <Upload className="h-6 w-6 text-white" />
@@ -260,11 +269,11 @@ function DroppableTeamCard({
             variant="outline"
             size="sm"
             onClick={() => onDeleteTeam(team.id)}
-            disabled={team.member_count > 0}
+            disabled={team.member_count > 0 || !!disableActions}
             className={`text-red-600 border-red-300 hover:bg-red-50 h-6 w-6 p-0 ${
-              team.member_count > 0 ? 'opacity-50 cursor-not-allowed' : ''
+              (team.member_count > 0 || disableActions) ? 'opacity-50 cursor-not-allowed' : ''
             }`}
-            title={team.member_count > 0 ? 'Remove all members first' : 'Delete team'}
+            title={disableActions ? (tooltip || 'Select a coach to edit') : (team.member_count > 0 ? 'Remove all members first' : 'Delete team')}
           >
             <X className="h-3 w-3" />
           </Button>
@@ -290,6 +299,8 @@ function DroppableTeamCard({
                         variant="outline"
                         onClick={() => onRemoveMember(team.id, member.competitor_id)}
                         className="text-red-600 border-red-300 hover:bg-red-50 h-5 w-5 p-0"
+                        disabled={!!disableActions}
+                        title={disableActions ? (tooltip || 'Select a coach to edit') : 'Remove from team'}
                       >
                         <Minus className="h-3 w-3" />
                       </Button>
@@ -308,6 +319,7 @@ function DroppableTeamCard({
 export const dynamic = 'force-dynamic';
 
 export default function TeamsPage() {
+  const { coachId, loading: ctxLoading } = useAdminCoachContext()
   const [availableCompetitors, setAvailableCompetitors] = useState<Competitor[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamMembers, setTeamMembers] = useState<Record<string, TeamMember[]>>({});
@@ -316,6 +328,7 @@ export default function TeamsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -325,14 +338,17 @@ export default function TeamsPage() {
     })
   );
 
+  // Initial and context-based fetch
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (!ctxLoading) fetchData();
+  }, [ctxLoading, coachId]);
 
   const fetchData = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+      setIsAdmin((profile as any)?.role === 'admin')
 
       // Fetch all competitors through API route (enables admin access)
       const competitorsResponse = await fetch('/api/competitors');
@@ -373,14 +389,22 @@ export default function TeamsPage() {
       }
 
       // Filter available competitors: status != "pending" AND is_active = true AND team_id IS NULL
-      const available = (competitorsData.competitors || []).filter(c => 
+      let available = (competitorsData.competitors || []).filter((c: any) => 
         c.status !== 'pending' && c.is_active && !c.team_id
-      );
+      ) as Competitor[];
+      // Admin with a selected coach: scope available competitors
+      if ((profile as any)?.role === 'admin' && coachId) {
+        available = available.filter(c => c.coach_id === coachId)
+      }
 
-      const teamsWithCounts = (teamsData.teams || []).map(team => ({
+      let teamsWithCounts = (teamsData.teams || []).map((team: any) => ({
         ...team,
         member_count: (membersData[team.id] || []).length
-      }));
+      })) as Team[];
+      // Admin with a selected coach: scope teams
+      if ((profile as any)?.role === 'admin' && coachId) {
+        teamsWithCounts = teamsWithCounts.filter(t => t.coach_id === coachId)
+      }
 
       setAvailableCompetitors(available);
       setTeams(teamsWithCounts);
@@ -394,6 +418,7 @@ export default function TeamsPage() {
 
   const createTeam = async () => {
     if (!newTeamName.trim()) return;
+    if (isAdmin && !ctxLoading && coachId === null) return; // read-only mode
 
     setIsCreatingTeam(true);
     try {
@@ -451,6 +476,14 @@ export default function TeamsPage() {
 
   const addMemberToTeam = async (teamId: string, competitorId: string) => {
     try {
+      if (isAdmin && !ctxLoading && coachId === null) return; // read-only mode
+      // Prevent cross-coach assignment in UI (defense-in-depth; server will enforce in Phase 2)
+      const comp = availableCompetitors.find(c => c.id === competitorId)
+      const team = teams.find(t => t.id === teamId)
+      if (isAdmin && coachId && comp && team && (comp.coach_id && team.coach_id) && (comp.coach_id !== team.coach_id)) {
+        alert('Competitor does not belong to the selected coach context')
+        return
+      }
       const response = await fetch(`/api/teams/${teamId}/members/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -494,6 +527,7 @@ export default function TeamsPage() {
 
   const removeMemberFromTeam = async (teamId: string, competitorId: string) => {
     try {
+      if (isAdmin && !ctxLoading && coachId === null) return; // read-only mode
       const response = await fetch(`/api/teams/${teamId}/members/${competitorId}`, {
         method: 'DELETE',
       });
@@ -508,7 +542,8 @@ export default function TeamsPage() {
             last_name: member.competitor.last_name,
             grade: member.competitor.grade,
             status: 'profile',
-            is_active: true
+            is_active: true,
+            coach_id: coachId || undefined
           }]);
           setTeamMembers(prev => ({
             ...prev,
@@ -531,6 +566,7 @@ export default function TeamsPage() {
 
   const deleteTeam = async (teamId: string) => {
     try {
+      if (isAdmin && !ctxLoading && coachId === null) return; // read-only mode
       const response = await fetch(`/api/teams/${teamId}`, {
         method: 'DELETE',
       });
@@ -546,7 +582,8 @@ export default function TeamsPage() {
             last_name: member.competitor.last_name,
             grade: member.competitor.grade,
             status: 'profile',
-            is_active: true
+            is_active: true,
+            coach_id: coachId || undefined
           }))
         ]);
         
@@ -565,11 +602,15 @@ export default function TeamsPage() {
     }
   };
 
+  const disableAdminAll = isAdmin && !ctxLoading && coachId === null
+
   const handleDragStart = (event: DragStartEvent) => {
+    if (disableAdminAll) return;
     setActiveId(event.active.id as string);
   };
 
   const handleDragOver = (event: DragOverEvent) => {
+    if (disableAdminAll) return;
     const { active, over } = event;
     
     if (!over) return;
@@ -587,6 +628,7 @@ export default function TeamsPage() {
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
+    if (disableAdminAll) { setActiveId(null); return; }
     const { active, over } = event;
     
     if (!over) {
@@ -674,6 +716,7 @@ export default function TeamsPage() {
           <p className="text-meta-muted mt-2">
             Manage teams and assign competitors
           </p>
+          <ActingAsBanner />
         </div>
 
         {/* Two Column Layout */}
@@ -740,10 +783,10 @@ export default function TeamsPage() {
                   />
                   <Button
                     onClick={createTeam}
-                    disabled={!newTeamName.trim() || isCreatingTeam}
+                    disabled={!newTeamName.trim() || isCreatingTeam || disableAdminAll}
                     size="sm"
                     className="bg-meta-accent hover:bg-blue-600"
-                    title="Create new team"
+                    title={disableAdminAll ? 'Select a coach to edit' : 'Create new team'}
                   >
                     {isCreatingTeam ? 'Creating...' : <Plus className="h-4 w-4" />}
                   </Button>
@@ -767,6 +810,8 @@ export default function TeamsPage() {
                       onDeleteTeam={deleteTeam}
                       onRemoveMember={removeMemberFromTeam}
                       onImageUpload={uploadTeamImage}
+                      disableActions={disableAdminAll}
+                      tooltip="Select a coach to edit"
                     />
                   ))
                 )}

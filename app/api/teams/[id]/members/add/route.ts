@@ -22,8 +22,12 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user is admin
+    // Check if user is admin and resolve acting context
     const isAdmin = await isUserAdmin(supabase, user.id);
+    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    if (isAdmin && !actingCoachId) {
+      return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
+    }
 
     // Parse and validate request body
     const body = await request.json();
@@ -37,6 +41,8 @@ export async function POST(
 
     if (!isAdmin) {
       teamQuery = teamQuery.eq('coach_id', user.id);
+    } else {
+      teamQuery = teamQuery.eq('coach_id', actingCoachId as string)
     }
 
     const { data: team, error: teamError } = await teamQuery.single();
@@ -53,6 +59,8 @@ export async function POST(
 
     if (!isAdmin) {
       competitorQuery = competitorQuery.eq('coach_id', user.id);
+    } else {
+      competitorQuery = competitorQuery.eq('coach_id', actingCoachId as string)
     }
 
     const { data: competitor, error: competitorError } = await competitorQuery.single();

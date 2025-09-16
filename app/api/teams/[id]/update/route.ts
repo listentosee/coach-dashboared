@@ -15,7 +15,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user is admin
+    // Check if user is admin and resolve acting context
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
@@ -23,6 +23,10 @@ export async function PUT(
       .single();
 
     const isAdmin = profile?.role === 'admin';
+    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    if (isAdmin && !actingCoachId) {
+      return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
+    }
     const teamId = params.id;
 
     // Get request body
@@ -35,6 +39,14 @@ export async function PUT(
     if (image_url !== undefined) updateData.image_url = image_url;
     if (division !== undefined) updateData.division = division;
     if (status !== undefined) updateData.status = status;
+
+    // Verify ownership when admin
+    if (isAdmin) {
+      const { data: teamOwn } = await supabase.from('teams').select('id,coach_id').eq('id', teamId).single()
+      if (!teamOwn || teamOwn.coach_id !== actingCoachId) {
+        return NextResponse.json({ error: 'Target not owned by selected coach' }, { status: 403 })
+      }
+    }
 
     // Update team
     const { data: team, error } = await supabase

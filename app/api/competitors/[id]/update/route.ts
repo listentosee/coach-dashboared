@@ -33,13 +33,18 @@ export async function PUT(
     const body = await request.json();
     const validatedData = UpdateCompetitorSchema.parse(body);
 
-    // Allow admins to edit any competitor; coaches only their own
+    // Determine admin context
     const isAdmin = await isUserAdmin(supabase, user.id);
+    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    if (isAdmin && !actingCoachId) {
+      return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
+    }
     let verifyQuery = supabase
       .from('competitors')
       .select('id')
       .eq('id', params.id);
     if (!isAdmin) verifyQuery = verifyQuery.eq('coach_id', user.id);
+    else verifyQuery = verifyQuery.eq('coach_id', actingCoachId as string);
     const { data: existingCompetitor, error: checkError } = await verifyQuery.single();
 
     if (checkError || !existingCompetitor) {
@@ -110,7 +115,8 @@ export async function PUT(
         entity_id: competitor.id,
         metadata: { 
           competitor_name: `${competitor.first_name} ${competitor.last_name}`,
-          coach_id: user.id
+          coach_id: competitor.coach_id,
+          acting_coach_id: isAdmin ? actingCoachId : undefined
         }
       });
 

@@ -37,7 +37,7 @@ const formSchema = z.object({
   division: z.enum(['middle_school','high_school','college'], { required_error: 'Division is required' }),
 });
 
-export function CompetitorForm({ onSuccess, variant = 'default' }: { onSuccess?: () => void; variant?: 'default' | 'compact' }) {
+export function CompetitorForm({ onSuccess, variant = 'default', disabled = false, disabledTooltip }: { onSuccess?: () => void; variant?: 'default' | 'compact'; disabled?: boolean; disabledTooltip?: string }) {
   const [open, setOpen] = useState(false);
   const [profileLink, setProfileLink] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -147,11 +147,11 @@ export function CompetitorForm({ onSuccess, variant = 'default' }: { onSuccess?:
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {variant === 'compact' ? (
-          <Button size="sm" className="h-8 w-8 p-0">
+          <Button size="sm" className="h-8 w-8 p-0" disabled={disabled} title={disabled ? (disabledTooltip || 'Select a coach to edit') : undefined}>
             <Plus className="h-4 w-4" />
           </Button>
         ) : (
-          <Button>
+          <Button disabled={disabled} title={disabled ? (disabledTooltip || 'Select a coach to edit') : undefined}>
             <PlusCircle className="mr-2 h-4 w-4" />
             Add Competitor
           </Button>

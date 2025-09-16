@@ -26,7 +26,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('Session user ID:', user.id);
+    // Determine acting context
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+    const isAdmin = profile?.role === 'admin'
+    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    if (isAdmin && !actingCoachId) {
+      return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
+    }
 
     // Parse and validate request body
     const body = await request.json();
@@ -39,7 +45,7 @@ export async function POST(request: NextRequest) {
       const { data: existingStudent } = await supabase
         .from('competitors')
         .select('id, first_name, last_name')
-        .eq('coach_id', user.id)
+        .eq('coach_id', isAdmin ? (actingCoachId as string) : user.id)
         .eq('game_platform_id', validatedData.game_platform_id)
         .maybeSingle();
       if (existingStudent) {
@@ -51,7 +57,7 @@ export async function POST(request: NextRequest) {
 
     // Create competitor record
     const insertData = {
-      coach_id: user.id,
+      coach_id: isAdmin ? (actingCoachId as string) : user.id,
       first_name: validatedData.first_name,
       last_name: validatedData.last_name,
       is_18_or_over: typeof validatedData.is_18_or_over === 'boolean' ? validatedData.is_18_or_over : null,
@@ -92,7 +98,8 @@ export async function POST(request: NextRequest) {
         entity_id: competitor.id,
         metadata: { 
           competitor_name: `${competitor.first_name} ${competitor.last_name}`,
-          coach_id: user.id
+          coach_id: insertData.coach_id,
+          acting_coach_id: isAdmin ? actingCoachId : undefined
         }
       });
 

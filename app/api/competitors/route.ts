@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
 
     // Check if user is admin
     const isAdmin = await isUserAdmin(supabase, user.id);
+    const coachContext = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null;
 
     // Build the query - admins see all, coaches see only their own
     let query = supabase
@@ -43,6 +44,8 @@ export async function GET(request: NextRequest) {
     // Apply coach filtering only for non-admin users
     if (!isAdmin) {
       query = query.eq('coach_id', user.id);
+    } else if (coachContext) {
+      query = query.eq('coach_id', coachContext);
     }
 
     // Execute the query

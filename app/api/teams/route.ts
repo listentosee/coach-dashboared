@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     }
 
     const isAdmin = await isUserAdmin(supabase, user.id);
+    const coachContext = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null;
 
     let query = supabase
       .from('teams')
@@ -21,6 +22,8 @@ export async function GET(request: NextRequest) {
 
     if (!isAdmin) {
       query = query.eq('coach_id', user.id);
+    } else if (coachContext) {
+      query = query.eq('coach_id', coachContext);
     }
 
     const { data: teams, error: teamsError } = await query;

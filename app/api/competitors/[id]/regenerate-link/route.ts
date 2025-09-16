@@ -16,13 +16,22 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Verify the competitor belongs to the authenticated coach
-    const { data: competitor, error: fetchError } = await supabase
+    // Determine admin context
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+    const isAdmin = profile?.role === 'admin'
+    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    if (isAdmin && !actingCoachId) {
+      return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
+    }
+
+    // Verify the competitor belongs to the correct coach
+    let q = supabase
       .from('competitors')
       .select('id, first_name, last_name')
       .eq('id', params.id)
-      .eq('coach_id', user.id)
-      .single();
+    if (isAdmin) q = q.eq('coach_id', actingCoachId as string)
+    else q = q.eq('coach_id', user.id)
+    const { data: competitor, error: fetchError } = await q.single();
 
     if (fetchError || !competitor) {
       return NextResponse.json({ error: 'Competitor not found or access denied' }, { status: 404 });
@@ -66,7 +75,8 @@ export async function POST(
         entity_id: competitor.id,
         metadata: { 
           competitor_name: `${competitor.first_name} ${competitor.last_name}`,
-          coach_id: user.id
+          coach_id: isAdmin ? actingCoachId : user.id,
+          acting_coach_id: isAdmin ? actingCoachId : undefined
         }
       });
 

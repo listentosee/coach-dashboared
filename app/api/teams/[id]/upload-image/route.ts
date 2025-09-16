@@ -8,6 +8,13 @@ export async function POST(
 ) {
   try {
     const { id: teamId } = params;
+    const supabase = createRouteHandlerClient({ cookies });
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+    const isAdmin = profile?.role === 'admin'
+    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    if (isAdmin && !actingCoachId) return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
     
     // Get the form data
     const formData = await request.formData();
@@ -19,9 +26,6 @@ export async function POST(
         { status: 400 }
       );
     }
-
-    // Create authenticated client (respects RLS)
-    const supabase = createRouteHandlerClient({ cookies });
 
     // Get team data including coach_id
     const { data: teamData, error: teamError } = await supabase
@@ -35,6 +39,11 @@ export async function POST(
         { error: 'Team not found' },
         { status: 404 }
       );
+    }
+
+    // Enforce admin context ownership
+    if (isAdmin && teamData.coach_id !== actingCoachId) {
+      return NextResponse.json({ error: 'Target not owned by selected coach' }, { status: 403 })
     }
 
     // Generate filename using original name and organize by coach

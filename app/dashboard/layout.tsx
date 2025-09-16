@@ -20,6 +20,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import AdminToolsLink from '@/components/dashboard/admin-tools-link';
+import AdminContextSwitcher from '@/components/admin/AdminContextSwitcher';
 
 export default function DashboardLayout({
   children,
@@ -83,6 +84,10 @@ export default function DashboardLayout({
   }, [])
 
   const handleSignOut = async () => {
+    try {
+      // Clear admin context cookie server-side before logout
+      await fetch('/api/admin/context', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coach_id: null }) })
+    } catch {}
     await supabase.auth.signOut();
     router.push('/auth/login');
   };
@@ -230,6 +235,8 @@ export default function DashboardLayout({
       {/* Main Content */}
       <main className={`lg:ml-64 transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}>
         <div className="p-6">
+          {/* Admin-only: Context switcher renders nothing for non-admins */}
+          <AdminContextSwitcher />
           {children}
         </div>
       </main>

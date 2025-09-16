@@ -65,6 +65,16 @@ CREATE EXTENSION IF NOT EXISTS "wrappers" WITH SCHEMA "extensions";
 
 
 
+CREATE TYPE "public"."competitor_division" AS ENUM (
+    'middle_school',
+    'high_school',
+    'college'
+);
+
+
+ALTER TYPE "public"."competitor_division" OWNER TO "postgres";
+
+
 CREATE TYPE "public"."completion_source" AS ENUM (
     'zoho',
     'manual'
@@ -106,6 +116,26 @@ $$;
 
 
 ALTER FUNCTION "public"."check_team_size"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."count_unread_by_receipts"("p_user_id" "uuid") RETURNS integer
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  select coalesce(sum(t.cnt), 0)::int from (
+    select count(*) as cnt
+    from public.conversation_members cm
+    join public.messages m on m.conversation_id = cm.conversation_id
+    left join public.message_read_receipts r on r.message_id = m.id and r.user_id = p_user_id
+    where cm.user_id = p_user_id
+      and m.sender_id <> p_user_id
+      and r.id is null
+    group by cm.conversation_id
+  ) as t;
+$$;
+
+
+ALTER FUNCTION "public"."count_unread_by_receipts"("p_user_id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."count_unread_messages"("p_user_id" "uuid") RETURNS integer
@@ -350,7 +380,11 @@ CREATE OR REPLACE FUNCTION "public"."get_thread_messages"("p_thread_root_id" big
   with root as (
     select case
       when m.thread_root_id is not null then m.thread_root_id
-      when m.parent_message_id is not null then (select coalesce(mm.thread_root_id, mm.id) from public.messages mm where mm.id = m.parent_message_id)
+      when m.parent_message_id is not null then (
+        select coalesce(mm.thread_root_id, mm.id)
+        from public.messages mm
+        where mm.id = m.parent_message_id
+      )
       else m.id
     end as rid,
     m.conversation_id
@@ -376,6 +410,13 @@ CREATE OR REPLACE FUNCTION "public"."get_thread_messages"("p_thread_root_id" big
     and exists (
       select 1 from public.conversation_members cm
       where cm.conversation_id = r.conversation_id and cm.user_id = auth.uid()
+    )
+    and (
+      -- visible to all: messages without private_to
+      coalesce((m.metadata ->> 'private_to')::uuid, '00000000-0000-0000-0000-000000000000'::uuid) = '00000000-0000-0000-0000-000000000000'::uuid
+      or (m.metadata ->> 'private_to')::uuid = auth.uid()
+      or m.sender_id = auth.uid()
+      or public.is_admin(auth.uid())
     )
   order by m.created_at asc;
 $$;
@@ -553,6 +594,78 @@ $$;
 ALTER FUNCTION "public"."list_coaches_minimal"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."list_conversations_enriched"("p_user_id" "uuid") RETURNS TABLE("id" "uuid", "type" "text", "title" "text", "created_by" "uuid", "created_at" timestamp with time zone, "unread_count" integer, "last_message_at" timestamp with time zone, "display_title" "text")
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  with user_convos as (
+    select c.id, c.type, c.title, c.created_by, c.created_at
+    from public.conversations c
+    join public.conversation_members cm on cm.conversation_id = c.id and cm.user_id = p_user_id
+  ),
+  last_msg as (
+    select m.conversation_id, max(m.created_at) as last_message_at
+    from public.messages m
+    join user_convos uc on uc.id = m.conversation_id
+    group by m.conversation_id
+  ),
+  unread as (
+    select uc.id as conversation_id, count(m.id)::int as unread_count
+    from user_convos uc
+    join public.messages m on m.conversation_id = uc.id and m.sender_id <> p_user_id
+    left join public.message_read_receipts r on r.message_id = m.id and r.user_id = p_user_id
+    where r.id is null
+    group by uc.id
+  )
+  select 
+    uc.id,
+    uc.type,
+    uc.title,
+    uc.created_by,
+    uc.created_at,
+    coalesce(u.unread_count, 0) as unread_count,
+    lm.last_message_at,
+    case
+      when uc.type = 'announcement' then coalesce(nullif(trim(uc.title), ''), 'Announcement')
+      when uc.type = 'dm' then coalesce(
+        (
+          select nullif(trim(p.first_name || ' ' || p.last_name), '')
+          from public.conversation_members cm
+          join public.profiles p on p.id = cm.user_id
+          where cm.conversation_id = uc.id and cm.user_id <> p_user_id
+          limit 1
+        ),
+        (
+          select p.email
+          from public.conversation_members cm
+          join public.profiles p on p.id = cm.user_id
+          where cm.conversation_id = uc.id and cm.user_id <> p_user_id
+          limit 1
+        ),
+        'Direct Message'
+      )
+      when uc.type = 'group' then coalesce(
+        nullif(trim(uc.title), ''),
+        (
+          select string_agg(coalesce(nullif(trim(p.first_name || ' ' || p.last_name), ''), p.email), ', ')
+          from public.conversation_members cm
+          join public.profiles p on p.id = cm.user_id
+          where cm.conversation_id = uc.id and cm.user_id <> p_user_id
+        ),
+        'Group Conversation'
+      )
+      else uc.title
+    end as display_title
+  from user_convos uc
+  left join last_msg lm on lm.conversation_id = uc.id
+  left join unread u on u.conversation_id = uc.id
+  order by coalesce(lm.last_message_at, uc.created_at) desc;
+$$;
+
+
+ALTER FUNCTION "public"."list_conversations_enriched"("p_user_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."list_conversations_with_unread"("p_user_id" "uuid") RETURNS TABLE("id" "uuid", "type" "text", "title" "text", "created_by" "uuid", "created_at" timestamp with time zone, "unread_count" integer, "last_message_at" timestamp with time zone)
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -660,13 +773,7 @@ CREATE OR REPLACE FUNCTION "public"."list_threads"("p_conversation_id" "uuid", "
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
-  with membership as (
-    select cm.last_read_at
-    from public.conversation_members cm
-    where cm.conversation_id = p_conversation_id and cm.user_id = auth.uid()
-    limit 1
-  ),
-  roots as (
+  with roots as (
     select m.id as root_id,
            m.sender_id,
            m.created_at,
@@ -688,9 +795,8 @@ CREATE OR REPLACE FUNCTION "public"."list_threads"("p_conversation_id" "uuid", "
            count(m.id)::int as unread_count
     from roots rt
     join public.messages m on (m.id = rt.root_id or m.thread_root_id = rt.root_id)
-    cross join membership mb
-    where m.sender_id <> auth.uid()
-      and (mb.last_read_at is null or m.created_at > mb.last_read_at)
+    left join public.message_read_receipts r on r.message_id = m.id and r.user_id = auth.uid()
+    where m.sender_id <> auth.uid() and r.id is null
     group by rt.root_id
   )
   select 
@@ -991,7 +1097,8 @@ CREATE TABLE IF NOT EXISTS "public"."competitors" (
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "is_active" boolean DEFAULT true,
-    "status" "text" DEFAULT 'pending'::"text"
+    "status" "text" DEFAULT 'pending'::"text",
+    "division" "public"."competitor_division"
 );
 
 
@@ -1357,6 +1464,10 @@ CREATE INDEX "idx_competitors_coach_id" ON "public"."competitors" USING "btree" 
 
 
 
+CREATE INDEX "idx_competitors_division_active" ON "public"."competitors" USING "btree" ("coach_id", "division", "is_active");
+
+
+
 CREATE INDEX "idx_competitors_game_platform_id" ON "public"."competitors" USING "btree" ("game_platform_id");
 
 
@@ -1430,7 +1541,7 @@ CREATE OR REPLACE TRIGGER "update_teams_updated_at" BEFORE UPDATE ON "public"."t
 
 
 ALTER TABLE ONLY "public"."activity_logs"
-    ADD CONSTRAINT "activity_logs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id");
+    ADD CONSTRAINT "activity_logs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
 
 
 
@@ -2112,6 +2223,12 @@ GRANT ALL ON FUNCTION "public"."check_team_size"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."count_unread_by_receipts"("p_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."count_unread_by_receipts"("p_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."count_unread_by_receipts"("p_user_id" "uuid") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."count_unread_messages"("p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."count_unread_messages"("p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."count_unread_messages"("p_user_id" "uuid") TO "service_role";
@@ -2199,6 +2316,12 @@ GRANT ALL ON FUNCTION "public"."list_admins_minimal"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."list_coaches_minimal"() TO "anon";
 GRANT ALL ON FUNCTION "public"."list_coaches_minimal"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."list_coaches_minimal"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."list_conversations_enriched"("p_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."list_conversations_enriched"("p_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."list_conversations_enriched"("p_user_id" "uuid") TO "service_role";
 
 
 

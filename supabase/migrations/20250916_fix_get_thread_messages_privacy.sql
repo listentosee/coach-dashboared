@@ -1,27 +1,8 @@
--- Fix threading trigger to set correct thread_root_id and harden thread fetch
+-- Align get_thread_messages with privacy rules from list_messages_with_sender_v2
+-- Only the sender, the intended recipient (metadata.private_to), and admins
+-- should see private replies within a thread. Others see only public messages.
 begin;
 
--- Correct update_thread_stats: use parent's id when parent.thread_root_id is null
-create or replace function update_thread_stats()
-returns trigger as $$
-begin
-  if new.parent_message_id is not null then
-    -- bump parent stats
-    update public.messages
-       set thread_reply_count = coalesce(thread_reply_count, 0) + 1,
-           thread_last_reply_at = new.created_at
-     where id = new.parent_message_id;
-
-    -- set thread root to parent's root or the parent id
-    select coalesce(m.thread_root_id, m.id)
-      into new.thread_root_id
-      from public.messages m
-     where m.id = new.parent_message_id;
-  end if;
-  return new;
-end; $$ language plpgsql;
-
--- Harden get_thread_messages to include children that only have parent_message_id
 create or replace function public.get_thread_messages(p_thread_root_id bigint)
 returns table (
   id bigint,
@@ -40,7 +21,11 @@ as $$
   with root as (
     select case
       when m.thread_root_id is not null then m.thread_root_id
-      when m.parent_message_id is not null then (select coalesce(mm.thread_root_id, mm.id) from public.messages mm where mm.id = m.parent_message_id)
+      when m.parent_message_id is not null then (
+        select coalesce(mm.thread_root_id, mm.id)
+        from public.messages mm
+        where mm.id = m.parent_message_id
+      )
       else m.id
     end as rid,
     m.conversation_id
@@ -68,6 +53,7 @@ as $$
       where cm.conversation_id = r.conversation_id and cm.user_id = auth.uid()
     )
     and (
+      -- visible to all: messages without private_to
       coalesce((m.metadata ->> 'private_to')::uuid, '00000000-0000-0000-0000-000000000000'::uuid) = '00000000-0000-0000-0000-000000000000'::uuid
       or (m.metadata ->> 'private_to')::uuid = auth.uid()
       or m.sender_id = auth.uid()
@@ -76,19 +62,9 @@ as $$
   order by m.created_at asc;
 $$;
 
--- Recompute stats once to repair existing data (skip silently if helper funcs not present)
-do $$ begin
-  perform public.recompute_thread_roots(null::uuid);
-exception when undefined_function then
-  -- helper not installed; skip
-  null;
-end $$;
-
-do $$ begin
-  perform public.recompute_thread_stats(null::uuid);
-exception when undefined_function then
-  -- helper not installed; skip
-  null;
-end $$;
+grant execute on function public.get_thread_messages(bigint) to anon;
+grant execute on function public.get_thread_messages(bigint) to authenticated;
+grant execute on function public.get_thread_messages(bigint) to service_role;
 
 commit;
+

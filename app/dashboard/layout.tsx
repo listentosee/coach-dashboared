@@ -43,7 +43,7 @@ export default function DashboardLayout({
         // Fetch coach profile
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('first_name, last_name')
+          .select('first_name, last_name, role')
           .eq('id', user.id)
           .single();
         
@@ -196,6 +196,13 @@ export default function DashboardLayout({
                       Profile & Settings
                     </Button>
                   </Link>
+                  {profile?.role !== 'admin' && (
+                    <Link href="/dashboard/bulk-import">
+                      <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
+                        Bulk Import
+                      </Button>
+                    </Link>
+                  )}
                   <Button 
                     variant="ghost" 
                     size="sm" 

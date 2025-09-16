@@ -6,21 +6,21 @@ export default function CompetitionsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-meta-light">Competitions</h1>
+        <h1 className="text-3xl font-bold text-meta-light">Game Platform</h1>
         <p className="text-meta-muted mt-2">
-          Manage competition registrations and results
+          Manage platform registrations and status
         </p>
       </div>
 
       <Card className="bg-meta-card border-meta-border">
         <CardHeader>
-          <CardTitle className="text-meta-light">Competition Management</CardTitle>
+          <CardTitle className="text-meta-light">Game Platform Management</CardTitle>
           <CardDescription className="text-meta-muted">
-            Register teams and track competition performance
+            Register teams and synchronize with the game platform
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-meta-muted">Competition features coming soon...</p>
+          <p className="text-meta-muted">Game platform features coming soon...</p>
         </CardContent>
       </Card>
     </div>

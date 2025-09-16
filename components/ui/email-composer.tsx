@@ -38,7 +38,8 @@ export const EmailComposer: React.FC<EmailComposerProps> = ({ to, from, template
 
 // Predefined email templates
 export const emailTemplates = {
-  profileUpdate: (competitorName: string, profileLink: string, coachName: string): EmailTemplate => ({
+  // Note: Keep signature minimal per feedback — end after "Thank you,"
+  profileUpdate: (competitorName: string, profileLink: string, _coachName: string): EmailTemplate => ({
     subject: "Mayors Cup Competitor Profile Update Request",
     body: `Dear ${competitorName},
 
@@ -48,18 +49,16 @@ ${profileLink}
 
 Complete your profile to participate in this year's Mayors Cup program.
 
-Thank you,
-${coachName}`
+Thank you,`
   }),
   
   // Add more templates as needed
-  releaseRequest: (competitorName: string, coachName: string): EmailTemplate => ({
+  releaseRequest: (competitorName: string, _coachName: string): EmailTemplate => ({
     subject: "Mayors Cup Release Form Request",
     body: `Dear ${competitorName},
 
 Please complete the release form to participate in this year's Mayors Cup program.
 
-Thank you,
-${coachName}`
+Thank you,`
   })
 };

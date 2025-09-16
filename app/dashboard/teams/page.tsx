@@ -388,9 +388,9 @@ export default function TeamsPage() {
         }
       }
 
-      // Filter available competitors: status != "pending" AND is_active = true AND team_id IS NULL
+      // Filter available competitors: active and not on a team (include all statuses)
       let available = (competitorsData.competitors || []).filter((c: any) => 
-        c.status !== 'pending' && c.is_active && !c.team_id
+        c.is_active && !c.team_id
       ) as Competitor[];
       // Admin with a selected coach: scope available competitors
       if ((profile as any)?.role === 'admin' && coachId) {

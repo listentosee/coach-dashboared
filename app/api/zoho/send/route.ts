@@ -142,6 +142,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing recipient email for this template' }, { status: 400 });
   }
 
+  // Basic email format validation to reduce bounces
+  const emailRegex = /.+@.+\..+/;
+  if (!emailRegex.test(String(recipient.email).trim())) {
+    return NextResponse.json({ error: 'Recipient email appears invalid. Please correct it before sending.' }, { status: 400 });
+  }
+
   const actionPayload: any = {
     action_id: action.action_id,
     action_type: mode === 'print' ? 'SIGN' : 'SIGN', // Both modes use SIGN, print just indicates manual upload

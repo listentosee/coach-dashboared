@@ -144,7 +144,7 @@ export default function DashboardLayout({
             <Link href="/dashboard/competitions">
               <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
                 <Trophy className="h-5 w-5 mr-3" />
-                Competitions
+                Game Platform
               </Button>
             </Link>
             

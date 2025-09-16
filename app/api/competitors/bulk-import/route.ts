@@ -88,8 +88,10 @@ export async function POST(req: NextRequest) {
         if (isAdult) {
           if (!isValidEmail(email_school)) throw new Error('Adult requires valid school email')
         } else {
-          // Parent details optional on import; if provided, validate parent email
-          if (parent_email && !isValidEmail(parent_email)) throw new Error('Parent email is invalid')
+          // If parent name provided, parent email is required and must be valid
+          if (parent_name && !isValidEmail(parent_email)) throw new Error('Parent email is required and must be valid when parent name is provided')
+          // If no parent name, allow missing parent email; if present, must be valid
+          if (!parent_name && parent_email && !isValidEmail(parent_email)) throw new Error('Parent email is invalid')
         }
         if (division && !allowedDivisions.includes(division)) throw new Error('Invalid division')
         if (gender && !allowedGenders.includes(gender)) throw new Error('Invalid gender')

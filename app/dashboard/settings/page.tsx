@@ -42,7 +42,6 @@ export default function CoachToolsPage() {
     last_name: '',
     school_name: '',
     mobile_number: '',
-    division: '',
     region: '',
   });
   const [passwordForm, setPasswordForm] = useState({
@@ -73,7 +72,6 @@ export default function CoachToolsPage() {
           last_name: profileData.last_name || '',
           school_name: profileData.school_name || '',
           mobile_number: profileData.mobile_number || '',
-          division: profileData.division || '',
           region: profileData.region || '',
         });
       }
@@ -94,9 +92,8 @@ export default function CoachToolsPage() {
         .update({
           first_name: profileForm.first_name,
           last_name: profileForm.last_name,
-          school_name: profileForm.school_name,
+          // school_name is sourced from Monday sync; keep read-only in UI
           mobile_number: profileForm.mobile_number || null,
-          division: profileForm.division || null,
           region: profileForm.region || null,
         })
         .eq('id', user.id);
@@ -241,37 +238,27 @@ export default function CoachToolsPage() {
             </div>
           </div>
           <div>
-            <Label htmlFor="school_name" className="text-meta-light">School Name</Label>
+          <Label htmlFor="school_name" className="text-meta-light">School Name</Label>
+          <Input
+            id="school_name"
+            value={profileForm.school_name}
+            disabled
+            className="bg-meta-muted border-meta-border text-meta-muted"
+            placeholder="School name (managed by Monday integration)"
+          />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="mobile_number" className="text-meta-light">Mobile Number</Label>
             <Input
-              id="school_name"
-              value={profileForm.school_name}
-              onChange={(e) => setProfileForm(prev => ({ ...prev, school_name: e.target.value }))}
+              id="mobile_number"
+              value={profileForm.mobile_number}
+              onChange={(e) => setProfileForm(prev => ({ ...prev, mobile_number: e.target.value }))}
               className="bg-meta-card border-meta-border text-meta-light"
-              placeholder="Enter your school name"
+              placeholder="Enter your mobile number"
             />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="mobile_number" className="text-meta-light">Mobile Number</Label>
-              <Input
-                id="mobile_number"
-                value={profileForm.mobile_number}
-                onChange={(e) => setProfileForm(prev => ({ ...prev, mobile_number: e.target.value }))}
-                className="bg-meta-card border-meta-border text-meta-light"
-                placeholder="Enter your mobile number"
-              />
-            </div>
-            <div>
-              <Label htmlFor="division" className="text-meta-light">Division</Label>
-              <Input
-                id="division"
-                value={profileForm.division}
-                onChange={(e) => setProfileForm(prev => ({ ...prev, division: e.target.value }))}
-                className="bg-meta-card border-meta-border text-meta-light"
-                placeholder="Enter your division"
-              />
-            </div>
-          </div>
+        </div>
           <div>
             <Label htmlFor="region" className="text-meta-light">Region</Label>
             <Input

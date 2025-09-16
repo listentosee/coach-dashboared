@@ -45,7 +45,7 @@ const FIELDS: FieldConfig[] = [
   { key: 'gender', label: 'Gender (male | female | other | prefer_not_to_say)' },
   { key: 'race', label: 'Race (white | black | hispanic | asian | native | pacific | other)' },
   { key: 'ethnicity', label: 'Ethnicity (not_hispanic | hispanic)' },
-  { key: 'level_of_technology', label: 'Level of Technology (beginner | intermediate | advanced | expert)' },
+  { key: 'level_of_technology', label: 'Level of Technology (PC | MAC | Chrome book | Linux | Other)' },
   { key: 'years_competing', label: 'Years Competing (0-20)' },
 ]
 
@@ -209,8 +209,10 @@ export default function BulkImportPage() {
       if (isAdult === true) {
         if (!isValidEmail(row.email_school)) rowErr.push('Adult requires valid school email')
       } else if (isAdult === false) {
-        // Parent details are optional on import; if provided, validate format
-        if (row.parent_email && !isValidEmail(row.parent_email)) rowErr.push('Parent email is invalid (optional)')
+        // Validate parent email when parent name is provided (required if name present)
+        if (row.parent_name && !isValidEmail(row.parent_email)) rowErr.push('Parent email is required and must be valid when parent name is provided')
+        // If no parent name, allow parent email to be empty
+        if (!row.parent_name && row.parent_email && !isValidEmail(row.parent_email)) rowErr.push('Parent email is invalid')
       }
       // Optional enumerations (if provided, must be valid)
       if (row.division && !allowedDivisions.includes(row.division.trim().toLowerCase())) rowErr.push('Invalid division')

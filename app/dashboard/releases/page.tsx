@@ -131,6 +131,20 @@ export default function ReleaseManagementPage() {
     try {
       setSending(competitorId);
       
+      // Validate recipient email before initiating Zoho per feedback
+      const comp = competitors.find(c => c.id === competitorId)
+      if (!comp) throw new Error('Competitor not found')
+      const emailRegex = /.+@.+\..+/
+      if (comp.is_18_or_over) {
+        if (!emailRegex.test((comp.email_school || '').trim())) {
+          throw new Error('Adult competitor requires a valid school email before sending.')
+        }
+      } else {
+        if (!emailRegex.test((comp.parent_email || '').trim())) {
+          throw new Error('Parent email is required and must be valid before sending.')
+        }
+      }
+
       const response = await fetch('/api/zoho/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -509,9 +523,14 @@ export default function ReleaseManagementPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-meta-light">Release Management</h1>
-          <p className="text-meta-muted mt-2">
-            Manage release forms and track signing status. Only active competitors with complete profiles (status: profile or higher) are shown.
-          </p>
+          <div className="text-meta-muted mt-2 space-y-2">
+            <p>Manage release forms and track signing status. Only active competitors with complete profiles (status: profile or higher) are shown.</p>
+            <div className="text-sm">
+              <div className="text-meta-light font-medium">How to send:</div>
+              <div>- Digital send: Click Send Release (Email) to email the signer.</div>
+              <div>- Manual send: Click Send Release (Print) to generate a pre-filled PDF, have it signed on paper, then upload it via “Upload Signed Document”.</div>
+            </div>
+          </div>
           <ActingAsBanner />
         </div>
         <Button onClick={fetchData} variant="outline" className="text-meta-light border-meta-border">

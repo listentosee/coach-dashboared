@@ -84,8 +84,11 @@ export async function POST(request: NextRequest) {
 
     console.log('Competitor created successfully:', competitor);
 
-    // Generate profile update link
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${process.env.VERCEL_URL}` || 'http://localhost:3000';
+    // Generate profile update link using current request origin (production-safe)
+    const forwardedProto = request.headers.get('x-forwarded-proto') || 'https'
+    const host = request.headers.get('host')
+    const originFromRequest = host ? `${forwardedProto}://${host}` : undefined
+    const baseUrl = originFromRequest || process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
     const profileUpdateUrl = `${baseUrl}/update-profile/${competitor.profile_update_token}`;
 
     // Log activity

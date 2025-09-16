@@ -352,14 +352,15 @@ export default function UpdateProfilePage() {
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
-                                <SelectValue placeholder="Select level" />
+                                <SelectValue placeholder="Select platform" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent className="bg-meta-card border-meta-border text-meta-light">
-                              <SelectItem value="beginner">Beginner</SelectItem>
-                              <SelectItem value="intermediate">Intermediate</SelectItem>
-                              <SelectItem value="advanced">Advanced</SelectItem>
-                              <SelectItem value="expert">Expert</SelectItem>
+                              <SelectItem value="pc">PC</SelectItem>
+                              <SelectItem value="mac">MAC</SelectItem>
+                              <SelectItem value="chrome book">Chrome book</SelectItem>
+                              <SelectItem value="linux">Linux</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />

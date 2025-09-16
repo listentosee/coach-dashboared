@@ -387,6 +387,12 @@ export default function DashboardPage() {
             <CardDescription className="text-meta-muted">Pending, Profile, Compliance, Complete</CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="text-[11px] text-meta-muted mb-3 grid grid-cols-2 gap-y-1 gap-x-4">
+              <div><span className="text-meta-light">Pending:</span> Waiting for profile update</div>
+              <div><span className="text-meta-light">Profile:</span> Waiting for release completion</div>
+              <div><span className="text-meta-light">Compliance:</span> Release form is complete</div>
+              <div><span className="text-meta-light">Complete:</span> On the game platform</div>
+            </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="bg-meta-dark rounded p-3">
                 <div className="text-xs text-meta-muted">Pending</div>

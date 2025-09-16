@@ -18,10 +18,10 @@ export const ALLOWED_ETHNICITIES = [
 ] as const
 
 export const ALLOWED_LEVELS_OF_TECHNOLOGY = [
-  'beginner', 'intermediate', 'advanced', 'expert',
+  // Device/OS choices per feedback; store canonical lowercase tokens
+  'pc', 'mac', 'chrome book', 'linux', 'other',
 ] as const
 
 export const ALLOWED_GRADES = [
   '6','7','8','9','10','11','12','college',
 ] as const
-

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase/client'
 
 export type AdminCoachContext = {
   coachId: string | null
@@ -17,6 +18,16 @@ export function useAdminCoachContext(): AdminCoachContext {
   const load = async () => {
     setLoading(true)
     try {
+      // First, determine if current user is an admin. If not, avoid hitting admin endpoint.
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setCoachId(null); setCoachName(null); return }
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+      const isAdmin = (profile as any)?.role === 'admin'
+      if (!isAdmin) {
+        setCoachId(null)
+        setCoachName(null)
+        return
+      }
       const r = await fetch('/api/admin/context')
       if (r.ok) {
         const json = await r.json()
@@ -38,4 +49,3 @@ export function useAdminCoachContext(): AdminCoachContext {
 
   return { coachId, coachName, loading, refresh: load }
 }
-

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { supabase } from '@/lib/supabase/client'
 
 type Coach = { id: string; name?: string; email?: string }
 
@@ -19,23 +20,24 @@ export default function AdminContextSwitcher() {
   const load = async () => {
     setLoading(true)
     try {
+      // Avoid 403 noise: check role client-side first
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setVisible(false); return }
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+      const isAdmin = (profile as any)?.role === 'admin'
+      if (!isAdmin) { setVisible(false); return }
       const r = await fetch('/api/admin/context')
-      if (r.status === 403 || r.status === 401) {
-        setVisible(false)
-        return
-      }
-      if (r.ok) {
-        setVisible(true)
-        const json = await r.json()
-        setCoachId(json.coach_id || null)
-        setCoachName(json.coach_name || '')
-        // Load coach options (admin-only endpoint)
-        const c = await fetch('/api/users/coaches')
-        if (c.ok) {
-          const data = await c.json()
-          const list: Coach[] = (data.coaches || []).map((u: any) => ({ id: u.id, name: u.name, email: u.email }))
-          setCoaches(list)
-        }
+      if (!r.ok) { setVisible(false); return }
+      setVisible(true)
+      const json = await r.json()
+      setCoachId(json.coach_id || null)
+      setCoachName(json.coach_name || '')
+      // Load coach options (admin-only endpoint)
+      const c = await fetch('/api/users/coaches')
+      if (c.ok) {
+        const data = await c.json()
+        const list: Coach[] = (data.coaches || []).map((u: any) => ({ id: u.id, name: u.name, email: u.email }))
+        setCoaches(list)
       }
     } finally { setLoading(false) }
   }

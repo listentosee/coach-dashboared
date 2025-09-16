@@ -1,42 +1,34 @@
 export function calculateCompetitorStatus(competitor: any): string {
-  // Check if all demographic fields are filled
-  const hasBasicDemographics = 
-    competitor.email_school && 
-    competitor.grade && 
-    competitor.gender && 
-    competitor.race && 
-    competitor.ethnicity && 
-    competitor.level_of_technology && 
-    (competitor.years_competing !== null && competitor.years_competing !== undefined);
-  
-  if (!hasBasicDemographics) return 'pending';
-  
-  // Check guardian fields for under 18
-  if (!competitor.is_18_or_over) {
-    if (!competitor.parent_name || !competitor.parent_email) {
-      return 'profile'; // Missing guardian info
-    }
-  }
-  
-  // At this point, status is 'profile'
-  
-  // Check if we can advance to 'compliance'
-  if (competitor.is_18_or_over) {
-    if (competitor.participation_agreement_date) {
-      return 'compliance';
-    }
-  } else {
-    if (competitor.media_release_date) {
-      return 'compliance';
-    }
-  }
-  
-  // Check if we can advance to 'complete'
-  if (competitor.game_platform_id) {
-    return 'complete';
-  }
-  
-  return 'profile';
+  // Base demographic requirements (apply to all)
+  const hasCore =
+    !!competitor.grade &&
+    !!competitor.gender &&
+    !!competitor.race &&
+    !!competitor.ethnicity &&
+    !!competitor.level_of_technology &&
+    (competitor.years_competing !== null && competitor.years_competing !== undefined)
+
+  // Adults must have school email; minors may not
+  const adultEmailOk = competitor.is_18_or_over ? !!competitor.email_school : true
+
+  // Minors must have guardian fields to be considered profile complete
+  const minorGuardianOk = competitor.is_18_or_over ? true : (!!competitor.parent_name && !!competitor.parent_email)
+
+  // If any required profile fields are missing, remain 'pending'
+  if (!hasCore || !adultEmailOk || !minorGuardianOk) return 'pending'
+
+  // At this point the profile is complete
+  // Next gate: compliance (release signed)
+  const hasRelease = competitor.is_18_or_over
+    ? !!competitor.participation_agreement_date
+    : !!competitor.media_release_date
+
+  if (!hasRelease) return 'profile'
+
+  // Next gate: platform assignment
+  if (!competitor.game_platform_id) return 'compliance'
+
+  return 'complete'
 }
 
 // Bulk status update function for maintenance

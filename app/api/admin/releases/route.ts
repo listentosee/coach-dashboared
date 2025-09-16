@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
+import { calculateCompetitorStatus } from '@/lib/utils/competitor-status'
 
 export async function GET(_req: NextRequest) {
   try {
@@ -23,10 +24,11 @@ export async function GET(_req: NextRequest) {
     const { data: agreements, error: aErr } = await supabase.from('agreements').select('*').order('created_at', { ascending: false })
     if (aErr) return NextResponse.json({ error: aErr.message }, { status: 400 })
 
-    return NextResponse.json({ competitors: competitors || [], agreements: agreements || [], isAdmin })
+    // Compute derived statuses for consistency in UI filtering
+    const withComputedStatus = (competitors || []).map((c: any) => ({ ...c, status: calculateCompetitorStatus(c) }))
+    return NextResponse.json({ competitors: withComputedStatus, agreements: agreements || [], isAdmin })
   } catch (e) {
     console.error('Admin releases read error', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

@@ -44,14 +44,36 @@ export async function POST(req: NextRequest) {
       (requestStatus || '').toLowerCase() === 'declined' ? 'declined' :
       (requestStatus || '').toLowerCase() === 'expired' ? 'expired' : 'sent';
 
-    const { data: agreement } = await supabase
+    // Load the agreement first to inspect metadata (e.g., print mode)
+    const { data: existing } = await supabase
       .from('agreements')
-      .update({ status: normalized, updated_at: new Date().toISOString() })
+      .select('id, competitor_id, template_kind, metadata, status')
       .eq('request_id', requestId)
-      .select('competitor_id, template_kind')
       .single();
 
-    if (normalized === 'completed' && agreement) {
+    if (!existing) {
+      return NextResponse.json({ ok: true, message: 'No matching agreement; ignoring' });
+    }
+
+    const isPrintMode = !!(existing as any)?.metadata?.isPrintMode
+
+    // For print mode requests, ignore all webhook status changes and keep 'print_ready'
+    if (isPrintMode) {
+      if (existing.status !== 'completed_manual' && existing.status !== 'print_ready') {
+        await supabase
+          .from('agreements')
+          .update({ status: 'print_ready', updated_at: new Date().toISOString() })
+          .eq('id', existing.id)
+      }
+      return NextResponse.json({ ok: true, message: 'Print mode agreement; webhook ignored' })
+    }
+
+    await supabase
+      .from('agreements')
+      .update({ status: normalized, completion_source: normalized === 'completed' ? 'zoho' : null, updated_at: new Date().toISOString() })
+      .eq('id', existing.id)
+
+    if (normalized === 'completed') {
       try {
         const accessToken = await getZohoAccessToken();
         const pdfRes = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/requests/${requestId}/pdf`, {
@@ -66,16 +88,16 @@ export async function POST(req: NextRequest) {
         });
 
         // Stamp competitor row: adult -> participation_agreement_date; minor -> media_release_date
-        const dateField = agreement.template_kind === 'adult' ? 'participation_agreement_date' : 'media_release_date';
+        const dateField = existing.template_kind === 'adult' ? 'participation_agreement_date' : 'media_release_date';
         await supabase.from('competitors')
           .update({ [dateField]: new Date().toISOString() })
-          .eq('id', agreement.competitor_id);
+          .eq('id', existing.competitor_id);
 
         // Recalculate and update competitor status
         const { data: updatedCompetitor } = await supabase
           .from('competitors')
           .select('*')
-          .eq('id', agreement.competitor_id)
+          .eq('id', existing.competitor_id)
           .single();
 
         if (updatedCompetitor) {
@@ -85,7 +107,7 @@ export async function POST(req: NextRequest) {
           await supabase
             .from('competitors')
             .update({ status: newStatus })
-            .eq('id', agreement.competitor_id);
+            .eq('id', existing.competitor_id);
         }
 
         await supabase.from('agreements')

@@ -414,17 +414,30 @@ export default function ReleaseManagementPage() {
             
             {agreement && agreement.status === 'print_ready' && (
               <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => downloadPDF(agreement.signed_pdf_path!, `${competitor.first_name} ${competitor.last_name} - Print Ready`)}
-                  className="text-meta-light border-meta-border hover:bg-meta-accent"
-                  disabled={disableAdminAll}
-                  title={disableAdminAll ? 'Select a coach to edit' : undefined}
-                >
-                  <Download className="h-4 w-4 mr-1" />
-                  Download Print
-                </Button>
+                {agreement.signed_pdf_path ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => downloadPDF(agreement.signed_pdf_path!, `${competitor.first_name} ${competitor.last_name} - Print Ready`)}
+                    className="text-meta-light border-meta-border hover:bg-meta-accent"
+                    disabled={disableAdminAll}
+                    title={disableAdminAll ? 'Select a coach to edit' : undefined}
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    Download Print
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-meta-muted border-meta-border"
+                    disabled
+                    title="Generating PDF; refresh shortly"
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    Generating…
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="outline"

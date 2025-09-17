@@ -93,6 +93,34 @@ export async function POST(req: NextRequest) {
   const accessToken = await getZohoAccessToken();
   console.log('Access token retrieved:', accessToken ? 'Success' : 'Failed');
 
+  // Prevent duplicate active agreements (non-terminal) per competitor
+  const { data: existingAgreements } = await supabase
+    .from('agreements')
+    .select('id, status, metadata, request_id')
+    .eq('competitor_id', c.id)
+    .order('created_at', { ascending: false })
+    .limit(10)
+
+  const hasActiveNonTerminal = (existingAgreements || []).some(a => ['sent','viewed','print_ready'].includes((a as any).status))
+  const existingPrint = (existingAgreements || []).find(a => (a as any).status === 'print_ready' && !!(a as any)?.metadata?.isPrintMode)
+
+  if (mode === 'print') {
+    if (existingPrint) {
+      // Reuse existing print-ready request to avoid duplicates
+      return NextResponse.json({ ok: true, requestId: (existingPrint as any).request_id, templateKind, mode: 'print', reused: true })
+    }
+    // If there's an active email flow, block to reduce confusion
+    const hasActiveEmail = (existingAgreements || []).some(a => ['sent','viewed'].includes((a as any).status) && !(a as any)?.metadata?.isPrintMode)
+    if (hasActiveEmail) {
+      return NextResponse.json({ error: 'An active digital release already exists for this competitor. Please complete or cancel it before creating a print release.' }, { status: 409 })
+    }
+  } else {
+    // mode === 'email': block if any active flow exists
+    if (hasActiveNonTerminal) {
+      return NextResponse.json({ error: 'An active release already exists for this competitor. Please complete or cancel it before sending another.' }, { status: 409 })
+    }
+  }
+
   // Get template details to read its single action_id
   console.log('Fetching template details from Zoho...');
   const tRes = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/templates/${templateId}`, {

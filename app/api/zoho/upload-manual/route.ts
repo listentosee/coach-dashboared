@@ -129,6 +129,8 @@ export async function POST(req: NextRequest) {
       manual_completion_reason: 'Manual completion',
       manual_uploaded_path: filePath,
       manual_completed_at: new Date().toISOString(),
+      // Expose the manually uploaded file via the common field used by the UI download button
+      signed_pdf_path: filePath,
       updated_at: new Date().toISOString()
     };
 

@@ -232,6 +232,9 @@ export default function UpdateProfilePage() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent className="bg-meta-card border-meta-border text-meta-light">
+                            <SelectItem value="6">6th Grade</SelectItem>
+                              <SelectItem value="7">7th Grade</SelectItem>
+                              <SelectItem value="8">8th Grade</SelectItem>
                               <SelectItem value="9">9th Grade</SelectItem>
                               <SelectItem value="10">10th Grade</SelectItem>
                               <SelectItem value="11">11th Grade</SelectItem>

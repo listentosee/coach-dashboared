@@ -475,53 +475,49 @@ export default function TeamsPage() {
   };
 
   const addMemberToTeam = async (teamId: string, competitorId: string) => {
+    // Optimistic assignment for snappy UX
+    if (isAdmin && !ctxLoading && coachId === null) return; // read-only mode
+    const comp = availableCompetitors.find(c => c.id === competitorId)
+    const team = teams.find(t => t.id === teamId)
+    if (isAdmin && coachId && comp && team && (comp.coach_id && team.coach_id) && (comp.coach_id !== team.coach_id)) {
+      alert('Competitor does not belong to the selected coach context')
+      return
+    }
+
+    const prevAvailable = [...availableCompetitors]
+    const prevMembers = JSON.parse(JSON.stringify(teamMembers)) as typeof teamMembers
+    const prevTeams = [...teams]
+
+    if (comp) {
+      setAvailableCompetitors(prev => prev.filter(c => c.id !== competitorId))
+      setTeamMembers(prev => ({
+        ...prev,
+        [teamId]: [
+          ...(prev[teamId] || []),
+          {
+            id: `temp-${Date.now()}`,
+            competitor_id: competitorId,
+            competitor: { first_name: comp.first_name, last_name: comp.last_name, grade: comp.grade }
+          }
+        ]
+      }))
+      setTeams(prev => prev.map(t => t.id === teamId ? { ...t, member_count: t.member_count + 1 } : t))
+    }
+
     try {
-      if (isAdmin && !ctxLoading && coachId === null) return; // read-only mode
-      // Prevent cross-coach assignment in UI (defense-in-depth; server will enforce in Phase 2)
-      const comp = availableCompetitors.find(c => c.id === competitorId)
-      const team = teams.find(t => t.id === teamId)
-      if (isAdmin && coachId && comp && team && (comp.coach_id && team.coach_id) && (comp.coach_id !== team.coach_id)) {
-        alert('Competitor does not belong to the selected coach context')
-        return
-      }
       const response = await fetch(`/api/teams/${teamId}/members/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ competitor_id: competitorId }),
-      });
-
-      if (response.ok) {
-        // Optimistic update
-        const competitor = availableCompetitors.find(c => c.id === competitorId);
-        if (competitor) {
-          setAvailableCompetitors(prev => prev.filter(c => c.id !== competitorId));
-          setTeamMembers(prev => ({
-            ...prev,
-            [teamId]: [
-              ...(prev[teamId] || []),
-              {
-                id: `temp-${Date.now()}`,
-                competitor_id: competitorId,
-                competitor: {
-                  first_name: competitor.first_name,
-                  last_name: competitor.last_name,
-                  grade: competitor.grade
-                }
-              }
-            ]
-          }));
-          setTeams(prev => prev.map(team => 
-            team.id === teamId 
-              ? { ...team, member_count: team.member_count + 1 }
-              : team
-          ));
-        }
-      } else {
-        alert('Failed to add member to team');
-      }
+      })
+      if (!response.ok) throw new Error('Request failed')
     } catch (error) {
-      console.error('Error adding member to team:', error);
-      alert('Failed to add member to team');
+      // Revert optimistic updates on failure
+      console.error('Error adding member to team:', error)
+      setAvailableCompetitors(prevAvailable)
+      setTeamMembers(prevMembers)
+      setTeams(prevTeams)
+      alert('Failed to add member to team')
     }
   };
 

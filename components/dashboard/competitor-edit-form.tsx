@@ -47,6 +47,7 @@ interface CompetitorEditFormProps {
 export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }: CompetitorEditFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  
   const form = useForm<z.infer<typeof editFormSchema>>({
     resolver: zodResolver(editFormSchema),
     defaultValues: {
@@ -117,6 +118,8 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
       setIsSubmitting(false);
     }
   }
+
+  
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -194,6 +197,8 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
                   )}
                 />
               </div>
+
+              
 
               <div className="grid grid-cols-2 gap-4">
                 <FormField

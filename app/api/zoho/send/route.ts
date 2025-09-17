@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
       first_name, 
       last_name, 
       grade, 
+      email_personal,
       email_school, 
       is_18_or_over, 
       parent_name, 
@@ -150,7 +151,7 @@ export async function POST(req: NextRequest) {
   // Build the single recipient action
   const recipient =
     isAdult
-      ? { name: `${c.first_name} ${c.last_name}`, email: c.email_school } // or use your preferred participant email field
+      ? { name: `${c.first_name} ${c.last_name}`, email: (c as any).email_personal || c.email_school }
       : { name: c.parent_name, email: c.parent_email };
 
   // Validate required fields based on age

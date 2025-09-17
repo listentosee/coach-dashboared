@@ -27,6 +27,7 @@ const createProfileUpdateSchema = (is18OrOver: boolean) => {
     years_competing: z.number().min(0).max(20).optional(),
     level_of_technology: z.string().min(1, 'Level of technology is required'),
     competition_type: z.enum(['trove', 'gymnasium', 'mayors_cup']),
+    email_personal: z.string().email('Valid email is required').optional(),
   };
 
   if (!is18OrOver) {
@@ -51,6 +52,7 @@ interface CompetitorProfile {
   years_competing?: string;
   level_of_technology?: string;
   is_18_or_over?: boolean;
+  email_personal?: string;
   parent_name?: string;
   parent_email?: string;
   profile_update_token: string;
@@ -64,6 +66,7 @@ export default function UpdateProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const [schema, setSchema] = useState<z.ZodSchema | null>(null);
   
@@ -78,11 +81,15 @@ export default function UpdateProfilePage() {
       ethnicity: '',
       years_competing: undefined as number | undefined,
       level_of_technology: '',
+      email_personal: '',
       parent_name: '',
       parent_email: '',
       competition_type: 'mayors_cup' as const,
     },
   });
+
+  // Watch personal email after form is initialized
+  const personalWatch = form.watch('email_personal');
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -111,6 +118,7 @@ export default function UpdateProfilePage() {
             ? parseInt(data.profile.years_competing.toString(), 10)
             : undefined,
           level_of_technology: data.profile.level_of_technology || '',
+          email_personal: data.profile.email_personal || '',
           parent_name: data.profile.parent_name || '',
           parent_email: data.profile.parent_email || '',
           competition_type: 'mayors_cup',
@@ -160,6 +168,31 @@ export default function UpdateProfilePage() {
       setError(error.message);
     }
   };
+
+  const sendParticipation = async () => {
+    try {
+      if (!profile?.is_18_or_over) {
+        alert('Participation agreement is available for 18+ participants only.');
+        return;
+      }
+      setSending(true);
+      const personal = (form.getValues('email_personal') || '').trim();
+      const res = await fetch(`/api/competitors/profile/${params.token}/send-participation`, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email_personal: personal })
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.error || 'Failed to send participation agreement');
+      }
+      alert('A participation agreement has been sent to your school email.');
+    } catch (e: any) {
+      alert(e?.message || 'Failed to send participation agreement');
+    } finally {
+      setSending(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -220,28 +253,23 @@ export default function UpdateProfilePage() {
                 <div className="space-y-4">
                   <h2 className="text-xl font-semibold text-meta-light">Personal Information</h2>
                   
+                  {/* Row 1: Ethnicity and Race */}
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
-                      name="grade"
+                      name="ethnicity"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-meta-light">Grade *</FormLabel>
+                          <FormLabel className="text-meta-light">Ethnicity *</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
-                                <SelectValue placeholder="Select grade" />
+                                <SelectValue placeholder="Select ethnicity" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent className="bg-meta-card border-meta-border text-meta-light">
-                            <SelectItem value="6">6th Grade</SelectItem>
-                              <SelectItem value="7">7th Grade</SelectItem>
-                              <SelectItem value="8">8th Grade</SelectItem>
-                              <SelectItem value="9">9th Grade</SelectItem>
-                              <SelectItem value="10">10th Grade</SelectItem>
-                              <SelectItem value="11">11th Grade</SelectItem>
-                              <SelectItem value="12">12th Grade</SelectItem>
-                              <SelectItem value="college">College</SelectItem>
+                              <SelectItem value="not_hispanic">Not Hispanic or Latino</SelectItem>
+                              <SelectItem value="hispanic">Hispanic or Latino</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -249,32 +277,6 @@ export default function UpdateProfilePage() {
                       )}
                     />
 
-                    <FormField
-                      control={form.control}
-                      name="gender"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-meta-light">Gender *</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
-                                <SelectValue placeholder="Select gender" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent className="bg-meta-card border-meta-border text-meta-light">
-                              <SelectItem value="male">Male</SelectItem>
-                              <SelectItem value="female">Female</SelectItem>
-                              <SelectItem value="other">Other</SelectItem>
-                              <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
                       name="race"
@@ -301,48 +303,29 @@ export default function UpdateProfilePage() {
                         </FormItem>
                       )}
                     />
-
-                    <FormField
-                      control={form.control}
-                      name="ethnicity"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-meta-light">Ethnicity *</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
-                                <SelectValue placeholder="Select ethnicity" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent className="bg-meta-card border-meta-border text-meta-light">
-                              <SelectItem value="not_hispanic">Not Hispanic or Latino</SelectItem>
-                              <SelectItem value="hispanic">Hispanic or Latino</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
                   </div>
 
+                  {/* Row 2: Gender and Level of Technology */}
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
-                      name="years_competing"
+                      name="gender"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-meta-light">Years Competing</FormLabel>
-                          <FormControl>
-                            <Input 
-                              {...field}
-                              onChange={(e) => field.onChange(e.target.value === '' ? undefined : parseInt(e.target.value, 10) || 0)}
-                              type="number" 
-                              min="0"
-                              max="20"
-                              placeholder="0" 
-                              className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
-                            />
-                          </FormControl>
+                          <FormLabel className="text-meta-light">Gender *</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
+                                <SelectValue placeholder="Select gender" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent className="bg-meta-card border-meta-border text-meta-light">
+                              <SelectItem value="male">Male</SelectItem>
+                              <SelectItem value="female">Female</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                              <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -373,20 +356,66 @@ export default function UpdateProfilePage() {
                       )}
                     />
                   </div>
-                </div>
 
+                  {/* Row 3: Years Competing and Personal Email + Send */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="years_competing"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-meta-light">Years Competing</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              onChange={(e) => field.onChange(e.target.value === '' ? undefined : parseInt(e.target.value, 10) || 0)}
+                              type="number"
+                              min="0"
+                              max="20"
+                              placeholder="0"
+                              className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-
-                {/* Participant Agreement */}
-                <div className="space-y-4">
-                  <h2 className="text-xl font-semibold text-meta-light">Participant Agreement</h2>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-meta-light">Participant Agreement...</span>
-                    <X className="h-4 w-4 text-meta-muted" />
+                    <FormField
+                      control={form.control}
+                      name="email_personal"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-meta-light">Personal Email</FormLabel>
+                          <FormControl>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                {...field}
+                                type="email"
+                                placeholder="Enter your personal email"
+                                className="flex-1 bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
+                              />
+                              {profile?.is_18_or_over && (
+                                <Button
+                                  type="button"
+                                  onClick={sendParticipation}
+                                  disabled={sending || !(personalWatch && /.+@.+\..+/.test(String(personalWatch).trim()))}
+                                  className="bg-meta-accent hover:bg-blue-600 whitespace-nowrap"
+                                  title="Send participation agreement to your personal email"
+                                >
+                                  {sending ? 'Sending…' : 'Send for Signature'}
+                                </Button>
+                              )}
+                            </div>
+                          </FormControl>
+                          {profile?.is_18_or_over && (
+                            <p className="text-xs text-meta-muted mt-1">We will send the participation agreement to your personal email shown here.</p>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   </div>
-                  <p className="text-sm text-red-400">
-                    You must sign the above agreement to obtain a game code. Note: It may take an hour or two for the system to reflect completion of your signed agreement.
-                  </p>
                 </div>
 
                 {/* Parent/Guardian Information */}
@@ -435,6 +464,8 @@ export default function UpdateProfilePage() {
                     />
                   </div>
                 )}
+
+                {/* 18+: Send button now sits beside Personal Email field above */}
 
                 {/* Submit and Cancel Buttons */}
                 <div className="flex justify-center space-x-4">

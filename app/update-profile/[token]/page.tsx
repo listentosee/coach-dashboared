@@ -186,7 +186,7 @@ export default function UpdateProfilePage() {
         const j = await res.json().catch(() => ({}));
         throw new Error(j?.error || 'Failed to send participation agreement');
       }
-      alert('A participation agreement has been sent to your school email.');
+      alert(`A participation agreement has been sent to ${personal}.`);
     } catch (e: any) {
       alert(e?.message || 'Failed to send participation agreement');
     } finally {

@@ -130,7 +130,7 @@ export default function DashboardLayout({
             <Link href="/dashboard">
               <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
                 <LayoutDashboard className="h-5 w-5 mr-3" />
-                Dashboard
+                Competitors
               </Button>
             </Link>
             

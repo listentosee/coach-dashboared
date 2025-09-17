@@ -356,7 +356,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-white-900">Dashboard Overview</h1>
+        <h1 className="text-3xl font-bold text-white-900">Competitors Dashboard</h1>
         <p className="text-gray-600 mt-2">
           Manage your competitors and track their progress
         </p>
@@ -384,7 +384,6 @@ export default function DashboardPage() {
         <Card className="bg-meta-card border-meta-border md:col-span-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-meta-light">Status Breakdown</CardTitle>
-            <CardDescription className="text-meta-muted">Pending, Profile, Compliance, Complete</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-[11px] text-meta-muted mb-3 grid grid-cols-2 gap-y-1 gap-x-4">

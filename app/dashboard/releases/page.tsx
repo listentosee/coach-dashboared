@@ -524,11 +524,17 @@ export default function ReleaseManagementPage() {
         <div>
           <h1 className="text-3xl font-bold text-meta-light">Release Management</h1>
           <div className="text-meta-muted mt-2 space-y-2">
-            <p>Manage release forms and track signing status. Only active competitors with complete profiles (status: profile or higher) are shown.</p>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-semibold text-yellow-300">ATTENTION:</span>
+              <span className="text-meta-light">Only competitors with a status of</span>
+              <span className="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">profile</span>
+              <span className="text-meta-light">or higher appear here.</span>
+            </div>
+            <p>Manage release forms and track signing status. Only active competitors with complete profiles are listed.</p>
             <div className="text-sm">
               <div className="text-meta-light font-medium">How to send:</div>
               <div>- Digital send: Click Send Release (Email) to email the signer.</div>
-              <div>- Manual send: Click Send Release (Print) to generate a pre-filled PDF, have it signed on paper, then upload it via “Upload Signed Document”.</div>
+              <div>- Manual send: 1) Click Send Release (Print) to generate a pre-filled PDF, 2) click the pdf download button, 3) print the form, 4) have it signed on paper, 6) then upload it via “Upload Signed Document”.</div>
             </div>
           </div>
           <ActingAsBanner />

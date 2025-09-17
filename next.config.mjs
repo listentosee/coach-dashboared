@@ -30,6 +30,11 @@ const nextConfig = {
     parallelServerBuildTraces: true,
     parallelServerCompiles: true,
   },
+  // Disable Next DevTools to avoid RSC manifest errors seen in some environments
+  // (SegmentViewNode missing). Re‑enable later if needed.
+  devtools: {
+    enabled: false,
+  },
 }
 
 if (userConfig) {

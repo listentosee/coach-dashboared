@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
-
-const inter = Inter({ subsets: ["latin"] });
+// NOTE: Avoid network fetch for Google Fonts at build time.
+// Use a CSS fallback font class (tailwind's font-sans) to keep builds offline-safe.
 
 export const metadata: Metadata = {
   title: "Coaches Dashboard",
@@ -16,7 +15,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} bg-meta-dark text-meta-light min-h-screen`}>
+      <body className={`font-sans bg-meta-dark text-meta-light min-h-screen`}>
         {children}
       </body>
     </html>

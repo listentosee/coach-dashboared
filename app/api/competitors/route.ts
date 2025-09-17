@@ -6,7 +6,8 @@ import { calculateCompetitorStatus } from '@/lib/utils/competitor-status'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
     // Authenticate user with Supabase Auth server
     const { data: { user } } = await supabase.auth.getUser();
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest) {
 
     // Check if user is admin
     const isAdmin = await isUserAdmin(supabase, user.id);
-    const coachContext = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null;
+    const coachContext = isAdmin ? (cookieStore.get('admin_coach_id')?.value || null) : null;
 
     // Build the query - admins see all, coaches see only their own
     let query = supabase
@@ -68,6 +69,7 @@ export async function GET(request: NextRequest) {
     // Fetch team data separately to avoid complex joins
     const competitorIds = competitors?.map(c => c.id) || [];
     let teamMembersData: any[] = [];
+    let agreementsData: any[] = [];
     
     if (competitorIds.length > 0) {
       const { data: teamMembers, error: teamMembersError } = await supabase
@@ -83,18 +85,28 @@ export async function GET(request: NextRequest) {
       if (!teamMembersError) {
         teamMembersData = teamMembers || [];
       }
+
+      // Fetch latest agreements ordered by created_at (for each competitor)
+      const { data: aggs, error: aggsErr } = await supabase
+        .from('agreements')
+        .select('competitor_id, status, metadata, created_at')
+        .in('competitor_id', competitorIds)
+        .order('created_at', { ascending: false })
+      if (!aggsErr) agreementsData = aggs || []
     }
 
     // Transform the data to include team information
     const transformedCompetitors = competitors?.map(competitor => {
       const teamMember = teamMembersData.find(tm => tm.competitor_id === competitor.id);
       const computedStatus = calculateCompetitorStatus(competitor as any)
+      const latestAgreement = agreementsData.find(a => a.competitor_id === competitor.id) || null
       return {
         id: competitor.id,
         first_name: competitor.first_name,
         last_name: competitor.last_name,
         email_personal: competitor.email_personal,
         email_school: competitor.email_school,
+        parent_email: (competitor as any).parent_email || null,
         is_18_or_over: competitor.is_18_or_over,
         grade: competitor.grade,
         status: computedStatus,
@@ -111,6 +123,8 @@ export async function GET(request: NextRequest) {
         team_id: teamMember?.team_id || null,
         position: teamMember?.position || null,
         team_name: teamMember?.teams?.name || null,
+        agreement_status: latestAgreement?.status || null,
+        agreement_mode: latestAgreement?.metadata?.mode || null,
       };
     }) || [];
 

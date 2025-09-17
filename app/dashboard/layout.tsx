@@ -20,6 +20,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import AdminToolsLink from '@/components/dashboard/admin-tools-link';
+import SingleSessionGuard from '@/components/SingleSessionGuard';
 import AdminContextSwitcher from '@/components/admin/AdminContextSwitcher';
 
 export default function DashboardLayout({
@@ -94,6 +95,7 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-meta-dark text-meta-light">
+      <SingleSessionGuard />
       {/* Mobile sidebar toggle */}
       <div className="lg:hidden fixed top-4 left-4 z-50">
         <Button

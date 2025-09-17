@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -68,6 +68,12 @@ export default function DashboardPage() {
   const [coachProfile, setCoachProfile] = useState<any>(null);
   const [divisionFilter, setDivisionFilter] = useState<'all' | 'middle_school' | 'high_school' | 'college'>('all');
   const [isAdmin, setIsAdmin] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(40)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const [adminTotal, setAdminTotal] = useState<number | null>(null)
+  const [adminOffset, setAdminOffset] = useState<number>(0)
+  const [adminLoading, setAdminLoading] = useState<boolean>(false)
+  const adminInitLoadingRef = useRef<boolean>(false)
 
   const fetchData = async () => {
     try {
@@ -92,28 +98,59 @@ export default function DashboardPage() {
         setIsAdmin(!!amAdmin)
       }
 
-      // Fetch competitors through API route (enables admin access control)
-      const competitorsResponse = await fetch('/api/competitors');
-      if (!competitorsResponse.ok) {
-        throw new Error('Failed to fetch competitors');
-      }
-      const competitorsData = await competitorsResponse.json();
-      
-      // Transform data to include status fields
-      const transformedCompetitors = (competitorsData.competitors || []).map((comp: any) => ({
-        ...comp,
-        media_release_signed: comp.media_release_signed || false,
-        participation_agreement_signed: comp.participation_agreement_signed || false,
-        is_active: comp.is_active !== undefined ? comp.is_active : true, // Default to true if not set
-      }));
-
-      // Admin coach filter (client-side for Phase 1)
-      let scopedCompetitors = transformedCompetitors as any[]
       const isAdminNow = (amAdmin === null ? isAdmin : amAdmin)
-      if (isAdminNow && !ctxLoading && coachId) {
-        scopedCompetitors = scopedCompetitors.filter((c: any) => c.coach_id === coachId)
+      // Admin – All-coaches: use paged API; otherwise use existing list API
+      let statList: any[] = []
+      if (isAdminNow && !ctxLoading && !coachId) {
+        // Admin All-coaches mode: single initial page-0 fetch with in-flight guard
+        if (adminInitLoadingRef.current) return
+        if (adminOffset > 0 && competitors.length > 0) return
+        adminInitLoadingRef.current = true
+        try {
+          // Reset state before bootstrapping
+          setCompetitors([])
+          setAdminTotal(null)
+          setAdminOffset(0)
+          const firstLimit = 40
+          const r = await fetch(`/api/competitors/paged?offset=0&limit=${firstLimit}`)
+          if (r.ok) {
+            const j = await r.json()
+            setCompetitors(j.rows || [])
+            setAdminTotal(j.total || 0)
+            setAdminOffset((j.rows || []).length)
+            statList = j.rows || []
+          } else {
+            setCompetitors([])
+            setAdminTotal(0)
+            setAdminOffset(0)
+            statList = []
+          }
+        } finally {
+          adminInitLoadingRef.current = false
+        }
+      } else {
+        // Coach or Admin acting-as: load full list and slice on client
+        const competitorsResponse = await fetch('/api/competitors');
+        if (!competitorsResponse.ok) {
+          throw new Error('Failed to fetch competitors');
+        }
+        const competitorsData = await competitorsResponse.json();
+        const transformedCompetitors = (competitorsData.competitors || []).map((comp: any) => ({
+          ...comp,
+          media_release_signed: comp.media_release_signed || false,
+          participation_agreement_signed: comp.participation_agreement_signed || false,
+          is_active: comp.is_active !== undefined ? comp.is_active : true,
+        }));
+        let scopedCompetitors = transformedCompetitors as any[]
+        if (isAdminNow && !ctxLoading && coachId) {
+          scopedCompetitors = scopedCompetitors.filter((c: any) => c.coach_id === coachId)
+        }
+        setCompetitors(scopedCompetitors as any)
+        setAdminTotal(null)
+        setAdminOffset(0)
+        adminInitLoadingRef.current = false
+        statList = scopedCompetitors as any[]
       }
-      setCompetitors(scopedCompetitors as any);
 
       // Fetch teams for dropdown - also through API for admin access
       const teamsResponse = await fetch('/api/teams');
@@ -146,12 +183,12 @@ export default function DashboardPage() {
       
       setTeams(transformedTeams);
 
-      // Calculate stats based on scoped lists (reflect admin coach selection)
-      const totalCompetitors = scopedCompetitors.length;
-      const activeCompetitors = scopedCompetitors.filter(c => c.status === 'complete').length;
-      const pendingCompetitors = scopedCompetitors.filter(c => c.status === 'pending').length;
-      const profileCompetitors = scopedCompetitors.filter(c => c.status === 'profile').length;
-      const complianceCompetitors = scopedCompetitors.filter(c => c.status === 'compliance').length;
+      // Calculate stats based on the list we just loaded (reflect admin coach selection / current page for admin-all)
+      const totalCompetitors = statList.length;
+      const activeCompetitors = statList.filter((c: any) => c.status === 'complete').length;
+      const pendingCompetitors = statList.filter((c: any) => c.status === 'pending').length;
+      const profileCompetitors = statList.filter((c: any) => c.status === 'profile').length;
+      const complianceCompetitors = statList.filter((c: any) => c.status === 'compliance').length;
 
       // Use teams count from API response
       setStats({
@@ -196,7 +233,7 @@ export default function DashboardPage() {
     }
   }, []);
 
-  // Filter competitors
+  // Filter competitors (compute before scroll observers)
   const filteredCompetitors = competitors.filter(competitor => {
     const term = searchTerm.toLowerCase()
     const matchesSearch = competitor.first_name.toLowerCase().startsWith(term) ||
@@ -205,6 +242,107 @@ export default function DashboardPage() {
     const matchesDivision = divisionFilter === 'all' || competitor.division === divisionFilter;
     return matchesSearch && matchesActiveFilter && matchesDivision;
   });
+
+  // Derived counters for the pager indicator (always match DataTable input)
+  const isAdminAll = isAdmin && !coachId
+  const displayedCount = isAdminAll
+    ? filteredCompetitors.length
+    : Math.min(visibleCount, filteredCompetitors.length)
+  const totalCount = (isAdminAll && adminTotal !== null)
+    ? adminTotal
+    : filteredCompetitors.length
+
+  // Coaches/Admin acting-as: show full list (no client paging). Admin All-coaches uses server paging.
+  useEffect(() => {
+    if (!(isAdmin && !coachId)) {
+      setVisibleCount(filteredCompetitors.length)
+    }
+  }, [filteredCompetitors.length, isAdmin, coachId, divisionFilter, showInactive])
+
+  // Helper: find the nearest scrollable ancestor
+  const getScrollParent = (el: HTMLElement | null): HTMLElement | null => {
+    let node: HTMLElement | null = el?.parentElement || null
+    while (node) {
+      const style = window.getComputedStyle(node)
+      const oy = style.overflowY
+      if (oy === 'auto' || oy === 'scroll') return node
+      node = node.parentElement
+    }
+    return null
+  }
+
+  // Infinite scroll: observe sentinel within the actual panel (admin All‑coaches only)
+  useEffect(() => {
+    if (!(isAdmin && !coachId)) return
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    const rootEl = getScrollParent(sentinel)
+    const obs = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          if (isAdmin && !coachId) {
+            // Admin all-coaches: fetch next page if available
+            if (!adminLoading && adminTotal !== null && competitors.length < adminTotal) {
+              void fetchMoreAdmin()
+            }
+          } else {
+            setVisibleCount((prev) => Math.min(prev + 20, filteredCompetitors.length))
+          }
+        }
+      }
+    }, { root: rootEl || null, rootMargin: '300px', threshold: 0 })
+    obs.observe(sentinel)
+    return () => obs.disconnect()
+  }, [filteredCompetitors.length, isAdmin, coachId, competitors.length, adminTotal, adminLoading, adminOffset])
+
+  // Fallback proximity check on same root (covers edge browsers) – admin All‑coaches only
+  useEffect(() => {
+    if (!(isAdmin && !coachId)) return
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    const rootEl = getScrollParent(sentinel)
+    const onScroll = () => {
+      const total = filteredCompetitors.length
+      if (isAdmin && !coachId) {
+        if (adminTotal !== null && competitors.length < adminTotal) {
+          const near = rootEl
+            ? rootEl.scrollTop + rootEl.clientHeight >= rootEl.scrollHeight - 200
+            : window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 200
+          if (near && !adminLoading) void fetchMoreAdmin()
+        }
+      } else {
+        if (visibleCount < total) {
+          const near = rootEl
+            ? rootEl.scrollTop + rootEl.clientHeight >= rootEl.scrollHeight - 200
+            : window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 200
+          if (near) setVisibleCount((prev) => Math.min(prev + 20, total))
+        }
+      }
+    }
+    const target: any = rootEl || window
+    target.addEventListener('scroll', onScroll)
+    target.addEventListener('resize', onScroll)
+    onScroll()
+    return () => { target.removeEventListener('scroll', onScroll); target.removeEventListener('resize', onScroll) }
+  }, [filteredCompetitors.length, visibleCount, isAdmin, coachId, competitors.length, adminTotal, adminLoading, adminOffset])
+
+  const fetchMoreAdmin = async () => {
+    try {
+      setAdminLoading(true)
+      const limit = 20
+      // Derive offset from current number of loaded competitors to avoid stale closure
+      const offset = competitors.length
+      if (adminTotal !== null && offset >= adminTotal) return
+      const r = await fetch(`/api/competitors/paged?offset=${offset}&limit=${limit}`)
+      if (r.ok) {
+        const j = await r.json()
+        const rows = j.rows || []
+        setCompetitors(prev => [...prev, ...rows])
+        setAdminOffset(offset + rows.length)
+        setAdminTotal(j.total || adminTotal)
+      }
+    } finally { setAdminLoading(false) }
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -489,9 +627,7 @@ export default function DashboardPage() {
                 )
               })()}
             </div>
-            <div className="text-sm text-meta-muted">
-              Showing {filteredCompetitors.length} of {competitors.length} competitors
-            </div>
+            <div className="text-sm text-meta-muted">Showing {displayedCount} of {totalCount}</div>
           </div>
 
           {/* Data Table */}
@@ -509,9 +645,10 @@ export default function DashboardPage() {
               coachProfile ? `${coachProfile.first_name} ${coachProfile.last_name}` : session?.user?.email,
               (isAdmin && !ctxLoading && coachId === null),
               'Select a coach to edit'
-            )}
-            data={filteredCompetitors}
+              )}
+              data={filteredCompetitors}
           />
+          {(isAdmin && !coachId) && <div ref={sentinelRef} className="h-1" />}
         </CardContent>
       </Card>
 

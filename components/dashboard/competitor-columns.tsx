@@ -3,7 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Edit, UserCheck, Gamepad2, Ban, Link as LinkIcon, ChevronDown, ChevronUp, ChevronsUpDown, Mail } from "lucide-react"
+import { Edit, UserCheck, Gamepad2, Ban, Link as LinkIcon, ChevronDown, ChevronUp, ChevronsUpDown, Mail, Send } from "lucide-react"
 import { sendEmail, emailTemplates } from "@/components/ui/email-composer"
 
 export interface Competitor {
@@ -12,6 +12,7 @@ export interface Competitor {
   last_name: string;
   email_personal?: string;
   email_school?: string;
+  parent_email?: string;
   is_18_or_over?: boolean;
   grade?: string;
   status: string;
@@ -28,6 +29,8 @@ export interface Competitor {
   profile_update_token_expires?: string;
   created_at: string;
   is_active: boolean;
+  agreement_status?: string | null;
+  agreement_mode?: string | null;
 }
 
 export const getStatusColor = (status: string) => {
@@ -251,9 +254,49 @@ export const createCompetitorColumns = (
       const globalDisabled = !!disableEdits;
       const mergedDisabled = isDisabled || globalDisabled;
       const title = globalDisabled ? (disableTooltip || 'Select a coach to edit') : 'Edit Competitor';
+      const statusOk = ['profile','compliance','complete'].includes((competitor.status || '').toLowerCase())
+      const emailRegex = /.+@.+\..+/;
+      const adultRecipient = (competitor.email_personal && emailRegex.test(competitor.email_personal)) || (competitor.email_school && emailRegex.test(competitor.email_school))
+      const minorRecipient = competitor.parent_email && emailRegex.test(competitor.parent_email)
+      const hasLegacySigned = competitor.is_18_or_over ? !!competitor.participation_agreement_date : !!competitor.media_release_date
+      const hasAgreement = !!competitor.agreement_status // any agreement row exists
+      const canSend = !mergedDisabled && competitor.is_active && statusOk && !hasLegacySigned && !hasAgreement && (
+        competitor.is_18_or_over ? adultRecipient : minorRecipient
+      )
       
+      const handleSend = async () => {
+        try {
+          const res = await fetch('/api/zoho/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ competitorId: competitor.id, mode: 'email' })
+          })
+          if (!res.ok) {
+            let msg = 'Failed to send release'
+            try { const j = await res.json(); if (j?.error) msg = j.error } catch {}
+            throw new Error(msg)
+          }
+          alert('Release sent for digital signature.')
+        } catch (e: any) {
+          alert(e?.message || 'Failed to send release')
+        }
+      }
+
       return (
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center justify-end space-x-1 w-full">
+          {canSend && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSend}
+              title={globalDisabled ? (disableTooltip || 'Select a coach to edit') : 'Send for digital signature'}
+              className={`p-1 ${mergedDisabled ? 'text-meta-muted cursor-not-allowed' : 'text-meta-light hover:text-meta-accent'}`}
+              disabled={mergedDisabled}
+              aria-disabled={mergedDisabled}
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"

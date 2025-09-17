@@ -14,12 +14,12 @@ async function assertAdmin(supabase: ReturnType<typeof createRouteHandlerClient>
 
 export async function GET(_req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     const admin = await assertAdmin(supabase)
     if (!admin.ok) return NextResponse.json({ error: admin.error }, { status: admin.status })
 
-    const c = cookies()
-    const coachId = c.get(COOKIE_NAME)?.value || null
+    const coachId = cookieStore.get(COOKIE_NAME)?.value || null
 
     let coachName: string | undefined
     if (coachId) {
@@ -43,7 +43,8 @@ export async function GET(_req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     const admin = await assertAdmin(supabase)
     if (!admin.ok) return NextResponse.json({ error: admin.error }, { status: admin.status })
 
@@ -73,4 +74,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

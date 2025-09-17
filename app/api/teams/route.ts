@@ -5,7 +5,8 @@ import { isUserAdmin } from '@/lib/utils/admin-check';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
     }
 
     const isAdmin = await isUserAdmin(supabase, user.id);
-    const coachContext = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null;
+    const coachContext = isAdmin ? (cookieStore.get('admin_coach_id')?.value || null) : null;
 
     let query = supabase
       .from('teams')

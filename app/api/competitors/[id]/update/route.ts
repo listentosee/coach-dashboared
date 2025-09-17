@@ -8,7 +8,8 @@ export const dynamic = 'force-dynamic';
 
 const UpdateCompetitorSchema = z.object({
   email_personal: z.string().email('Invalid email').optional().or(z.literal('')).or(z.null()),
-  email_school: z.string().email('Invalid email').optional().or(z.literal('')).or(z.null()),
+  // School email required
+  email_school: z.string({ required_error: 'School email is required' }).email('Invalid email'),
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
   last_name: z.string().min(2, 'Last name must be at least 2 characters'),
   is_18_or_over: z.coerce.boolean().optional(),
@@ -54,7 +55,7 @@ export async function PUT(
     // Build update payload and only include division if provided
     const updatePayload: any = {
       email_personal: validatedData.email_personal || null,
-      email_school: validatedData.email_school || null,
+      email_school: validatedData.email_school,
       first_name: validatedData.first_name,
       last_name: validatedData.last_name,
       // if not provided, leave unchanged

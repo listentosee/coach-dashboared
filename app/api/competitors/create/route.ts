@@ -10,7 +10,8 @@ const CompetitorSchema = z.object({
   is_18_or_over: z.coerce.boolean().optional(),
   grade: z.string().optional().or(z.null()),
   email_personal: z.string().email().optional().or(z.literal('')).or(z.null()),
-  email_school: z.string().email().optional().or(z.literal('')).or(z.null()),
+  // School email required for all participants
+  email_school: z.string({ required_error: 'School email is required' }).email('Invalid school email'),
   // Optional at creation; may be assigned later in the lifecycle
   game_platform_id: z.string().min(1).optional(),
   division: z.enum(['middle_school','high_school','college']).optional(),
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
       is_18_or_over: typeof validatedData.is_18_or_over === 'boolean' ? validatedData.is_18_or_over : null,
       grade: validatedData.grade || null,
       email_personal: validatedData.email_personal || null,
-      email_school: validatedData.email_school || null,
+      email_school: validatedData.email_school,
       game_platform_id: validatedData.game_platform_id || null,
       division: validatedData.division || null,
       status: 'pending'

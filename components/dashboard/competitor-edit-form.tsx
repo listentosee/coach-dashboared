@@ -30,7 +30,8 @@ const editFormSchema = z.object({
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
   last_name: z.string().min(2, 'Last name must be at least 2 characters'),
   email_personal: z.string().email('Invalid email').optional().or(z.literal('')),
-  email_school: z.string().email('Invalid email').optional().or(z.literal('')),
+  // School email required
+  email_school: z.string({ required_error: 'School email is required' }).email('Invalid email'),
   is_18_or_over: z.boolean(),
   grade: z.string().optional(),
   division: z.enum(['middle_school','high_school','college']).optional(),
@@ -184,7 +185,7 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
                   name="email_school"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-gray-700">School Email</FormLabel>
+                      <FormLabel className="text-gray-700">School Email (Required)</FormLabel>
                       <FormControl>
                         <Input type="email" {...field} className="bg-white border-gray-300 text-gray-900" />
                       </FormControl>

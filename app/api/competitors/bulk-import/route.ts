@@ -85,12 +85,11 @@ export async function POST(req: NextRequest) {
         // Validate
         if (!first_name || !last_name || !grade || isAdult === null) throw new Error('Missing required fields')
         if (!allowedGrades.includes(grade)) throw new Error('Invalid grade')
-        if (isAdult) {
-          if (!isValidEmail(email_school)) throw new Error('Adult requires valid school email')
-        } else {
-          // If parent name provided, parent email is required and must be valid
+        // School email is required for all participants
+        if (!isValidEmail(email_school)) throw new Error('School email is required and must be valid')
+        // For minors: if parent name provided, parent email is required
+        if (!isAdult) {
           if (parent_name && !isValidEmail(parent_email)) throw new Error('Parent email is required and must be valid when parent name is provided')
-          // If no parent name, allow missing parent email; if present, must be valid
           if (!parent_name && parent_email && !isValidEmail(parent_email)) throw new Error('Parent email is invalid')
         }
         if (division && !allowedDivisions.includes(division)) throw new Error('Invalid division')

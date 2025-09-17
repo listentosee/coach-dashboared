@@ -37,7 +37,7 @@ const FIELDS: FieldConfig[] = [
   { key: 'last_name', label: 'Last Name', required: true },
   { key: 'is_18_or_over', label: 'Is Adult (Y/N/True/False)', required: true, hint: 'Values like Y, Yes, True, 1 map to true' },
   { key: 'grade', label: 'Grade', required: true },
-  { key: 'email_school', label: 'School Email (Adult)' },
+  { key: 'email_school', label: 'School Email (Required)', required: true },
   { key: 'email_personal', label: 'Personal Email (Optional)' },
   { key: 'parent_name', label: 'Parent Name (Minor)' },
   { key: 'parent_email', label: 'Parent Email (Minor)' },
@@ -206,12 +206,12 @@ export default function BulkImportPage() {
       if (isAdult === null) rowErr.push('Is Adult must be Y/N or True/False')
       if (!row.grade) rowErr.push('Grade required')
       if (row.grade && !allowedGrades.includes(String(row.grade).trim().toLowerCase())) rowErr.push('Invalid grade')
-      if (isAdult === true) {
-        if (!isValidEmail(row.email_school)) rowErr.push('Adult requires valid school email')
-      } else if (isAdult === false) {
+      // School email is required for all participants
+      if (!isValidEmail(row.email_school)) rowErr.push('School email is required and must be valid')
+      if (isAdult === false) {
         // Validate parent email when parent name is provided (required if name present)
         if (row.parent_name && !isValidEmail(row.parent_email)) rowErr.push('Parent email is required and must be valid when parent name is provided')
-        // If no parent name, allow parent email to be empty
+        // If no parent name, allow parent email to be empty; if present, must be valid
         if (!row.parent_name && row.parent_email && !isValidEmail(row.parent_email)) rowErr.push('Parent email is invalid')
       }
       // Optional enumerations (if provided, must be valid)
@@ -332,7 +332,7 @@ export default function BulkImportPage() {
                   variant="outline"
                   className="text-meta-light border-meta-border"
                   onClick={() => {
-                    const headers = ['First Name','Last Name','Is Adult (Y/N/True/False)','Grade','School Email (Adult)','Personal Email (Optional)','Parent Name (Minor)','Parent Email (Minor)','Division','Gender','Race','Ethnicity','Level of Technology','Years Competing']
+                    const headers = ['First Name','Last Name','Is Adult (Y/N/True/False)','Grade','School Email (Required)','Personal Email (Optional)','Parent Name (Minor)','Parent Email (Minor)','Division','Gender','Race','Ethnicity','Level of Technology','Years Competing']
                     const csv = headers.join(',') + '\n'
                     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
                     const url = URL.createObjectURL(blob)
@@ -356,7 +356,7 @@ export default function BulkImportPage() {
                       const { Workbook } = await import('exceljs')
                       const wb = new Workbook()
                       const ws = wb.addWorksheet('Template')
-                      const headers = ['First Name','Last Name','Is Adult (Y/N/True/False)','Grade','School Email (Adult)','Personal Email (Optional)','Parent Name (Minor)','Parent Email (Minor)','Division','Gender','Race','Ethnicity','Level of Technology','Years Competing']
+                      const headers = ['First Name','Last Name','Is Adult (Y/N/True/False)','Grade','School Email (Required)','Personal Email (Optional)','Parent Name (Minor)','Parent Email (Minor)','Division','Gender','Race','Ethnicity','Level of Technology','Years Competing']
                       ws.addRow(headers)
                       ws.getRow(1).font = { bold: true }
                       const ws2 = wb.addWorksheet('Cheat Sheet')
@@ -422,12 +422,12 @@ export default function BulkImportPage() {
                 <div className="text-xs text-meta-muted mt-3">
                   <div className="font-medium text-meta-light mb-1">Non-enumerated fields</div>
                   <ul className="list-disc pl-5 space-y-1">
-                    <li><span className="font-semibold text-meta-light">email_school</span>: required for adults; must be a valid email.</li>
+                    <li><span className="font-semibold text-meta-light">email_school</span>: required for all participants; must be a valid email.</li>
                     <li><span className="font-semibold text-meta-light">email_personal</span>: optional; if present must be a valid email.</li>
-                    <li><span className="font-semibold text-meta-light">parent_name</span>: optional at import for minors (collected later).</li>
-                    <li><span className="font-semibold text-meta-light">parent_email</span>: optional at import; if present must be a valid email.</li>
+                    <li><span className="font-semibold text-meta-light">parent_name</span>: optional for minors at import.</li>
+                    <li><span className="font-semibold text-meta-light">parent_email</span>: required if <em>parent_name</em> is provided; otherwise optional. If present, must be a valid email.</li>
                   </ul>
-                  <div className="mt-2">Values are case-insensitive; we store canonical tokens shown above. For minors, parent name and email are optional at import and can be collected later via the profile update link.</div>
+                  <div className="mt-2">Values are case-insensitive; we store canonical tokens shown above. School email is required for all participants. For minors, parent name is optional; if provided, parent email is required.</div>
                 </div>
               </div>
             </div>

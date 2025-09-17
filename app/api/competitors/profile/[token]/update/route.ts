@@ -55,7 +55,7 @@ export async function PUT(
         gender: validatedData.gender,
         race: validatedData.race,
         ethnicity: validatedData.ethnicity,
-        years_competing: validatedData.years_competing || null,
+        years_competing: validatedData.years_competing ?? null,
         level_of_technology: validatedData.level_of_technology,
         parent_name: validatedData.parent_name || null,
         parent_email: validatedData.parent_email || null,

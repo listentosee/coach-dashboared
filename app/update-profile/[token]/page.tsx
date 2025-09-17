@@ -107,7 +107,9 @@ export default function UpdateProfilePage() {
           gender: data.profile.gender || '',
           race: data.profile.race || '',
           ethnicity: data.profile.ethnicity || '',
-          years_competing: data.profile.years_competing ? parseInt(data.profile.years_competing.toString(), 10) : undefined,
+          years_competing: (data.profile.years_competing !== null && data.profile.years_competing !== undefined)
+            ? parseInt(data.profile.years_competing.toString(), 10)
+            : undefined,
           level_of_technology: data.profile.level_of_technology || '',
           parent_name: data.profile.parent_name || '',
           parent_email: data.profile.parent_email || '',

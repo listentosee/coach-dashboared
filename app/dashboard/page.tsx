@@ -380,6 +380,38 @@ export default function DashboardPage() {
     return null
   }
 
+  const fetchMoreAdmin = useCallback(async () => {
+    if (adminLoadingRef.current) return
+    adminLoadingRef.current = true
+    setAdminLoading(true)
+    try {
+      const limit = 20
+      const offset = adminOffset
+      if (adminTotal !== null && offset >= adminTotal) return
+      const r = await fetch(`/api/competitors/paged?offset=${offset}&limit=${limit}`)
+      if (r.ok) {
+        const j = await r.json()
+        const rows = (j.rows || []) as Competitor[]
+        if (rows.length) {
+          setCompetitors(prev => {
+            const seen = new Set(prev.map(item => item.id))
+            const uniqued = rows.filter(item => !seen.has(item.id))
+            if (!uniqued.length) return prev
+            return [...prev, ...uniqued]
+          })
+          const loaded = offset + rows.length
+          setAdminOffset(loaded)
+          setAdminTotal(j.total ?? adminTotal)
+        } else if (j.total !== undefined && j.total !== null) {
+          setAdminTotal(j.total)
+        }
+      }
+    } finally {
+      adminLoadingRef.current = false
+      setAdminLoading(false)
+    }
+  }, [adminOffset, adminTotal])
+
   // Infinite scroll: observe sentinel within the actual panel (admin All‑coaches only)
   useEffect(() => {
     if (!(isAdmin && !coachId)) return
@@ -434,38 +466,6 @@ export default function DashboardPage() {
     onScroll()
     return () => { target.removeEventListener('scroll', onScroll); target.removeEventListener('resize', onScroll) }
   }, [filteredCompetitors.length, visibleCount, isAdmin, coachId, competitors.length, adminTotal, adminLoading, fetchMoreAdmin])
-
-  const fetchMoreAdmin = useCallback(async () => {
-    if (adminLoadingRef.current) return
-    adminLoadingRef.current = true
-    setAdminLoading(true)
-    try {
-      const limit = 20
-      const offset = adminOffset
-      if (adminTotal !== null && offset >= adminTotal) return
-      const r = await fetch(`/api/competitors/paged?offset=${offset}&limit=${limit}`)
-      if (r.ok) {
-        const j = await r.json()
-        const rows = (j.rows || []) as Competitor[]
-        if (rows.length) {
-          setCompetitors(prev => {
-            const seen = new Set(prev.map(item => item.id))
-            const uniqued = rows.filter(item => !seen.has(item.id))
-            if (!uniqued.length) return prev
-            return [...prev, ...uniqued]
-          })
-          const loaded = offset + rows.length
-          setAdminOffset(loaded)
-          setAdminTotal(j.total ?? adminTotal)
-        } else if (j.total !== undefined && j.total !== null) {
-          setAdminTotal(j.total)
-        }
-      }
-    } finally {
-      adminLoadingRef.current = false
-      setAdminLoading(false)
-    }
-  }, [adminOffset, adminTotal])
 
   const getStatusColor = (status: string) => {
     switch (status) {

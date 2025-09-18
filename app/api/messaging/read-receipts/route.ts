@@ -6,9 +6,10 @@ import { cookies } from 'next/headers'
 // Body: { messageIds: number[] }
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { messageIds } = await req.json() as { messageIds: number[] }
     if (!Array.isArray(messageIds) || messageIds.length === 0) {
@@ -36,9 +37,10 @@ export async function POST(req: NextRequest) {
 // GET /api/messaging/read-receipts?messageIds=1,2,3
 export async function GET(req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const messageIdsParam = req.nextUrl.searchParams.get('messageIds')
     if (!messageIdsParam) {

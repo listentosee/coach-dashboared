@@ -5,19 +5,22 @@ import { cookies } from 'next/headers'
 // Fetch messages for a conversation (RLS enforced)
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { id } = await context.params
 
     const url = new URL(req.url)
     const limit = parseInt(url.searchParams.get('limit') || '50', 10)
 
     // Use V2 RPC that hides private replies from other users
     const { data: messages, error } = await supabase
-      .rpc('list_messages_with_sender_v2', { p_conversation_id: params.id, p_limit: Math.min(Math.max(limit, 1), 200) })
+      .rpc('list_messages_with_sender_v2', { p_conversation_id: id, p_limit: Math.min(Math.max(limit, 1), 200) })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     return NextResponse.json({ messages })
@@ -30,12 +33,15 @@ export async function GET(
 // Send a message to a conversation (server-side transaction; RLS enforces authorizations)
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { id } = await context.params
 
     const { body, parentMessageId, privateTo } = await req.json() as { body?: string; parentMessageId?: number; privateTo?: string }
     if (!body || body.trim().length === 0) {
@@ -48,11 +54,11 @@ export async function POST(
       const { data: conv, error: convErr } = await supabase
         .from('conversations')
         .select('type')
-        .eq('id', params.id)
+        .eq('id', id)
         .single()
       if (!convErr && conv?.type === 'announcement') {
         const { data, error } = await supabase.rpc('post_private_reply', {
-          p_conversation_id: params.id,
+          p_conversation_id: id,
           p_body: body,
           p_recipient: privateTo,
           p_parent_message_id: parentMessageId ?? null
@@ -63,7 +69,7 @@ export async function POST(
       // Not an announcement; proceed to normal insert below
     }
 
-    const payload: Record<string, any> = { conversation_id: params.id, sender_id: user.id, body }
+    const payload: Record<string, any> = { conversation_id: id, sender_id: user.id, body }
     if (typeof parentMessageId === 'number' && Number.isFinite(parentMessageId)) {
       payload.parent_message_id = parentMessageId
     }

@@ -5,14 +5,16 @@ import { cookies } from 'next/headers'
 // GET /api/messaging/threads/[id]
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const threadRootId = parseInt(params.id, 10)
+    const { id } = await context.params
+    const threadRootId = parseInt(id, 10)
     if (!Number.isFinite(threadRootId)) {
       return NextResponse.json({ error: 'Invalid thread ID' }, { status: 400 })
     }

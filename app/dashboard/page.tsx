@@ -78,6 +78,7 @@ export default function DashboardPage() {
   const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const competitorIdSetRef = useRef<Set<string>>(new Set())
   const competitorsLengthRef = useRef<number>(0)
+  const adminLoadingRef = useRef<boolean>(false)
 
   const fetchData = useCallback(async () => {
     try {
@@ -401,7 +402,7 @@ export default function DashboardPage() {
     }, { root: rootEl || null, rootMargin: '300px', threshold: 0 })
     obs.observe(sentinel)
     return () => obs.disconnect()
-  }, [filteredCompetitors.length, isAdmin, coachId, competitors.length, adminTotal, adminLoading, adminOffset])
+  }, [filteredCompetitors.length, isAdmin, coachId, competitors.length, adminTotal, adminLoading, fetchMoreAdmin])
 
   // Fallback proximity check on same root (covers edge browsers) – admin All‑coaches only
   useEffect(() => {
@@ -432,25 +433,39 @@ export default function DashboardPage() {
     target.addEventListener('resize', onScroll)
     onScroll()
     return () => { target.removeEventListener('scroll', onScroll); target.removeEventListener('resize', onScroll) }
-  }, [filteredCompetitors.length, visibleCount, isAdmin, coachId, competitors.length, adminTotal, adminLoading, adminOffset])
+  }, [filteredCompetitors.length, visibleCount, isAdmin, coachId, competitors.length, adminTotal, adminLoading, fetchMoreAdmin])
 
-  const fetchMoreAdmin = async () => {
+  const fetchMoreAdmin = useCallback(async () => {
+    if (adminLoadingRef.current) return
+    adminLoadingRef.current = true
+    setAdminLoading(true)
     try {
-      setAdminLoading(true)
       const limit = 20
-      // Derive offset from current number of loaded competitors to avoid stale closure
-      const offset = competitors.length
+      const offset = adminOffset
       if (adminTotal !== null && offset >= adminTotal) return
       const r = await fetch(`/api/competitors/paged?offset=${offset}&limit=${limit}`)
       if (r.ok) {
         const j = await r.json()
-        const rows = j.rows || []
-        setCompetitors(prev => [...prev, ...rows])
-        setAdminOffset(offset + rows.length)
-        setAdminTotal(j.total || adminTotal)
+        const rows = (j.rows || []) as Competitor[]
+        if (rows.length) {
+          setCompetitors(prev => {
+            const seen = new Set(prev.map(item => item.id))
+            const uniqued = rows.filter(item => !seen.has(item.id))
+            if (!uniqued.length) return prev
+            return [...prev, ...uniqued]
+          })
+          const loaded = offset + rows.length
+          setAdminOffset(loaded)
+          setAdminTotal(j.total ?? adminTotal)
+        } else if (j.total !== undefined && j.total !== null) {
+          setAdminTotal(j.total)
+        }
       }
-    } finally { setAdminLoading(false) }
-  }
+    } finally {
+      adminLoadingRef.current = false
+      setAdminLoading(false)
+    }
+  }, [adminOffset, adminTotal])
 
   const getStatusColor = (status: string) => {
     switch (status) {

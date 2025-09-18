@@ -5,26 +5,29 @@ import { cookies } from 'next/headers'
 // Mark conversation as read: update last_read_at for the current user
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    const { id } = await context.params
+
     // Prefer new watermark RPC; fallback to legacy if missing
-    let { error: rpcErr } = await supabase.rpc('mark_conversation_read_v2', { p_conversation_id: params.id })
+    let { error: rpcErr } = await supabase.rpc('mark_conversation_read_v2', { p_conversation_id: id })
     if (!rpcErr) return NextResponse.json({ ok: true })
 
     // Legacy fallback
-    const legacy = await supabase.rpc('mark_conversation_read', { p_conversation_id: params.id })
+    const legacy = await supabase.rpc('mark_conversation_read', { p_conversation_id: id })
     if (!legacy.error) return NextResponse.json({ ok: true })
 
     // Fallback: direct update using the latest message timestamp
     const { data: lastMsg, error: msgErr } = await supabase
       .from('messages')
       .select('created_at')
-      .eq('conversation_id', params.id)
+      .eq('conversation_id', id)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -35,7 +38,7 @@ export async function POST(
     const { error } = await supabase
       .from('conversation_members')
       .update({ last_read_at: targetTs as any })
-      .eq('conversation_id', params.id)
+      .eq('conversation_id', id)
       .eq('user_id', user.id)
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 

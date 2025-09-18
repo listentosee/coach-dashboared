@@ -7,12 +7,15 @@ import { isUserAdmin } from '@/lib/utils/admin-check'
 // Body: { userId: string, minutes?: number, until?: string | null }
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { id } = await context.params
 
     const adminId = user.id
     const isAdmin = await isUserAdmin(supabase, adminId)
@@ -35,7 +38,7 @@ export async function POST(
     const { error } = await supabase
       .from('conversation_members')
       .update({ muted_until })
-      .eq('conversation_id', params.id)
+      .eq('conversation_id', id)
       .eq('user_id', userId)
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 

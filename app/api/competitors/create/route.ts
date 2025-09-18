@@ -19,7 +19,8 @@ const CompetitorSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
     // Verify authentication (server-validated)
     const { data: { user } } = await supabase.auth.getUser();
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
     // Determine acting context
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
     const isAdmin = profile?.role === 'admin'
-    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    const actingCoachId = isAdmin ? (cookieStore.get('admin_coach_id')?.value || null) : null
     if (isAdmin && !actingCoachId) {
       return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
     }

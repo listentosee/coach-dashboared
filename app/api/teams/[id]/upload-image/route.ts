@@ -4,16 +4,17 @@ import { cookies } from 'next/headers';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: teamId } = params;
-    const supabase = createRouteHandlerClient({ cookies });
+    const { id: teamId } = await context.params;
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
     const isAdmin = profile?.role === 'admin'
-    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    const actingCoachId = isAdmin ? (cookieStore.get('admin_coach_id')?.value || null) : null
     if (isAdmin && !actingCoachId) return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
     
     // Get the form data

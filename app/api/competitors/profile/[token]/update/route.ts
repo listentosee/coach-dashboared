@@ -20,7 +20,7 @@ const ProfileUpdateSchema = z.object({
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { token: string } }
+  context: { params: Promise<{ token: string }> }
 ) {
   try {
     const supabase = createClient(
@@ -33,10 +33,12 @@ export async function PUT(
     const validatedData = ProfileUpdateSchema.parse(body);
 
     // First, get the competitor by token to verify it exists and get the ID
+    const { token } = await context.params
+
     const { data: existingCompetitor, error: fetchError } = await supabase
       .from('competitors')
       .select('id, profile_update_token_expires')
-      .eq('profile_update_token', params.token)
+      .eq('profile_update_token', token)
       .single();
 
     if (fetchError || !existingCompetitor) {

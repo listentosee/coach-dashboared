@@ -19,10 +19,11 @@ const UpdateCompetitorSchema = z.object({
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
     // Verify authentication (validated)
     const { data: { user } } = await supabase.auth.getUser();
@@ -36,14 +37,15 @@ export async function PUT(
 
     // Determine admin context
     const isAdmin = await isUserAdmin(supabase, user.id);
-    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    const actingCoachId = isAdmin ? (cookieStore.get('admin_coach_id')?.value || null) : null
+    const { id } = await context.params
     if (isAdmin && !actingCoachId) {
       return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
     }
     let verifyQuery = supabase
       .from('competitors')
       .select('id')
-      .eq('id', params.id);
+      .eq('id', id);
     if (!isAdmin) verifyQuery = verifyQuery.eq('coach_id', user.id);
     else verifyQuery = verifyQuery.eq('coach_id', actingCoachId as string);
     const { data: existingCompetitor, error: checkError } = await verifyQuery.single();
@@ -75,7 +77,7 @@ export async function PUT(
     const { error: upErr } = await supabase
       .from('competitors')
       .update(updatePayload)
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (upErr) {
       console.error('Competitor update error:', upErr, 'payload:', updatePayload);
@@ -86,7 +88,7 @@ export async function PUT(
     const { data: competitor, error: fetchErr } = await supabase
       .from('competitors')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .maybeSingle();
 
     if (fetchErr || !competitor) {

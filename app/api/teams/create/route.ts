@@ -13,7 +13,8 @@ const CreateTeamSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
     // Get authenticated user (verified)
     const { data: { user } } = await supabase.auth.getUser();
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     // Determine which coach_id to use
     let coachId = user.id;
     if (isAdmin) {
-      const actingCoachId = cookies().get('admin_coach_id')?.value || null
+      const actingCoachId = cookieStore.get('admin_coach_id')?.value || null
       if (!actingCoachId) return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
       coachId = actingCoachId
     }

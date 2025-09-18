@@ -5,10 +5,11 @@ import { isUserAdmin } from '@/lib/utils/admin-check';
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
     // Get authenticated user
     const { data: { user } } = await supabase.auth.getUser();
@@ -18,7 +19,8 @@ export async function DELETE(
 
     // Check if user is admin and resolve acting context
     const isAdmin = await isUserAdmin(supabase, user.id);
-    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    const actingCoachId = isAdmin ? (cookieStore.get('admin_coach_id')?.value || null) : null
+    const { id } = await context.params
     if (isAdmin && !actingCoachId) {
       return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
     }
@@ -27,7 +29,7 @@ export async function DELETE(
     let query = supabase
       .from('teams')
       .select('id, name, coach_id')
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (!isAdmin) {
       query = query.eq('coach_id', user.id);
@@ -45,7 +47,7 @@ export async function DELETE(
     const { error: deleteError } = await supabase
       .from('teams')
       .delete()
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (deleteError) {
       console.error('Database error:', deleteError);
@@ -59,7 +61,7 @@ export async function DELETE(
         user_id: user.id,
         action: 'team_deleted',
         entity_type: 'team',
-        entity_id: params.id,
+        entity_id: id,
         metadata: { 
           team_name: team.name,
           coach_id: team.coach_id

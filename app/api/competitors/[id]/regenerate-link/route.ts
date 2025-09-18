@@ -5,10 +5,11 @@ import { randomBytes } from 'crypto';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
     // Authenticate user with Supabase Auth server
     const { data: { user } } = await supabase.auth.getUser();
@@ -19,7 +20,8 @@ export async function POST(
     // Determine admin context
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
     const isAdmin = profile?.role === 'admin'
-    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    const actingCoachId = isAdmin ? (cookieStore.get('admin_coach_id')?.value || null) : null
+    const { id } = await context.params
     if (isAdmin && !actingCoachId) {
       return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
     }
@@ -28,7 +30,7 @@ export async function POST(
     let q = supabase
       .from('competitors')
       .select('id, first_name, last_name')
-      .eq('id', params.id)
+      .eq('id', id)
     if (isAdmin) q = q.eq('coach_id', actingCoachId as string)
     else q = q.eq('coach_id', user.id)
     const { data: competitor, error: fetchError } = await q.single();
@@ -58,7 +60,7 @@ export async function POST(
         profile_update_token_expires: expiresAt.toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (updateError) {
       console.error('Database error:', updateError);

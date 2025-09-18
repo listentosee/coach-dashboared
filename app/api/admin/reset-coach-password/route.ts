@@ -12,7 +12,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify caller is an authenticated admin using cookie-bound client
-    const authed = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies()
+    const authed = createRouteHandlerClient({ cookies: () => cookieStore })
     const { data: { user } } = await authed.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

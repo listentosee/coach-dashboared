@@ -4,10 +4,11 @@ import { cookies } from 'next/headers';
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
     // Check authentication
     const { data: { user } } = await supabase.auth.getUser();
@@ -23,11 +24,11 @@ export async function PUT(
       .single();
 
     const isAdmin = profile?.role === 'admin';
-    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    const actingCoachId = isAdmin ? (cookieStore.get('admin_coach_id')?.value || null) : null
+    const { id: teamId } = await context.params;
     if (isAdmin && !actingCoachId) {
       return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
     }
-    const teamId = params.id;
 
     // Get request body
     const body = await request.json();

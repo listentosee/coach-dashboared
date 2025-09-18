@@ -19,12 +19,13 @@ export async function POST(req: NextRequest) {
   console.log('Supabase client created');
 
   // Enforce caller authorization (admin coach context or coach ownership)
-  const authed = createRouteHandlerClient({ cookies })
+  const cookieStore = await cookies()
+  const authed = createRouteHandlerClient({ cookies: () => cookieStore })
   const { data: { user } } = await authed.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { data: profile } = await authed.from('profiles').select('role').eq('id', user.id).single()
   const isAdmin = profile?.role === 'admin'
-  const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+  const actingCoachId = isAdmin ? (cookieStore.get('admin_coach_id')?.value || null) : null
   if (isAdmin && !actingCoachId) return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
 
   // Pull competitor data with coach's school from profile

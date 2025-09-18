@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { token: string } }
+  context: { params: Promise<{ token: string }> }
 ) {
   try {
     const supabase = createClient(
@@ -12,10 +12,12 @@ export async function GET(
     );
     
     // Fetch competitor profile by token
+    const { token } = await context.params
+
     const { data: competitor, error } = await supabase
       .from('competitors')
       .select('*')
-      .eq('profile_update_token', params.token)
+      .eq('profile_update_token', token)
       .single();
 
     if (error || !competitor) {

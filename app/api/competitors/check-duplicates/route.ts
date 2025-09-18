@@ -10,7 +10,8 @@ const DuplicateCheckSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
     // Verify authentication
     const { data: { user } } = await supabase.auth.getUser();

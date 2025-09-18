@@ -5,7 +5,8 @@ import { createClient } from '@supabase/supabase-js'
 
 export async function POST(req: NextRequest) {
   try {
-    const authed = createRouteHandlerClient({ cookies })
+    const cookieStore = await cookies()
+    const authed = createRouteHandlerClient({ cookies: () => cookieStore })
     const { data: { user } } = await authed.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

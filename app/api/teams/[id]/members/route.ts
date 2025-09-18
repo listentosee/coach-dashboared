@@ -5,10 +5,11 @@ import { isUserAdmin } from '@/lib/utils/admin-check';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
     // Get the authenticated user session
     const { data: { user } } = await supabase.auth.getUser();
@@ -19,11 +20,13 @@ export async function GET(
     // Check if user is admin
     const isAdmin = await isUserAdmin(supabase, user.id);
 
+    const { id } = await context.params
+
     // Verify the team exists and user has access
     let query = supabase
       .from('teams')
       .select('id, name')
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (!isAdmin) {
       query = query.eq('coach_id', user.id);
@@ -50,7 +53,7 @@ export async function GET(
           email_school
         )
       `)
-      .eq('team_id', params.id)
+      .eq('team_id', id)
       .order('position', { ascending: true });
 
     if (membersError) {

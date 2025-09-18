@@ -11,10 +11,11 @@ const AddMemberSchema = z.object({
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
     // Get the authenticated user session
     const { data: { user } } = await supabase.auth.getUser();
@@ -24,7 +25,8 @@ export async function POST(
 
     // Check if user is admin and resolve acting context
     const isAdmin = await isUserAdmin(supabase, user.id);
-    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    const actingCoachId = isAdmin ? (cookieStore.get('admin_coach_id')?.value || null) : null
+    const { id } = await context.params
     if (isAdmin && !actingCoachId) {
       return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
     }
@@ -37,7 +39,7 @@ export async function POST(
     let teamQuery = supabase
       .from('teams')
       .select('id, name, status, coach_id')
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (!isAdmin) {
       teamQuery = teamQuery.eq('coach_id', user.id);
@@ -90,7 +92,7 @@ export async function POST(
       const { data: existingPositions, error: positionsError } = await supabase
         .from('team_members')
         .select('position')
-        .eq('team_id', params.id);
+        .eq('team_id', id);
 
       if (positionsError) {
         console.error('Error fetching existing positions:', positionsError);
@@ -112,7 +114,7 @@ export async function POST(
       const { data: positionTaken, error: positionError } = await supabase
         .from('team_members')
         .select('id')
-        .eq('team_id', params.id)
+        .eq('team_id', id)
         .eq('position', positionToUse)
         .single();
 
@@ -129,7 +131,7 @@ export async function POST(
     const { data: teamMember, error: addError } = await supabase
       .from('team_members')
       .insert({
-        team_id: params.id,
+        team_id: id,
         competitor_id: validatedData.competitor_id,
         position: positionToUse,
       })

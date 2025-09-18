@@ -9,10 +9,11 @@ const ToggleActiveSchema = z.object({
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
     // Verify authentication (validated with Auth server)
     const { data: { user } } = await supabase.auth.getUser();
@@ -23,7 +24,7 @@ export async function PUT(
     // Determine admin context
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
     const isAdmin = profile?.role === 'admin'
-    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    const actingCoachId = isAdmin ? (cookieStore.get('admin_coach_id')?.value || null) : null
     if (isAdmin && !actingCoachId) {
       return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
     }
@@ -33,10 +34,12 @@ export async function PUT(
     const validatedData = ToggleActiveSchema.parse(body);
 
     // Verify the competitor belongs to the correct coach
+    const { id } = await context.params
+
     let verify = supabase
       .from('competitors')
       .select('id, coach_id')
-      .eq('id', params.id)
+      .eq('id', id)
     if (isAdmin) verify = verify.eq('coach_id', actingCoachId as string)
     else verify = verify.eq('coach_id', user.id)
     const { data: existingCompetitor, error: checkError } = await verify.single();
@@ -52,7 +55,7 @@ export async function PUT(
         is_active: validatedData.is_active,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 

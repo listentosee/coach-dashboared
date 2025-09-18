@@ -5,10 +5,11 @@ import { isUserAdmin } from '@/lib/utils/admin-check';
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string; competitor_id: string } }
+  context: { params: Promise<{ id: string; competitor_id: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
     // Get authenticated user
     const { data: { user } } = await supabase.auth.getUser();
@@ -18,7 +19,8 @@ export async function DELETE(
 
     // Check if user is admin and resolve acting context
     const isAdmin = await isUserAdmin(supabase, user.id);
-    const actingCoachId = isAdmin ? (cookies().get('admin_coach_id')?.value || null) : null
+    const actingCoachId = isAdmin ? (cookieStore.get('admin_coach_id')?.value || null) : null
+    const { id: teamId, competitor_id } = await context.params
     if (isAdmin && !actingCoachId) {
       return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
     }
@@ -27,7 +29,7 @@ export async function DELETE(
     let query = supabase
       .from('teams')
       .select('id, name, coach_id')
-      .eq('id', params.id);
+      .eq('id', teamId);
 
     if (!isAdmin) {
       query = query.eq('coach_id', user.id);
@@ -45,8 +47,8 @@ export async function DELETE(
     const { data: teamMember, error: memberError } = await supabase
       .from('team_members')
       .select('id, position')
-      .eq('team_id', params.id)
-      .eq('competitor_id', params.competitor_id)
+      .eq('team_id', teamId)
+      .eq('competitor_id', competitor_id)
       .single();
 
     if (memberError || !teamMember) {
@@ -57,8 +59,8 @@ export async function DELETE(
     const { error: deleteError } = await supabase
       .from('team_members')
       .delete()
-      .eq('team_id', params.id)
-      .eq('competitor_id', params.competitor_id);
+      .eq('team_id', teamId)
+      .eq('competitor_id', competitor_id);
 
     if (deleteError) {
       console.error('Database error:', deleteError);
@@ -75,7 +77,7 @@ export async function DELETE(
         entity_id: teamMember.id,
         metadata: { 
           team_name: team.name,
-          competitor_id: params.competitor_id,
+          competitor_id,
           position: teamMember.position,
           coach_id: team.coach_id
         }

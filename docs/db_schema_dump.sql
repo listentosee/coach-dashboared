@@ -1128,7 +1128,11 @@ CREATE TABLE IF NOT EXISTS "public"."competitors" (
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "is_active" boolean DEFAULT true,
     "status" "text" DEFAULT 'pending'::"text",
-    "division" "public"."competitor_division"
+    "division" "public"."competitor_division",
+    "game_platform_sync_error" "text",
+    "syned_school_id" "text",
+    "syned_region_id" "text",
+    "syned_coach_user_id" "text"
 );
 
 
@@ -1141,6 +1145,8 @@ CREATE TABLE IF NOT EXISTS "public"."team_members" (
     "competitor_id" "uuid" NOT NULL,
     "joined_at" timestamp with time zone DEFAULT "now"(),
     "position" integer,
+    "game_platform_synced_at" timestamp with time zone,
+    "game_platform_sync_error" "text",
     CONSTRAINT "team_members_position_check" CHECK ((("position" >= 1) AND ("position" <= 6)))
 );
 
@@ -1157,7 +1163,13 @@ CREATE TABLE IF NOT EXISTS "public"."teams" (
     "status" "public"."team_status" DEFAULT 'forming'::"public"."team_status",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
-    "image_url" "text"
+    "image_url" "text",
+    "game_platform_id" "text",
+    "game_platform_synced_at" timestamp with time zone,
+    "game_platform_sync_error" "text",
+    "affiliation" "text",
+    "syned_coach_user_id" "text",
+    "coach_game_platform_id" "text"
 );
 
 
@@ -1296,7 +1308,9 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "live_scan_completed" boolean DEFAULT false,
     "mandated_reporter_completed" boolean DEFAULT false,
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "game_platform_user_id" "text",
+    "game_platform_last_synced_at" timestamp with time zone
 );
 
 
@@ -1530,11 +1544,19 @@ CREATE INDEX "idx_messages_thread_root" ON "public"."messages" USING "btree" ("t
 
 
 
+CREATE UNIQUE INDEX "idx_profiles_game_platform_user_id" ON "public"."profiles" USING "btree" ("game_platform_user_id") WHERE ("game_platform_user_id" IS NOT NULL);
+
+
+
 CREATE INDEX "idx_team_members_competitor_id" ON "public"."team_members" USING "btree" ("competitor_id");
 
 
 
 CREATE INDEX "idx_team_members_team_id" ON "public"."team_members" USING "btree" ("team_id");
+
+
+
+CREATE UNIQUE INDEX "idx_teams_game_platform_id" ON "public"."teams" USING "btree" ("game_platform_id") WHERE ("game_platform_id" IS NOT NULL);
 
 
 

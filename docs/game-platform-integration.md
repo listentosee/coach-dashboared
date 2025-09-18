@@ -123,9 +123,26 @@ Background Sync (cron/job) -> Next.js route or Edge Function -> GamePlatformClie
 4. Clarify ODL score payload structure to define schema and scoreboard calculations.
 5. Are there rate limits or concurrency constraints we must respect when syncing large rosters?
 
-## 15. Next Actions
-1. Obtain API credentials and sample payloads from SynED/MetaCTF.
-2. Implement `GamePlatformClient` scaffold with mocked tests.
-3. Ship Supabase migrations for new columns/tables and update status triggers.
-4. Build competitor onboarding route + UI changes behind feature flag.
-5. Integrate team sync service and schedule initial background jobs.
+## 15. Implementation Checklist
+- [ ] Obtain API credentials and sample payloads from SynED/MetaCTF.
+- [x] Implement `GamePlatformClient` scaffold with mocked tests.
+- [x] Ship Supabase migrations for new columns/tables and update status triggers.
+- [x] Build competitor onboarding route + UI changes behind feature flag.
+- [x] Integrate team sync service into team CRUD + membership flows.
+- [ ] Schedule initial background jobs for synchronization (scores, roster reconciliation) with observability hooks.
+- [ ] Finalize response schemas based on live payload captures and update validators.
+- [ ] Complete integration/QA runbook and document rollback steps.
+- [x] Scaffold Game Platform dashboard UI shell.
+- [ ] Apply final visual/styling tweaks and bind live data to dashboard components.
+
+## 16. Game Platform Dashboard Layout
+- Vision: deliver a single-column analytics hub (no inner sidebar) that mirrors the high-tech aesthetic used in `app/dashboard/admin-tools/analytics/page.tsx` while remaining coach-friendly.
+- Global KPIs: five StatCards across the top (Active on Platform, Registered Competitors, Team Enrollment, Total Challenges Solved, Monthly CTF Participation) with value, delta, and sparkline trends.
+- Performance Row: left leaderboard table for "Challenges Done" with search/sort, right monthly CTF chart (toggle between pace and absolute scores) sharing the same filters.
+- Teams Matrix: responsive grid of team tiles summarizing average scores, solved challenges, last sync; selecting a tile opens a drawer with member breakdown and quick actions (reassign, reset password).
+- Access & Alerts: horizontal card duo listing onboarding/sync issues and inactive logins so coaches can triage access problems.
+- Activity Timeline: bottom chart enumerating platform events (registrations, team edits, challenge streaks) with a full-screen option for deeper analysis.
+- Filters & Responsiveness: stick to top-of-page filters (coach, division, date range) and reuse existing card/table primitives from the admin analytics page to ensure visual cohesion.
+- Checklist
+  - [x] Scaffold React components (`GlobalStats`, `Leaderboard`, `TeamsGrid`, `AlertsPanel`, `Timeline`) under `app/dashboard/game-platform/` using placeholder data.
+  - [ ] Wire components to real services once API payloads are confirmed; incorporate loading/error states and "last updated" metadata.

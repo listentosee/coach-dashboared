@@ -28,6 +28,7 @@ interface Competitor {
   participation_agreement_date?: string;
   game_platform_id?: string;
   game_platform_synced_at?: string;
+  game_platform_sync_error?: string | null;
   team_id?: string;
   team_name?: string;
   team_position?: number;
@@ -79,6 +80,7 @@ export default function DashboardPage() {
   const competitorIdSetRef = useRef<Set<string>>(new Set())
   const competitorsLengthRef = useRef<number>(0)
   const adminLoadingRef = useRef<boolean>(false)
+  const [registeringId, setRegisteringId] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -514,9 +516,50 @@ export default function DashboardPage() {
     }
   };
 
-  const handleRegister = (competitorId: string) => {
-    // TODO: Implement registration functionality
-    console.log('Register competitor:', competitorId);
+  const handleRegister = async (competitorId: string) => {
+    const competitor = competitors.find((c) => c.id === competitorId);
+    if (!competitor) return;
+
+    if (competitor.status !== 'compliance') {
+      alert('Competitor must complete compliance steps before registering on the Game Platform.');
+      return;
+    }
+
+    if (competitor.game_platform_id) {
+      alert('Competitor is already registered on the Game Platform.');
+      return;
+    }
+
+    if (registeringId) {
+      return;
+    }
+
+    try {
+      setRegisteringId(competitorId);
+      const response = await fetch(`/api/game-platform/competitors/${competitorId}` , {
+        method: 'POST',
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        const message = payload?.error || 'Failed to register competitor on the Game Platform';
+        throw new Error(message);
+      }
+
+      if (payload?.status === 'mocked') {
+        alert('Game Platform integration is running in dry-run mode. Payload validated but no remote registration occurred.');
+      } else {
+        alert('Competitor added to the Game Platform successfully.');
+      }
+
+      await fetchData();
+    } catch (error: any) {
+      console.error('Game Platform registration failed', error);
+      alert(error?.message || 'Failed to register competitor on the Game Platform');
+    } finally {
+      setRegisteringId(null);
+    }
   };
 
   const handleDisable = async (competitorId: string) => {
@@ -759,6 +802,7 @@ export default function DashboardPage() {
               handleEdit,
               handleRegenerateLink,
               handleRegister,
+              registeringId,
               handleDisable,
               assignTeam,
               teams,

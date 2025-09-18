@@ -3,6 +3,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { z } from 'zod';
+import { syncTeamWithGamePlatform } from '@/lib/integrations/game-platform/service';
 
 const AddMemberSchema = z.object({
   competitor_id: z.string().uuid('Invalid competitor ID'),
@@ -159,9 +160,22 @@ export async function POST(
         }
       });
 
+    let gamePlatformSync: any = null;
+    try {
+      gamePlatformSync = await syncTeamWithGamePlatform({
+        supabase,
+        teamId: id,
+        logger: console,
+      });
+    } catch (syncError: any) {
+      console.error('Game Platform team sync failed after member add', syncError);
+      gamePlatformSync = { error: syncError?.message ?? 'Unknown Game Platform sync error' };
+    }
+
     return NextResponse.json({
       teamMember,
-      message: 'Member added successfully'
+      message: 'Member added successfully',
+      gamePlatformSync,
     });
 
   } catch (error) {

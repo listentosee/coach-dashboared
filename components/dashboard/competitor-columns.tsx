@@ -22,6 +22,7 @@ export interface Competitor {
   participation_agreement_date?: string;
   game_platform_id?: string;
   game_platform_synced_at?: string;
+  game_platform_sync_error?: string | null;
   team_id?: string;
   team_name?: string;
   team_position?: number;
@@ -52,6 +53,7 @@ export const createCompetitorColumns = (
   onEdit: (id: string) => void,
   onRegenerateLink: (id: string) => Promise<string | null>,
   onRegister: (id: string) => void,
+  registeringId: string | null,
   onDisable: (id: string) => void,
   onTeamChange: (competitorId: string, teamId: string | undefined) => void,
   teams: Array<{id: string, name: string, memberCount?: number}>,
@@ -253,6 +255,18 @@ export const createCompetitorColumns = (
       const isDisabled = !competitor.is_active;
       const globalDisabled = !!disableEdits;
       const mergedDisabled = isDisabled || globalDisabled;
+      const isRegistering = registeringId === competitor.id;
+      const canRegister = competitor.status === 'compliance' && !competitor.game_platform_id && competitor.is_active && !mergedDisabled;
+      const registerDisabled = mergedDisabled || !canRegister || isRegistering;
+      const registerTooltip = globalDisabled
+        ? (disableTooltip || 'Select a coach to edit')
+        : !competitor.is_active
+          ? 'Competitor is inactive'
+          : competitor.game_platform_id
+            ? 'Already on the Game Platform'
+            : competitor.status !== 'compliance'
+              ? 'Complete compliance steps before registering'
+              : undefined;
       const title = globalDisabled ? (disableTooltip || 'Select a coach to edit') : 'Edit Competitor';
       const statusOk = ['profile','compliance','complete'].includes((competitor.status || '').toLowerCase())
       const emailRegex = /.+@.+\..+/;
@@ -334,11 +348,11 @@ export const createCompetitorColumns = (
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onRegister(competitor.id)}
-            title={globalDisabled ? (disableTooltip || 'Select a coach to edit') : 'Register on Game Platform'}
-            className={`p-1 ${mergedDisabled ? 'text-meta-muted cursor-not-allowed' : 'text-meta-light hover:text-meta-accent'}`}
-            disabled={mergedDisabled}
-            aria-disabled={mergedDisabled}
+            onClick={() => !registerDisabled && onRegister(competitor.id)}
+            title={registerTooltip ?? 'Register on Game Platform'}
+            className={`p-1 ${registerDisabled ? 'text-meta-muted cursor-not-allowed' : 'text-meta-light hover:text-meta-accent'} ${isRegistering ? 'animate-pulse' : ''}`}
+            disabled={registerDisabled}
+            aria-disabled={registerDisabled}
           >
             <Gamepad2 className="h-4 w-4" />
           </Button>

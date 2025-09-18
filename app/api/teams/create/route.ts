@@ -3,6 +3,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { z } from 'zod';
+import { syncTeamWithGamePlatform } from '@/lib/integrations/game-platform/service';
 
 const CreateTeamSchema = z.object({
   name: z.string().min(2, 'Team name must be at least 2 characters'),
@@ -83,9 +84,22 @@ export async function POST(request: NextRequest) {
         }
       });
 
+    let gamePlatformSync: any = null;
+    try {
+      gamePlatformSync = await syncTeamWithGamePlatform({
+        supabase,
+        teamId: team.id,
+        logger: console,
+      });
+    } catch (syncError: any) {
+      console.error('Game Platform team sync failed after create', syncError);
+      gamePlatformSync = { error: syncError?.message ?? 'Unknown Game Platform sync error' };
+    }
+
     return NextResponse.json({
       team,
-      message: 'Team created successfully'
+      message: 'Team created successfully',
+      gamePlatformSync,
     });
 
   } catch (error) {

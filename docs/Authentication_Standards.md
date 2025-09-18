@@ -37,6 +37,8 @@ This project uses Supabase Auth with Next.js (App Router). The following rules a
 
 ## Cookies and sessions
 - HTTPS only in production; cookies must be `Secure`.
+- Always `await cookies()` before accessing cookie values; do not call `cookies()` inline. Pass the memoized store to Supabase helpers (`createRouteHandlerClient({ cookies: () => cookieStore })`).
+- For dynamic routes, destructure params via `context: { params: Promise<...> }` and `await context.params` before use.
 - After server-side metadata changes that affect middleware decisions, refresh the session so the JWT in cookies reflects the update.
 
 ## Lint enforcement
@@ -48,4 +50,3 @@ This project uses Supabase Auth with Next.js (App Router). The following rules a
 - Admin Tools accessible only to admins; Analytics loads and filters by coach.
 - Forced reset flow: temp password → force reset → set new password → proceed to dashboard; middleware no longer forces reset.
 - API routes return 401 when unauthenticated and behave as expected when authenticated.
-

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+import { syncTeamWithGamePlatform } from '@/lib/integrations/game-platform/service';
 
 export async function PUT(
   request: NextRequest,
@@ -62,7 +63,19 @@ export async function PUT(
       return NextResponse.json({ error: 'Failed to update team' }, { status: 500 });
     }
 
-    return NextResponse.json({ team });
+    let gamePlatformSync: any = null;
+    try {
+      gamePlatformSync = await syncTeamWithGamePlatform({
+        supabase,
+        teamId,
+        logger: console,
+      });
+    } catch (syncError: any) {
+      console.error('Game Platform team sync failed after update', syncError);
+      gamePlatformSync = { error: syncError?.message ?? 'Unknown Game Platform sync error' };
+    }
+
+    return NextResponse.json({ team, gamePlatformSync });
   } catch (error) {
     console.error('Error in team update:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

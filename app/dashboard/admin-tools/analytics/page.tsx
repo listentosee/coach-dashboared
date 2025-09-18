@@ -3,16 +3,18 @@ import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
 
 export const dynamic = 'force-dynamic'
 
-export default async function AdminAnalyticsPage({ searchParams }: { searchParams?: { coach_id?: string } }) {
-  const supabase = createServerComponentClient({ cookies })
+export default async function AdminAnalyticsPage({ searchParams }: { searchParams?: Promise<{ coach_id?: string }> }) {
+  const cookieStore = await cookies()
+  const supabase = createServerComponentClient({ cookies: () => cookieStore })
+
+  const resolvedParams = searchParams ? await searchParams : undefined
+  const coachId = resolvedParams?.coach_id
 
   // Auth check
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return <div className="p-6 text-meta-light">Unauthorized</div>
   }
-
-  const coachId = searchParams?.coach_id
 
   // Coach list for selector
   const { data: coaches } = await supabase

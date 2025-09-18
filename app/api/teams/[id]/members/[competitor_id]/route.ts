@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { isUserAdmin } from '@/lib/utils/admin-check';
+import { syncTeamWithGamePlatform } from '@/lib/integrations/game-platform/service';
 
 export async function DELETE(
   request: NextRequest,
@@ -83,8 +84,21 @@ export async function DELETE(
         }
       });
 
+    let gamePlatformSync: any = null;
+    try {
+      gamePlatformSync = await syncTeamWithGamePlatform({
+        supabase,
+        teamId,
+        logger: console,
+      });
+    } catch (syncError: any) {
+      console.error('Game Platform team sync failed after member removal', syncError);
+      gamePlatformSync = { error: syncError?.message ?? 'Unknown Game Platform sync error' };
+    }
+
     return NextResponse.json({
-      message: 'Member removed successfully'
+      message: 'Member removed successfully',
+      gamePlatformSync,
     });
 
   } catch (error) {

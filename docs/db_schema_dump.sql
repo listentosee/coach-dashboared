@@ -130,6 +130,10 @@ CREATE OR REPLACE FUNCTION "public"."count_unread_by_receipts"("p_user_id" "uuid
     where cm.user_id = p_user_id
       and m.sender_id <> p_user_id
       and r.id is null
+      and coalesce(
+            nullif(m.metadata ->> 'private_to', '')::uuid,
+            '00000000-0000-0000-0000-000000000000'::uuid
+          ) in ('00000000-0000-0000-0000-000000000000'::uuid, p_user_id)
     group by cm.conversation_id
   ) as t;
 $$;
@@ -149,6 +153,10 @@ CREATE OR REPLACE FUNCTION "public"."count_unread_messages"("p_user_id" "uuid") 
     where cm.user_id = p_user_id
       and m.created_at > cm.last_read_at
       and m.sender_id <> p_user_id
+      and coalesce(
+            nullif(m.metadata ->> 'private_to', '')::uuid,
+            '00000000-0000-0000-0000-000000000000'::uuid
+          ) in ('00000000-0000-0000-0000-000000000000'::uuid, p_user_id)
     group by cm.conversation_id
   ) as t;
 $$;
@@ -435,14 +443,24 @@ CREATE OR REPLACE FUNCTION "public"."get_unread_counts"("p_user_id" "uuid" DEFAU
     where cm.user_id = p_user_id
   ),
   message_counts as (
-    select m.conversation_id, count(*)::int as unread_count, max(m.created_at) as last_message_at
+    select m.conversation_id,
+           count(*)::int as unread_count,
+           max(m.created_at) as last_message_at
     from public.messages m
     inner join user_conversations uc on uc.conversation_id = m.conversation_id
     left join public.message_read_receipts r on r.message_id = m.id and r.user_id = p_user_id
-    where m.sender_id != p_user_id and r.id is null and m.created_at > uc.last_read_at
+    where m.sender_id <> p_user_id
+      and r.id is null
+      and m.created_at > uc.last_read_at
+      and coalesce(
+            nullif(m.metadata ->> 'private_to', '')::uuid,
+            '00000000-0000-0000-0000-000000000000'::uuid
+          ) in ('00000000-0000-0000-0000-000000000000'::uuid, p_user_id)
     group by m.conversation_id
   )
-  select uc.conversation_id, coalesce(mc.unread_count, 0) as unread_count, mc.last_message_at
+  select uc.conversation_id,
+         coalesce(mc.unread_count, 0) as unread_count,
+         mc.last_message_at
   from user_conversations uc
   left join message_counts mc on mc.conversation_id = uc.conversation_id;
 $$;
@@ -612,50 +630,58 @@ CREATE OR REPLACE FUNCTION "public"."list_conversations_enriched"("p_user_id" "u
   unread as (
     select uc.id as conversation_id, count(m.id)::int as unread_count
     from user_convos uc
-    join public.messages m on m.conversation_id = uc.id and m.sender_id <> p_user_id
+    join public.messages m
+      on m.conversation_id = uc.id
+     and m.sender_id <> p_user_id
+     and coalesce(
+           nullif(m.metadata ->> 'private_to', '')::uuid,
+           '00000000-0000-0000-0000-000000000000'::uuid
+         ) in ('00000000-0000-0000-0000-000000000000'::uuid, p_user_id)
     left join public.message_read_receipts r on r.message_id = m.id and r.user_id = p_user_id
     where r.id is null
     group by uc.id
   )
-  select 
-    uc.id,
-    uc.type,
-    uc.title,
-    uc.created_by,
-    uc.created_at,
-    coalesce(u.unread_count, 0) as unread_count,
-    lm.last_message_at,
-    case
-      when uc.type = 'announcement' then coalesce(nullif(trim(uc.title), ''), 'Announcement')
-      when uc.type = 'dm' then coalesce(
-        (
-          select nullif(trim(p.first_name || ' ' || p.last_name), '')
-          from public.conversation_members cm
-          join public.profiles p on p.id = cm.user_id
-          where cm.conversation_id = uc.id and cm.user_id <> p_user_id
-          limit 1
-        ),
-        (
-          select p.email
-          from public.conversation_members cm
-          join public.profiles p on p.id = cm.user_id
-          where cm.conversation_id = uc.id and cm.user_id <> p_user_id
-          limit 1
-        ),
-        'Direct Message'
-      )
-      when uc.type = 'group' then coalesce(
-        nullif(trim(uc.title), ''),
-        (
-          select string_agg(coalesce(nullif(trim(p.first_name || ' ' || p.last_name), ''), p.email), ', ')
-          from public.conversation_members cm
-          join public.profiles p on p.id = cm.user_id
-          where cm.conversation_id = uc.id and cm.user_id <> p_user_id
-        ),
-        'Group Conversation'
-      )
-      else uc.title
-    end as display_title
+  select uc.id,
+         uc.type,
+         uc.title,
+         uc.created_by,
+         uc.created_at,
+         coalesce(u.unread_count, 0) as unread_count,
+         lm.last_message_at,
+         case
+           when uc.type = 'announcement' then coalesce(nullif(trim(uc.title), ''), 'Announcement')
+           when uc.type = 'dm' then coalesce(
+             (
+               select nullif(trim(p.first_name || ' ' || p.last_name), '')
+               from public.conversation_members cm
+               join public.profiles p on p.id = cm.user_id
+               where cm.conversation_id = uc.id and cm.user_id <> p_user_id
+               limit 1
+             ),
+             (
+               select p.email
+               from public.conversation_members cm
+               join public.profiles p on p.id = cm.user_id
+               where cm.conversation_id = uc.id and cm.user_id <> p_user_id
+               limit 1
+             ),
+             'Direct Message'
+           )
+           when uc.type = 'group' then coalesce(
+             nullif(trim(uc.title), ''),
+             (
+               select string_agg(
+                 coalesce(nullif(trim(p.first_name || ' ' || p.last_name), ''), p.email),
+                 ', '
+               )
+               from public.conversation_members cm
+               join public.profiles p on p.id = cm.user_id
+               where cm.conversation_id = uc.id and cm.user_id <> p_user_id
+             ),
+             'Group Conversation'
+           )
+           else uc.title
+         end as display_title
   from user_convos uc
   left join last_msg lm on lm.conversation_id = uc.id
   left join unread u on u.conversation_id = uc.id
@@ -678,14 +704,18 @@ CREATE OR REPLACE FUNCTION "public"."list_conversations_with_unread"("p_user_id"
     where cm.user_id = p_user_id
   ),
   counts as (
-    -- Use count(m.id) so that conversations with no unread messages return 0, not 1
-    select b.id, count(m.id)::int as unread_count,
+    select b.id,
+           count(m.id)::int as unread_count,
            max(m.created_at) as last_message_at
     from base b
     left join public.messages m
       on m.conversation_id = b.id
      and m.created_at > b.last_read_at
      and m.sender_id <> p_user_id
+     and coalesce(
+           nullif(m.metadata ->> 'private_to', '')::uuid,
+           '00000000-0000-0000-0000-000000000000'::uuid
+         ) in ('00000000-0000-0000-0000-000000000000'::uuid, p_user_id)
     group by b.id
   )
   select b.id, b.type, b.title, b.created_by, b.created_at,

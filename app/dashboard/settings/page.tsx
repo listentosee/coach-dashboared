@@ -243,7 +243,7 @@ export default function CoachToolsPage() {
             id="school_name"
             value={profileForm.school_name}
             disabled
-            className="bg-meta-muted border-meta-border text-meta-muted"
+            className="bg-meta-dark border-meta-border text-meta-light disabled:bg-meta-dark/70 disabled:text-meta-light disabled:opacity-100"
             placeholder="School name (managed by Monday integration)"
           />
         </div>
@@ -274,7 +274,7 @@ export default function CoachToolsPage() {
             <Input
               value={profile?.email || ''}
               disabled
-              className="bg-meta-muted border-meta-border text-meta-muted"
+              className="bg-meta-dark border-meta-border text-meta-light disabled:bg-meta-dark/70 disabled:text-meta-light disabled:opacity-100"
               placeholder="Email (cannot be changed)"
             />
           </div>

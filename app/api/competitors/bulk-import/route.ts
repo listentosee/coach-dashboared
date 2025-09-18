@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { ALLOWED_DIVISIONS, ALLOWED_ETHNICITIES, ALLOWED_GENDERS, ALLOWED_GRADES, ALLOWED_LEVELS_OF_TECHNOLOGY, ALLOWED_RACES } from '@/lib/constants/enums'
+import { normalizeEnumValue, normalizeGrade } from '@/lib/utils/import-normalize'
 
 type IncomingRow = {
   first_name?: string
@@ -68,17 +69,17 @@ export async function POST(req: NextRequest) {
       try {
         const first_name = (raw.first_name || '').trim()
         const last_name = (raw.last_name || '').trim()
-        const grade = (raw.grade || '').trim().toLowerCase()
+        const grade = normalizeGrade(raw.grade)
         const isAdult = parseBoolean(raw.is_18_or_over)
         const email_school = (raw.email_school || '').trim().toLowerCase()
         const email_personal = (raw.email_personal || '').trim().toLowerCase()
         const parent_name = (raw.parent_name || '').trim()
         const parent_email = (raw.parent_email || '').trim().toLowerCase()
-        const division = (raw.division || '').trim().toLowerCase()
-        const gender = (raw.gender || '').trim().toLowerCase()
-        const race = (raw.race || '').trim().toLowerCase()
-        const ethnicity = (raw.ethnicity || '').trim().toLowerCase()
-        const level_of_technology = (raw.level_of_technology || '').trim().toLowerCase()
+        const division = normalizeEnumValue(raw.division)
+        const gender = normalizeEnumValue(raw.gender)
+        const race = normalizeEnumValue(raw.race)
+        const ethnicity = normalizeEnumValue(raw.ethnicity)
+        const level_of_technology = normalizeEnumValue(raw.level_of_technology)
         const years_competing_raw = typeof raw.years_competing === 'number' ? raw.years_competing : (raw.years_competing || '').toString().trim()
         const years_competing = years_competing_raw === '' ? null : Number.parseInt(String(years_competing_raw), 10)
 

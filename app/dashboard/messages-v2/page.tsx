@@ -284,7 +284,8 @@ export default function MessagesV2Page() {
   useEffect(() => {
     if (!selectedConversationId) return
     ;(async () => {
-      const list = await fetchThreads(selectedConversationId)
+      const conversationId = selectedConversationId
+      const list = await fetchThreads(conversationId)
       const first = list[0]?.root_id
       if (typeof first === 'number') {
         setSelectedThreadRoot(first)
@@ -293,6 +294,13 @@ export default function MessagesV2Page() {
         setSelectedThreadRoot(null)
         setMessages([])
       }
+      try {
+        const res = await fetch(`/api/messaging/conversations/${conversationId}/read`, { method: 'POST' })
+        if (res.ok) {
+          window.dispatchEvent(new Event('unread-refresh'))
+          await fetchConversations()
+        }
+      } catch {}
     })()
   }, [selectedConversationId])
 

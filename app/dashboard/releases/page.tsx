@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import ActingAsBanner from '@/components/admin/ActingAsBanner'
 import { supabase } from '@/lib/supabase/client';
 import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext';
@@ -294,44 +294,48 @@ export default function ReleaseManagementPage() {
     return priorityMap[status] || 10;
   };
 
-  // Filter competitors to only show active ones with status 'profile' or higher
-  const filteredCompetitors = competitors.filter(competitor => {
-    if (!competitor.is_active) return false;
-    
-    const statusOrder = ['pending', 'profile', 'compliance', 'complete'];
-    const competitorStatusIndex = statusOrder.indexOf(competitor.status);
-    const profileIndex = statusOrder.indexOf('profile');
-    
-    if (competitorStatusIndex < profileIndex) return false;
-    
-    return competitor.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           competitor.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           competitor.school?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           competitor.grade?.toLowerCase().includes(searchTerm.toLowerCase());
-  });
+  const eligibleCompetitors = useMemo(() => {
+    const statusOrder = ['pending', 'profile', 'compliance', 'complete']
+    const profileIndex = statusOrder.indexOf('profile')
+    return competitors.filter(competitor => {
+      if (!competitor.is_active) return false
+      const competitorStatusIndex = statusOrder.indexOf(competitor.status)
+      return competitorStatusIndex >= profileIndex
+    })
+  }, [competitors])
 
-  // Create release data for table
-  const releaseData: ReleaseData[] = filteredCompetitors.map(competitor => {
-    const agreement = agreements.find(a => a.competitor_id === competitor.id);
-    const hasLegacySigned = competitor.is_18_or_over 
-      ? !!competitor.participation_agreement_date 
-      : !!competitor.media_release_date;
-    
-    return {
-      competitor,
-      agreement,
-      hasLegacySigned
-    };
-  }).filter(item => {
-    // Filter out completed releases if toggle is enabled
-    if (hideCompleted) {
-      const isCompleted = item.agreement?.status === 'completed' || 
-                         item.agreement?.status === 'completed_manual' || 
-                         item.hasLegacySigned;
-      return !isCompleted;
+  const releaseUniverse: ReleaseData[] = useMemo(() => {
+    return eligibleCompetitors.map(competitor => {
+      const agreement = agreements.find(a => a.competitor_id === competitor.id)
+      const hasLegacySigned = competitor.is_18_or_over
+        ? !!competitor.participation_agreement_date
+        : !!competitor.media_release_date
+      return { competitor, agreement, hasLegacySigned }
+    })
+  }, [eligibleCompetitors, agreements])
+
+  const searchTermNormalized = searchTerm.trim().toLowerCase()
+
+  const releaseData: ReleaseData[] = useMemo(() => {
+    const matchesSearch = (competitor: Competitor) => {
+      if (!searchTermNormalized) return true
+      const term = searchTermNormalized
+      return (
+        competitor.first_name.toLowerCase().includes(term) ||
+        competitor.last_name.toLowerCase().includes(term) ||
+        (competitor.school || '').toLowerCase().includes(term) ||
+        (competitor.grade || '').toLowerCase().includes(term)
+      )
     }
-    return true;
-  });
+
+    const scoped = releaseUniverse.filter(row => matchesSearch(row.competitor))
+    if (!hideCompleted) return scoped
+    return scoped.filter(item => {
+      const status = item.agreement?.status
+      const isCompleted = status === 'completed' || status === 'completed_manual' || item.hasLegacySigned
+      return !isCompleted
+    })
+  }, [releaseUniverse, searchTermNormalized, hideCompleted])
 
   const columns: ColumnDef<ReleaseData>[] = [
     {
@@ -569,15 +573,67 @@ export default function ReleaseManagementPage() {
               <span className="text-meta-light">or higher appear here.</span>
             </div>
             <p>Manage release forms and track signing status. Only active competitors with complete profiles are listed.</p>
-            {analytics && (
-              <div className="text-xs text-meta-muted flex flex-wrap gap-3">
-                <span>Total competitors: <span className="text-meta-light">{analytics.competitorCount ?? competitors.length}</span></span>
-                <span>Status — Pending: <span className="text-meta-light">{analytics.statusCounts?.pending ?? 0}</span></span>
-                <span>Profile: <span className="text-meta-light">{analytics.statusCounts?.profile ?? 0}</span></span>
-                <span>Compliance: <span className="text-meta-light">{analytics.statusCounts?.compliance ?? 0}</span></span>
-                <span>Complete: <span className="text-meta-light">{analytics.statusCounts?.complete ?? 0}</span></span>
-              </div>
-            )}
+            {(() => {
+              // Represent the Release Status distribution across all eligible rows
+              const counts = {
+                no_release: 0,
+                sent: 0,
+                viewed: 0,
+                print_ready: 0,
+                completed: 0,
+                completed_manual: 0,
+                legacy_signed: 0,
+                declined: 0,
+                expired: 0,
+              }
+
+              for (const item of releaseUniverse) {
+                if (item.agreement) {
+                  const s = item.agreement.status as keyof typeof counts
+                  if (counts[s] !== undefined) counts[s] += 1
+                  else counts.no_release += 1
+                } else if (item.hasLegacySigned) {
+                  counts.legacy_signed += 1
+                } else {
+                  counts.no_release += 1
+                }
+              }
+
+              const total = Math.max(1, releaseUniverse.length)
+              const pct = (n: number) => (n / total) * 100
+              const segments = [
+                { key: 'no_release',       label: 'No Release',         count: counts.no_release,       bg: 'bg-slate-600',  text: 'text-white' },
+                { key: 'sent',             label: 'Sent',               count: counts.sent,             bg: 'bg-blue-600',   text: 'text-white' },
+                { key: 'viewed',           label: 'Viewed',             count: counts.viewed,           bg: 'bg-yellow-600', text: 'text-white' },
+                { key: 'print_ready',      label: 'Print Ready',        count: counts.print_ready,      bg: 'bg-purple-600', text: 'text-white' },
+                { key: 'completed',        label: 'Completed',          count: counts.completed,        bg: 'bg-green-600',  text: 'text-white' },
+                { key: 'completed_manual', label: 'Completed (Manual)', count: counts.completed_manual, bg: 'bg-orange-600', text: 'text-white' },
+                { key: 'legacy_signed',    label: 'Legacy Signed',      count: counts.legacy_signed,    bg: 'bg-green-700',  text: 'text-white' },
+                { key: 'declined',         label: 'Declined',           count: counts.declined,         bg: 'bg-red-600',    text: 'text-white' },
+                { key: 'expired',          label: 'Expired',            count: counts.expired,          bg: 'bg-gray-600',   text: 'text-white' },
+              ]
+              const visible = segments.filter(s => s.count > 0)
+              return (
+                <div className="mt-3">
+                  <div className="w-full rounded overflow-hidden flex border border-meta-border">
+                    {visible.length === 0 ? (
+                      <div className="w-full py-2 text-center text-xs text-meta-muted">No release rows to display</div>
+                    ) : (
+                      visible.map(s => (
+                        <div
+                          key={s.key}
+                          className={`flex items-center justify-center px-2 py-1 whitespace-nowrap ${s.bg} ${s.text}`}
+                          style={{ width: `${Math.max(6, pct(s.count))}%`, minWidth: 80 }}
+                          title={`${s.label} ${s.count}`}
+                        >
+                          <span className="text-[11px] font-semibold truncate">{s.label} {s.count}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
             <div className="text-sm">
               <div className="text-meta-light font-medium">How to send:</div>
               <div>- Digital send: Click Send Release (Email) to email the signer.</div>

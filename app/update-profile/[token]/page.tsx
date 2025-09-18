@@ -346,7 +346,7 @@ export default function UpdateProfilePage() {
                             <SelectContent className="bg-meta-card border-meta-border text-meta-light">
                               <SelectItem value="pc">PC</SelectItem>
                               <SelectItem value="mac">MAC</SelectItem>
-                              <SelectItem value="chrome book">Chrome book</SelectItem>
+                              <SelectItem value="chrome_book">Chrome Book</SelectItem>
                               <SelectItem value="linux">Linux</SelectItem>
                               <SelectItem value="other">Other</SelectItem>
                             </SelectContent>

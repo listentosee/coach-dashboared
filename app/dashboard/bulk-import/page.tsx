@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import ActingAsBanner from '@/components/admin/ActingAsBanner'
 import { ALLOWED_DIVISIONS, ALLOWED_ETHNICITIES, ALLOWED_GENDERS, ALLOWED_GRADES, ALLOWED_LEVELS_OF_TECHNOLOGY, ALLOWED_RACES } from '@/lib/constants/enums'
+import { normalizeEnumValue, normalizeGrade } from '@/lib/utils/import-normalize'
 import { supabase } from '@/lib/supabase/client'
 import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext'
 
@@ -51,6 +52,16 @@ const FIELDS: FieldConfig[] = [
 
 type Row = Record<FieldKey, string>
 type ParsedRow = string[]
+
+const serializeRowForApi = (row: Row) => ({
+  ...row,
+  grade: normalizeGrade(row.grade),
+  division: normalizeEnumValue(row.division),
+  gender: normalizeEnumValue(row.gender),
+  race: normalizeEnumValue(row.race),
+  ethnicity: normalizeEnumValue(row.ethnicity),
+  level_of_technology: normalizeEnumValue(row.level_of_technology),
+})
 
 function parseBoolean(input: string): boolean | null {
   const v = (input || '').trim().toLowerCase()
@@ -117,6 +128,12 @@ export default function BulkImportPage() {
     email_personal: null,
     parent_name: null,
     parent_email: null,
+    division: null,
+    gender: null,
+    race: null,
+    ethnicity: null,
+    level_of_technology: null,
+    years_competing: null,
   })
   const [edited, setEdited] = useState<Row[]>([])
   const [errors, setErrors] = useState<Record<number, string[]>>({})
@@ -194,39 +211,49 @@ export default function BulkImportPage() {
   const allowedEthnicities = ALLOWED_ETHNICITIES as readonly string[]
   const allowedLevels = ALLOWED_LEVELS_OF_TECHNOLOGY as readonly string[]
   const allowedGrades = ALLOWED_GRADES as readonly string[]
+  const [invalid, setInvalid] = useState<Record<number, Partial<Record<FieldKey, boolean>>>>({})
 
-  // Validate
+  // Validate (with normalization for multi-word enums)
   useEffect(() => {
     const err: Record<number, string[]> = {}
+    const invalidMap: Record<number, Partial<Record<FieldKey, boolean>>> = {}
+    const mark = (i: number, k: FieldKey) => { (invalidMap[i] ||= {} as any)[k] = true }
     currentRows.forEach((row, i) => {
       const rowErr: string[] = []
-      if (!row.first_name) rowErr.push('First name required')
-      if (!row.last_name) rowErr.push('Last name required')
+      if (!row.first_name) { rowErr.push('First name required'); mark(i, 'first_name') }
+      if (!row.last_name) { rowErr.push('Last name required'); mark(i, 'last_name') }
       const isAdult = parseBoolean(row.is_18_or_over)
-      if (isAdult === null) rowErr.push('Is Adult must be Y/N or True/False')
-      if (!row.grade) rowErr.push('Grade required')
-      if (row.grade && !allowedGrades.includes(String(row.grade).trim().toLowerCase())) rowErr.push('Invalid grade')
+      if (isAdult === null) { rowErr.push('Is Adult must be Y/N or True/False'); mark(i, 'is_18_or_over') }
+      if (!row.grade) { rowErr.push('Grade required'); mark(i, 'grade') }
+      const gradeToken = normalizeGrade(row.grade)
+      if (row.grade && !allowedGrades.includes(gradeToken as any)) { rowErr.push('Invalid grade'); mark(i, 'grade') }
       // School email is required for all participants
-      if (!isValidEmail(row.email_school)) rowErr.push('School email is required and must be valid')
+      if (!isValidEmail(row.email_school)) { rowErr.push('School email is required and must be valid'); mark(i, 'email_school') }
       if (isAdult === false) {
         // Validate parent email when parent name is provided (required if name present)
-        if (row.parent_name && !isValidEmail(row.parent_email)) rowErr.push('Parent email is required and must be valid when parent name is provided')
+        if (row.parent_name && !isValidEmail(row.parent_email)) { rowErr.push('Parent email is required and must be valid when parent name is provided'); mark(i, 'parent_email') }
         // If no parent name, allow parent email to be empty; if present, must be valid
-        if (!row.parent_name && row.parent_email && !isValidEmail(row.parent_email)) rowErr.push('Parent email is invalid')
+        if (!row.parent_name && row.parent_email && !isValidEmail(row.parent_email)) { rowErr.push('Parent email is invalid'); mark(i, 'parent_email') }
       }
       // Optional enumerations (if provided, must be valid)
-      if (row.division && !allowedDivisions.includes(row.division.trim().toLowerCase())) rowErr.push('Invalid division')
-      if (row.gender && !allowedGenders.includes(row.gender.trim().toLowerCase())) rowErr.push('Invalid gender')
-      if (row.race && !allowedRaces.includes(row.race.trim().toLowerCase())) rowErr.push('Invalid race')
-      if (row.ethnicity && !allowedEthnicities.includes(row.ethnicity.trim().toLowerCase())) rowErr.push('Invalid ethnicity')
-      if (row.level_of_technology && !allowedLevels.includes(row.level_of_technology.trim().toLowerCase())) rowErr.push('Invalid level of technology')
+      const div = normalizeEnumValue(row.division)
+      if (row.division && !allowedDivisions.includes(div as any)) { rowErr.push('Invalid division'); mark(i, 'division') }
+      const gender = normalizeEnumValue(row.gender)
+      if (row.gender && !allowedGenders.includes(gender as any)) { rowErr.push('Invalid gender'); mark(i, 'gender') }
+      const race = normalizeEnumValue(row.race)
+      if (row.race && !allowedRaces.includes(race as any)) { rowErr.push('Invalid race'); mark(i, 'race') }
+      const ethnicity = normalizeEnumValue(row.ethnicity)
+      if (row.ethnicity && !allowedEthnicities.includes(ethnicity as any)) { rowErr.push('Invalid ethnicity'); mark(i, 'ethnicity') }
+      const lot = normalizeEnumValue(row.level_of_technology)
+      if (row.level_of_technology && !allowedLevels.includes(lot as any)) { rowErr.push('Invalid level of technology'); mark(i, 'level_of_technology') }
       if (row.years_competing) {
         const n = parseInt(row.years_competing, 10)
-        if (isNaN(n) || n < 0 || n > 20) rowErr.push('Years competing must be 0-20')
+        if (isNaN(n) || n < 0 || n > 20) { rowErr.push('Years competing must be 0-20'); mark(i, 'years_competing') }
       }
       if (rowErr.length) err[i] = rowErr
     })
     setErrors(err)
+    setInvalid(invalidMap)
   }, [currentRows])
 
   const errorCount = Object.keys(errors).length
@@ -288,7 +315,7 @@ export default function BulkImportPage() {
       setProgress({ total, done: 0, failed: 0 })
       const chunkSize = 100
       for (let start = 0; start < total; start += chunkSize) {
-        const chunk = currentRows.slice(start, start + chunkSize)
+        const chunk = currentRows.slice(start, start + chunkSize).map(serializeRowForApi)
         const res = await fetch('/api/competitors/bulk-import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -489,7 +516,7 @@ export default function BulkImportPage() {
                             <Input
                               value={(edited[i]?.[f.key] ?? r[f.key]) || ''}
                               onChange={e => updateEdit(i, f.key, e.target.value)}
-                              className={`bg-meta-dark border-meta-border text-meta-light h-8 text-xs ${
+                              className={`bg-meta-dark border ${invalid[i]?.[f.key] ? 'border-red-500 ring-1 ring-red-500/70' : 'border-meta-border'} text-meta-light h-8 text-xs focus-visible:ring-1 focus-visible:ring-meta-accent ${
                                 (f.key === 'first_name' || f.key === 'last_name') ? 'w-40' :
                                 (f.key === 'is_18_or_over') ? 'w-28' :
                                 (f.key === 'grade' || f.key === 'years_competing') ? 'w-24' :

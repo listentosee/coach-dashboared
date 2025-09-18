@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -65,6 +65,7 @@ export default function DashboardPage() {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(true);
   const [session, setSession] = useState<any>(null);
+  const sessionCoachId = session?.user?.id ?? null
   const [coachProfile, setCoachProfile] = useState<any>(null);
   const [divisionFilter, setDivisionFilter] = useState<'all' | 'middle_school' | 'high_school' | 'college'>('all');
   const [isAdmin, setIsAdmin] = useState(false)
@@ -74,8 +75,11 @@ export default function DashboardPage() {
   const [adminOffset, setAdminOffset] = useState<number>(0)
   const [adminLoading, setAdminLoading] = useState<boolean>(false)
   const adminInitLoadingRef = useRef<boolean>(false)
+  const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const competitorIdSetRef = useRef<Set<string>>(new Set())
+  const competitorsLengthRef = useRef<number>(0)
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -104,7 +108,7 @@ export default function DashboardPage() {
       if (isAdminNow && !ctxLoading && !coachId) {
         // Admin All-coaches mode: single initial page-0 fetch with in-flight guard
         if (adminInitLoadingRef.current) return
-        if (adminOffset > 0 && competitors.length > 0) return
+        if (adminOffset > 0 && competitorsLengthRef.current > 0) return
         adminInitLoadingRef.current = true
         try {
           // Reset state before bootstrapping
@@ -256,20 +260,22 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [ctxLoading, coachId, isAdmin, adminOffset])
 
   // Initial and context-based fetch
   useEffect(() => {
     if (!ctxLoading) fetchData();
-  }, [ctxLoading, coachId]);
+  }, [ctxLoading, coachId, fetchData]);
 
   // Auth-driven refresh
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      if (!ctxLoading) fetchData();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (!ctxLoading && (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED')) {
+        fetchData();
+      }
     });
     return () => subscription.unsubscribe();
-  }, [ctxLoading]);
+  }, [ctxLoading, fetchData]);
 
   // Connect sidebar search to dashboard search
   useEffect(() => {
@@ -303,6 +309,56 @@ export default function DashboardPage() {
   const totalCount = (isAdminAll && adminTotal !== null)
     ? adminTotal
     : filteredCompetitors.length
+
+  useEffect(() => {
+    competitorIdSetRef.current = new Set(competitors.map((c) => c.id))
+    competitorsLengthRef.current = competitors.length
+  }, [competitors])
+
+  useEffect(() => {
+    if (ctxLoading) return
+    if (isAdmin && !coachId) return
+
+    const scheduleRefresh = () => {
+      if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current)
+      realtimeDebounceRef.current = setTimeout(() => {
+        realtimeDebounceRef.current = null
+        void fetchData()
+      }, 350)
+    }
+
+    const handleCompetitorChange = (payload: { new: any; old: any }) => {
+      const row = (payload.new ?? payload.old) as any
+      if (!row) return
+      const targetCoachId = row.coach_id
+      const scopedCoachId = (isAdmin && coachId) ? coachId : sessionCoachId
+      if (!scopedCoachId) return
+      if (targetCoachId !== scopedCoachId) return
+      scheduleRefresh()
+    }
+
+    const handleAgreementChange = (payload: { new: any; old: any }) => {
+      const row = (payload.new ?? payload.old) as any
+      const competitorId = row?.competitor_id
+      if (!competitorId) return
+      if (!competitorIdSetRef.current.has(competitorId)) return
+      scheduleRefresh()
+    }
+
+    const channel = supabase
+      .channel('dashboard-competitors-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'competitors' }, handleCompetitorChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agreements' }, handleAgreementChange)
+      .subscribe()
+
+    return () => {
+      if (realtimeDebounceRef.current) {
+        clearTimeout(realtimeDebounceRef.current)
+        realtimeDebounceRef.current = null
+      }
+      supabase.removeChannel(channel)
+    }
+  }, [ctxLoading, isAdmin, coachId, fetchData, sessionCoachId])
 
   // Coaches/Admin acting-as: show full list (no client paging). Admin All-coaches uses server paging.
   useEffect(() => {

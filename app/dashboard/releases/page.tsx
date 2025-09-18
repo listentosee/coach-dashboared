@@ -77,6 +77,7 @@ export default function ReleaseManagementPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [visibleCount, setVisibleCount] = useState(40)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const [analytics, setAnalytics] = useState<{ competitorCount?: number; teamCount?: number; statusCounts?: any } | null>(null)
 
   // Initial and context-based fetch
   useEffect(() => {
@@ -106,6 +107,17 @@ export default function ReleaseManagementPage() {
           setCompetitors([])
           setAgreements([])
         }
+        // Fetch analytics totals for header panels (DB totals, not on-screen slice)
+        try {
+          const aUrl = coachId ? `/api/admin/analytics?coach_id=${coachId}` : '/api/admin/analytics'
+          const ar = await fetch(aUrl)
+          if (ar.ok) {
+            const aj = await ar.json()
+            setAnalytics({ competitorCount: aj?.totals?.competitorCount, teamCount: aj?.totals?.teamCount, statusCounts: aj?.statusCounts })
+          } else {
+            setAnalytics(null)
+          }
+        } catch { setAnalytics(null) }
       } else {
         // Coach: scoped client-side
         const { data: competitorsData } = await supabase
@@ -119,6 +131,19 @@ export default function ReleaseManagementPage() {
           .order('created_at', { ascending: false })
         setCompetitors(competitorsData || [])
         setAgreements(agreementsData || [])
+        // Compute simple totals for coach header
+        const list = competitorsData || []
+        const statusCount = (s: string) => list.filter((c: any) => c.status === s).length
+        setAnalytics({
+          competitorCount: list.length,
+          teamCount: 0,
+          statusCounts: {
+            pending: statusCount('pending'),
+            profile: statusCount('profile'),
+            compliance: statusCount('compliance'),
+            complete: statusCount('complete')
+          }
+        })
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -544,6 +569,15 @@ export default function ReleaseManagementPage() {
               <span className="text-meta-light">or higher appear here.</span>
             </div>
             <p>Manage release forms and track signing status. Only active competitors with complete profiles are listed.</p>
+            {analytics && (
+              <div className="text-xs text-meta-muted flex flex-wrap gap-3">
+                <span>Total competitors: <span className="text-meta-light">{analytics.competitorCount ?? competitors.length}</span></span>
+                <span>Status — Pending: <span className="text-meta-light">{analytics.statusCounts?.pending ?? 0}</span></span>
+                <span>Profile: <span className="text-meta-light">{analytics.statusCounts?.profile ?? 0}</span></span>
+                <span>Compliance: <span className="text-meta-light">{analytics.statusCounts?.compliance ?? 0}</span></span>
+                <span>Complete: <span className="text-meta-light">{analytics.statusCounts?.complete ?? 0}</span></span>
+              </div>
+            )}
             <div className="text-sm">
               <div className="text-meta-light font-medium">How to send:</div>
               <div>- Digital send: Click Send Release (Email) to email the signer.</div>

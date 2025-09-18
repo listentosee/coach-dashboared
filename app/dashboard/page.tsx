@@ -183,22 +183,74 @@ export default function DashboardPage() {
       
       setTeams(transformedTeams);
 
-      // Calculate stats based on the list we just loaded (reflect admin coach selection / current page for admin-all)
-      const totalCompetitors = statList.length;
-      const activeCompetitors = statList.filter((c: any) => c.status === 'complete').length;
-      const pendingCompetitors = statList.filter((c: any) => c.status === 'pending').length;
-      const profileCompetitors = statList.filter((c: any) => c.status === 'profile').length;
-      const complianceCompetitors = statList.filter((c: any) => c.status === 'compliance').length;
-
-      // Use teams count from API response
-      setStats({
-        totalCompetitors,
-        totalTeams: transformedTeams.length,
-        activeCompetitors,
-        pendingCompetitors,
-        profileCompetitors,
-        complianceCompetitors
-      });
+      // Stats: always reflect DB totals for current mode (coach/admin acting-as/admin all)
+      if (isAdminNow) {
+        const url = coachId ? `/api/admin/analytics?coach_id=${coachId}` : '/api/admin/analytics'
+        try {
+          const ar = await fetch(url)
+          if (ar.ok) {
+            const aj = await ar.json()
+            const totalCompetitors = (aj?.totals?.competitorCount) ?? (statList?.length || 0)
+            const totalTeams = (aj?.totals?.teamCount) ?? transformedTeams.length
+            const pendingCompetitors = aj?.statusCounts?.pending ?? 0
+            const profileCompetitors = aj?.statusCounts?.profile ?? 0
+            const complianceCompetitors = aj?.statusCounts?.compliance ?? 0
+            const activeCompetitors = aj?.statusCounts?.complete ?? 0
+            setStats({
+              totalCompetitors,
+              totalTeams,
+              activeCompetitors,
+              pendingCompetitors,
+              profileCompetitors,
+              complianceCompetitors,
+            })
+          } else {
+            // Fallback to client counts if analytics fails
+            const totalCompetitors = statList.length;
+            const activeCompetitors = statList.filter((c: any) => c.status === 'complete').length;
+            const pendingCompetitors = statList.filter((c: any) => c.status === 'pending').length;
+            const profileCompetitors = statList.filter((c: any) => c.status === 'profile').length;
+            const complianceCompetitors = statList.filter((c: any) => c.status === 'compliance').length;
+            setStats({
+              totalCompetitors,
+              totalTeams: transformedTeams.length,
+              activeCompetitors,
+              pendingCompetitors,
+              profileCompetitors,
+              complianceCompetitors
+            });
+          }
+        } catch {
+          const totalCompetitors = statList.length;
+          const activeCompetitors = statList.filter((c: any) => c.status === 'complete').length;
+          const pendingCompetitors = statList.filter((c: any) => c.status === 'pending').length;
+          const profileCompetitors = statList.filter((c: any) => c.status === 'profile').length;
+          const complianceCompetitors = statList.filter((c: any) => c.status === 'compliance').length;
+          setStats({
+            totalCompetitors,
+            totalTeams: transformedTeams.length,
+            activeCompetitors,
+            pendingCompetitors,
+            profileCompetitors,
+            complianceCompetitors
+          });
+        }
+      } else {
+        // Coach: client list contains all rows; compute locally
+        const totalCompetitors = statList.length;
+        const activeCompetitors = statList.filter((c: any) => c.status === 'complete').length;
+        const pendingCompetitors = statList.filter((c: any) => c.status === 'pending').length;
+        const profileCompetitors = statList.filter((c: any) => c.status === 'profile').length;
+        const complianceCompetitors = statList.filter((c: any) => c.status === 'compliance').length;
+        setStats({
+          totalCompetitors,
+          totalTeams: transformedTeams.length,
+          activeCompetitors,
+          pendingCompetitors,
+          profileCompetitors,
+          complianceCompetitors
+        });
+      }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {

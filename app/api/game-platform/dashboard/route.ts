@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     }
 
     const isAdminUser = await isUserAdmin(supabase, user.id);
-    const actingCoachId = isAdminUser ? (cookieStore.get('admin_coach_id')?.value || null) : null;
+    const actingCoachId = isAdminUser ? (cookieStore.get('admin_coach_id')?.value || null) : user.id;
 
     let competitorsQuery = supabase
       .from('competitors')
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
       `);
 
     if (isAdminUser) {
-      if (actingCoachId) {
+      if (actingCoachId && actingCoachId !== user.id) {
         competitorsQuery = competitorsQuery.eq('coach_id', actingCoachId);
       }
     } else {
@@ -208,7 +208,7 @@ export async function GET(request: NextRequest) {
         syncedCompetitors: stats.length,
         activeRecently,
         totalChallenges,
-        monthlyCtfParticipants,
+        monthlyCtfParticipants: monthlyParticipants,
         lastSyncedAt,
       },
       leaderboard,
@@ -217,6 +217,10 @@ export async function GET(request: NextRequest) {
         unsyncedCompetitors,
         syncErrors,
         staleCompetitors: staleStats,
+      },
+      controller: {
+        isAdmin: isAdminUser,
+        coachId: actingCoachId,
       },
     };
 

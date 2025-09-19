@@ -44,6 +44,10 @@ interface DashboardData {
     syncErrors: Array<{ competitorId: string; name: string; error: string }>;
     staleCompetitors: LeaderboardEntry[];
   };
+  controller?: {
+    isAdmin: boolean;
+    coachId: string | null;
+  };
 }
 
 interface StatCard {
@@ -84,7 +88,7 @@ function relativeFromNow(iso: string | null): string {
 
 export default function GamePlatformDashboard() {
   const [division, setDivision] = useState('all');
-  const [coachScope, setCoachScope] = useState('my');
+  const [coachScope, setCoachScope] = useState<'my' | 'all'>('my');
   const [range, setRange] = useState('30d');
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -210,15 +214,17 @@ export default function GamePlatformDashboard() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 text-sm text-meta-muted">
-              <span>Coach scope</span>
-              <Tabs value={coachScope} onValueChange={setCoachScope}>
-                <TabsList className="bg-meta-card border border-meta-border">
-                  <TabsTrigger value="my">My teams</TabsTrigger>
-                  <TabsTrigger value="all">All teams</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
+            {dashboard?.controller?.isAdmin && (
+              <div className="flex items-center gap-2 text-sm text-meta-muted">
+                <span>Coach scope</span>
+                <Tabs value={coachScope} onValueChange={(value) => setCoachScope(value as 'my' | 'all')}>
+                  <TabsList className="bg-meta-card border border-meta-border">
+                    <TabsTrigger value="my">My teams</TabsTrigger>
+                    <TabsTrigger value="all">All teams</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+            )}
             <div className="flex items-center gap-2 text-sm text-meta-muted">
               <span>Division</span>
               <select

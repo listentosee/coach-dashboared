@@ -32,6 +32,9 @@ export interface Competitor {
   is_active: boolean;
   agreement_status?: string | null;
   agreement_mode?: string | null;
+  coach_name?: string | null;
+  coach_email?: string | null;
+  coach_id?: string | null;
 }
 
 export const getStatusColor = (status: string) => {
@@ -61,6 +64,7 @@ export const createCompetitorColumns = (
   setOpenDropdown: (id: string | null) => void,
   coachEmail?: string,
   coachName?: string,
+  showCoachContextHint?: boolean,
   disableEdits?: boolean,
   disableTooltip?: string
 ): ColumnDef<Competitor>[] => [
@@ -84,14 +88,21 @@ export const createCompetitorColumns = (
     ),
     cell: ({ row }) => {
       const competitor = row.original;
+      const coachLabel = competitor.coach_name || competitor.coach_email || competitor.coach_id || 'Unknown coach';
+      const showCoachHint = !!showCoachContextHint && coachLabel;
       return (
-        <div>
+        <div title={showCoachHint ? `Coach: ${coachLabel}` : undefined}>
           <div className="font-medium text-meta-light">
             {competitor.first_name} {competitor.last_name}
           </div>
           {competitor.grade && (
             <div className="text-sm text-meta-muted">
               Grade: {competitor.grade}
+            </div>
+          )}
+          {showCoachHint && (
+            <div className="text-xs text-meta-muted mt-1">
+              Coach: {coachLabel}
             </div>
           )}
         </div>

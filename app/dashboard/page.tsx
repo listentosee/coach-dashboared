@@ -36,6 +36,9 @@ interface Competitor {
   profile_update_token_expires?: string;
   created_at: string;
   is_active: boolean;
+  coach_name?: string | null;
+  coach_email?: string | null;
+  coach_id?: string | null;
 }
 
 interface DashboardStats {
@@ -810,6 +813,7 @@ export default function DashboardPage() {
               setOpenDropdown,
               session?.user?.email,
               coachProfile ? `${coachProfile.first_name} ${coachProfile.last_name}` : session?.user?.email,
+              isAdmin && !ctxLoading && coachId === null,
               (isAdmin && !ctxLoading && coachId === null),
               'Select a coach to edit'
               )}

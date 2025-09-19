@@ -48,7 +48,8 @@ export async function GET(request: NextRequest) {
         profile_update_token_expires,
         created_at,
         is_active,
-        coach_id
+        coach_id,
+        coach:profiles(first_name,last_name,email)
       `);
 
     // Apply coach filtering only for non-admin users
@@ -101,6 +102,10 @@ export async function GET(request: NextRequest) {
       const teamMember = teamMembersData.find(tm => tm.competitor_id === competitor.id);
       const computedStatus = calculateCompetitorStatus(competitor as any)
       const latestAgreement = agreementsData.find(a => a.competitor_id === competitor.id) || null
+      const coachProfile = (competitor as any).coach as { first_name?: string | null; last_name?: string | null; email?: string | null } | null | undefined
+      const coachFullName = coachProfile ? [coachProfile.first_name, coachProfile.last_name].filter(Boolean).join(' ').trim() : ''
+      const coachLabel = coachFullName || coachProfile?.email || null
+
       return {
         id: competitor.id,
         first_name: competitor.first_name,
@@ -122,6 +127,8 @@ export async function GET(request: NextRequest) {
         created_at: competitor.created_at,
         is_active: competitor.is_active,
         coach_id: competitor.coach_id,
+        coach_name: coachFullName || null,
+        coach_email: coachProfile?.email || null,
         team_id: teamMember?.team_id || null,
         position: teamMember?.position || null,
         team_name: teamMember?.teams?.name || null,

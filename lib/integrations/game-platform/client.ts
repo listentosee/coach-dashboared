@@ -42,11 +42,15 @@ export interface AssignMemberPayload {
 }
 
 export interface GetTeamAssignmentsPayload {
-  syned_team_id: string;
+  syned_team_id?: string | null;
 }
 
 export interface GetScoresPayload {
-  syned_team_id?: string;
+  syned_user_id?: string | null;
+}
+
+export interface GetFlashCtfProgressPayload {
+  syned_user_id: string;
 }
 
 const DefaultRetry: Required<RetryOptions> = {
@@ -57,21 +61,57 @@ const DefaultRetry: Required<RetryOptions> = {
 
 const GenericSuccessSchema = z.object({}).passthrough();
 
-const CreateUserResponseSchema = z
-  .object({ syned_user_id: z.string().optional() })
-  .passthrough();
+const CreateUserResponseSchema = z.object({
+  metactf_user_id: z.number(),
+  metactf_username: z.string(),
+  syned_user_id: z.string(),
+});
 
-const CreateTeamResponseSchema = z
-  .object({ syned_team_id: z.string().optional() })
-  .passthrough();
+const CreateTeamResponseSchema = z.object({
+  metactf_team_id: z.number(),
+  metactf_coach_id: z.string(),
+  syned_team_id: z.string(),
+  team_name: z.string(),
+  division: z.enum(['high_school', 'middle_school', 'college']),
+  affiliation: z.string(),
+});
 
-const AssignMemberResponseSchema = GenericSuccessSchema;
-const TeamAssignmentsResponseSchema = GenericSuccessSchema;
-const ScoresResponseSchema = GenericSuccessSchema;
+const TeamAssignmentResponseSchema = z.object({
+  syned_team_id: z.string(),
+  syned_user_id: z.string(),
+});
+
+const TeamAssignmentsResponseSchema = z.object({
+  assignments: z.array(TeamAssignmentResponseSchema),
+  total_count: z.number(),
+});
+
+const ScoresResponseSchema = z.object({
+  syned_user_id: z.string().nullable().optional(),
+  metactf_user_id: z.number(),
+  total_challenges_solved: z.number(),
+  total_points: z.number(),
+  last_accessed_unix_timestamp: z.number(),
+  category_points: z.record(z.number()),
+});
+
+const FlashCtfEntrySchema = z.object({
+  flash_ctf_name: z.string(),
+  flash_ctf_time_start_unix: z.number(),
+  challenges_solved: z.number(),
+  points_earned: z.number(),
+  rank: z.number(),
+});
+
+const FlashCtfProgressResponseSchema = z.object({
+  syned_user_id: z.string(),
+  flash_ctfs: z.array(FlashCtfEntrySchema),
+});
 
 export interface GamePlatformRequestConfig {
   method?: 'GET' | 'POST';
   body?: Record<string, unknown> | null;
+  query?: Record<string, string | number | null | undefined>;
   signal?: AbortSignal;
 }
 
@@ -125,15 +165,31 @@ export class GamePlatformClient {
   }
 
   async assignMemberToTeam(payload: AssignMemberPayload, signal?: AbortSignal) {
-    return this.request(AssignMemberResponseSchema, '/users/assign_team', { method: 'POST', body: payload, signal });
+    return this.request(TeamAssignmentResponseSchema, '/users/assign_team', { method: 'POST', body: payload, signal });
   }
 
   async getTeamAssignments(payload: GetTeamAssignmentsPayload, signal?: AbortSignal) {
-    return this.request(TeamAssignmentsResponseSchema, '/users/get_team_assignments', { method: 'GET', body: payload, signal });
+    return this.request(TeamAssignmentsResponseSchema, '/users/get_team_assignments', {
+      method: 'GET',
+      query: { syned_team_id: payload.syned_team_id ?? undefined },
+      signal,
+    });
   }
 
   async getScores(payload: GetScoresPayload = {}, signal?: AbortSignal) {
-    return this.request(ScoresResponseSchema, '/scores/get_odl_scores', { method: 'GET', body: Object.keys(payload).length ? payload : undefined, signal });
+    return this.request(ScoresResponseSchema, '/scores/get_odl_scores', {
+      method: 'GET',
+      query: { syned_user_id: payload.syned_user_id ?? undefined },
+      signal,
+    });
+  }
+
+  async getFlashCtfProgress(payload: GetFlashCtfProgressPayload, signal?: AbortSignal) {
+    return this.request(FlashCtfProgressResponseSchema, '/scores/get_flash_ctf_progress', {
+      method: 'GET',
+      query: { syned_user_id: payload.syned_user_id },
+      signal,
+    });
   }
 
   async sendPasswordReset(syned_user_id: string, signal?: AbortSignal) {
@@ -145,15 +201,24 @@ export class GamePlatformClient {
   }
 
   private async request<T>(schema: z.ZodSchema<T>, path: string, config: GamePlatformRequestConfig): Promise<T> {
-    const url = `${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
-    const { method = 'GET', body, signal } = config;
+    const { method = 'GET', body, signal, query } = config;
+
+    const base = this.baseUrl.endsWith('/') ? this.baseUrl : `${this.baseUrl}/`;
+    const relativePath = path.startsWith('/') ? path.slice(1) : path;
+    const url = new URL(relativePath, base);
+
+    if (query) {
+      for (const [key, value] of Object.entries(query)) {
+        if (value === undefined || value === null || value === '') continue;
+        url.searchParams.set(key, String(value));
+      }
+    }
 
     if (!this.token) {
       throw new GamePlatformError('Missing GAME_PLATFORM_API_TOKEN configuration', 401, { path });
     }
 
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       Authorization: `Bearer ${this.token}`,
     };
 
@@ -163,12 +228,11 @@ export class GamePlatformClient {
       signal,
     };
 
-    if (body !== undefined) {
-      // Some endpoints expect GET with JSON body; support it but log a warning.
-      if (method === 'GET') {
-        this.logger?.warn?.(`GET ${path} invoked with a JSON body. Verify API contract.`);
-      }
+    if (body !== undefined && method !== 'GET') {
+      headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);
+    } else if (body !== undefined) {
+      this.logger?.warn?.(`Ignoring body for GET ${path}; using query parameters instead.`);
     }
 
     let attempt = 0;

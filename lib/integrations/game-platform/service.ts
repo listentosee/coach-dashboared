@@ -32,6 +32,20 @@ export interface SyncTeamResult {
   skippedMembers?: Array<{ competitorId: string; reason: string }>;
 }
 
+export interface SyncCompetitorStatsParams extends ServiceOptions {
+  competitorId: string;
+}
+
+export interface SyncAllCompetitorStatsParams extends ServiceOptions {
+  coachId?: string | null;
+}
+
+export interface SyncCompetitorStatsResult {
+  competitorId: string;
+  status: 'synced' | 'skipped_no_platform_id' | 'dry-run';
+  message?: string;
+}
+
 const FEATURE_ENABLED = process.env.GAME_PLATFORM_INTEGRATION_ENABLED === 'true';
 
 function resolveClient(client?: GamePlatformClient | GamePlatformClientMock, logger?: Pick<Console, 'error' | 'warn' | 'info'>) {
@@ -84,7 +98,7 @@ export async function onboardCompetitorToGamePlatform({
     syned_school_id: competitor.syned_school_id ?? null,
     syned_region_id: competitor.syned_region_id ?? null,
     syned_coach_user_id: competitor.syned_coach_user_id ?? null,
-    syned_user_id: competitor.game_platform_id ?? null,
+    syned_user_id: String(competitor.game_platform_id ?? competitor.id),
   };
 
   if (!userPayload.email) {
@@ -255,10 +269,13 @@ export async function syncTeamWithGamePlatform({
 function buildPreferredUsername(competitor: any): string {
   if (competitor.preferred_username) return competitor.preferred_username;
   const source = competitor.email_personal || competitor.email_school || `${competitor.first_name}.${competitor.last_name}`;
-  return String(source)
+  const cleaned = String(source)
     .split('@')[0]
     .replace(/[^a-zA-Z0-9._-]/g, '')
-    .slice(0, 32) || `competitor-${competitor.id}`;
+    .slice(0, 32);
+  if (cleaned.length >= 3) return cleaned;
+  const fallback = `competitor-${String(competitor.id || Date.now()).replace(/[^a-zA-Z0-9]/g, '')}`;
+  return fallback.slice(0, 32);
 }
 
 async function updateCompetitorSyncError(supabase: AnySupabaseClient, competitorId: string, message: string | null) {
@@ -341,4 +358,167 @@ function sanitizeDivision(raw: string | null | undefined): 'high_school' | 'midd
     default:
       return 'high_school';
   }
+}
+
+async function getOrCreateStatsRow(
+  supabase: AnySupabaseClient,
+  competitorId: string,
+) {
+  const { data, error } = await supabase
+    .from('game_platform_stats')
+    .select('id')
+    .eq('competitor_id', competitorId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load existing stats row: ${error.message}`);
+  }
+
+  return data;
+}
+
+export async function syncCompetitorGameStats({
+  supabase,
+  client,
+  competitorId,
+  dryRun,
+  logger,
+}: SyncCompetitorStatsParams): Promise<SyncCompetitorStatsResult> {
+  const { data: competitor, error } = await supabase
+    .from('competitors')
+    .select('id, first_name, last_name, coach_id, game_platform_id')
+    .eq('id', competitorId)
+    .maybeSingle();
+
+  if (error || !competitor) {
+    throw new Error(`Competitor ${competitorId} not found: ${error?.message ?? 'unknown error'}`);
+  }
+
+  if (!competitor.game_platform_id) {
+    return {
+      competitorId,
+      status: 'skipped_no_platform_id',
+      message: 'Competitor missing game_platform_id',
+    };
+  }
+
+  const effectiveDryRun = isDryRunOverride(dryRun);
+
+  if (effectiveDryRun) {
+    return {
+      competitorId,
+      status: 'dry-run',
+    };
+  }
+
+  const resolvedClient = resolveClient(client, logger);
+
+  let scores: any = null;
+  try {
+    scores = await resolvedClient.getScores({ syned_user_id: competitor.game_platform_id });
+  } catch (err: any) {
+    logger?.warn?.(`Failed to fetch ODL scores for ${competitor.game_platform_id}`, { error: err });
+  }
+
+  let flash: any = null;
+  try {
+    flash = await resolvedClient.getFlashCtfProgress({ syned_user_id: competitor.game_platform_id });
+  } catch (err: any) {
+    if (err?.status === 404) {
+      logger?.info?.(`No Flash CTF progress for ${competitor.game_platform_id}`);
+    } else {
+      logger?.warn?.(`Failed to fetch Flash CTF progress for ${competitor.game_platform_id}`, { error: err });
+    }
+  }
+
+  const normalizedScores = Array.isArray(scores) ? scores[0] : scores;
+  const totalChallenges = normalizedScores?.total_challenges_solved ?? 0;
+  const totalPoints = normalizedScores?.total_points ?? 0;
+  const lastActivityUnix = normalizedScores?.last_accessed_unix_timestamp ?? null;
+  const lastActivity = lastActivityUnix ? new Date(lastActivityUnix * 1000).toISOString() : null;
+  const flashEntries: any[] = flash?.flash_ctfs ?? [];
+  const monthlyCtfChallenges = flashEntries.reduce((sum, entry) => sum + (entry?.challenges_solved ?? 0), 0);
+
+  const rawData = {
+    scores: normalizedScores ?? null,
+    flash_ctfs: flashEntries,
+  };
+
+  const existing = await getOrCreateStatsRow(supabase, competitorId);
+
+  const payload: any = {
+    competitor_id: competitorId,
+    challenges_completed: totalChallenges,
+    monthly_ctf_challenges: monthlyCtfChallenges,
+    total_score: totalPoints,
+    last_activity: lastActivity,
+    synced_at: new Date().toISOString(),
+    raw_data: rawData,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (existing?.id) {
+    const { error: updateError } = await supabase
+      .from('game_platform_stats')
+      .update(payload)
+      .eq('id', existing.id);
+    if (updateError) {
+      throw new Error(`Failed to update game platform stats: ${updateError.message}`);
+    }
+  } else {
+    const { error: insertError } = await supabase
+      .from('game_platform_stats')
+      .insert(payload);
+    if (insertError) {
+      throw new Error(`Failed to insert game platform stats: ${insertError.message}`);
+    }
+  }
+
+  return {
+    competitorId,
+    status: 'synced',
+  };
+}
+
+export async function syncAllCompetitorGameStats({
+  supabase,
+  client,
+  dryRun,
+  logger,
+  coachId,
+}: SyncAllCompetitorStatsParams) {
+  let competitorQuery = supabase
+    .from('competitors')
+    .select('id, coach_id, game_platform_id')
+    .not('game_platform_id', 'is', null);
+
+  if (coachId) {
+    competitorQuery = competitorQuery.eq('coach_id', coachId);
+  }
+
+  const { data: competitors, error } = await competitorQuery;
+
+  if (error) {
+    throw new Error(`Failed to list competitors for stats sync: ${error.message}`);
+  }
+
+  const results: SyncCompetitorStatsResult[] = [];
+
+  for (const competitor of competitors || []) {
+    const result = await syncCompetitorGameStats({
+      supabase,
+      client,
+      competitorId: competitor.id,
+      dryRun,
+      logger,
+    });
+    results.push(result);
+  }
+
+  return {
+    total: competitors?.length ?? 0,
+    synced: results.filter((r) => r.status === 'synced').length,
+    skipped: results.filter((r) => r.status !== 'synced').length,
+    results,
+  };
 }

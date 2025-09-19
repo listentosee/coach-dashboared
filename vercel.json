@@ -1,11 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/game-platform/sync/scores",
-      "schedule": "0 * * * *",
-      "headers": {
-        "x-cron-secret": "@game_platform_cron_secret"
-      }
+      "path": "/api/game-platform/sync/scores?secret=@game_platform_cron_secret",
+      "schedule": "0 * * * *"
     }
   ]
 }

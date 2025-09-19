@@ -63,8 +63,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const cookieStore = await cookies();
-    const cronSecret = request.headers.get('x-cron-secret');
-    const isCronCall = request.method === 'GET' && CRON_SECRET && cronSecret === CRON_SECRET;
+    const secretParam = request.nextUrl.searchParams.get('secret');
+    const isCronCall = request.method === 'GET' && CRON_SECRET && secretParam === CRON_SECRET;
     const supabase = await buildSupabaseClient(isCronCall, cookieStore);
 
     if (!isCronCall) {
@@ -83,6 +83,10 @@ export async function POST(request: NextRequest) {
     const competitorId = params.get('competitorId');
     const dryRun = params.get('dryRun') === 'true';
     const actingCoachId = isCronCall ? null : cookieStore.get('admin_coach_id')?.value || null;
+
+    if (isCronCall && (competitorId || dryRun)) {
+      return NextResponse.json({ error: 'Cron requests cannot specify competitorId or dryRun' }, { status: 400 });
+    }
 
     return await handleSync({ request, supabase, dryRun, actingCoachId, competitorId });
   } catch (error: any) {

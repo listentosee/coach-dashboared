@@ -20,7 +20,8 @@ export async function GET(request: NextRequest) {
     }
 
     const isAdminUser = await isUserAdmin(supabase, user.id);
-    const actingCoachId = isAdminUser ? (cookieStore.get('admin_coach_id')?.value || null) : user.id;
+    const actingCoachCookie = cookieStore.get('admin_coach_id')?.value || null;
+    const coachContextId = isAdminUser ? actingCoachCookie : user.id;
 
     let competitorsQuery = supabase
       .from('competitors')
@@ -37,8 +38,8 @@ export async function GET(request: NextRequest) {
       `);
 
     if (isAdminUser) {
-      if (actingCoachId && actingCoachId !== user.id) {
-        competitorsQuery = competitorsQuery.eq('coach_id', actingCoachId);
+      if (actingCoachCookie) {
+        competitorsQuery = competitorsQuery.eq('coach_id', actingCoachCookie);
       }
     } else {
       competitorsQuery = competitorsQuery.eq('coach_id', user.id);
@@ -66,6 +67,7 @@ export async function GET(request: NextRequest) {
     }
 
     const competitorMap = new Map<string, any>();
+    const competitorList: any[] = [];
     for (const competitor of competitors || []) {
       const teamMembership = Array.isArray(competitor.team_members) ? competitor.team_members[0] : null;
       const team = teamMembership?.teams || null;
@@ -80,6 +82,16 @@ export async function GET(request: NextRequest) {
         game_platform_sync_error: competitor.game_platform_sync_error,
         team_id: teamMembership?.team_id || null,
         team,
+      });
+      competitorList.push({
+        id: competitor.id,
+        coach_id: competitor.coach_id,
+        team: team ? {
+          id: team.id,
+          name: team.name,
+          division: team.division,
+          affiliation: team.affiliation,
+        } : null,
       });
     }
 
@@ -220,8 +232,9 @@ export async function GET(request: NextRequest) {
       },
       controller: {
         isAdmin: isAdminUser,
-        coachId: actingCoachId,
+        coachId: coachContextId,
       },
+      competitors: competitorList,
     };
 
     return NextResponse.json(response);

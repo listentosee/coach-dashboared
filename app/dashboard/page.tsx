@@ -73,6 +73,7 @@ export default function DashboardPage() {
   const [coachProfile, setCoachProfile] = useState<any>(null);
   const [divisionFilter, setDivisionFilter] = useState<'all' | 'middle_school' | 'high_school' | 'college'>('all');
   const [isAdmin, setIsAdmin] = useState(false)
+  const [coachDirectory, setCoachDirectory] = useState<Record<string, { name?: string | null; email?: string | null }>>({})
   const [visibleCount, setVisibleCount] = useState(40)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const [adminTotal, setAdminTotal] = useState<number | null>(null)
@@ -416,6 +417,31 @@ export default function DashboardPage() {
       setAdminLoading(false)
     }
   }, [adminOffset, adminTotal])
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setCoachDirectory({})
+      return
+    }
+
+    const loadCoaches = async () => {
+      try {
+        const res = await fetch('/api/users/coaches')
+        if (!res.ok) return
+        const data = await res.json()
+        const map: Record<string, { name?: string | null; email?: string | null }> = {}
+        for (const coach of data.coaches || []) {
+          const name = coach.name || coach.full_name || [coach.first_name, coach.last_name].filter(Boolean).join(' ').trim()
+          map[coach.id] = { name: name || null, email: coach.email || null }
+        }
+        setCoachDirectory(map)
+      } catch (error) {
+        console.error('Failed to load coach directory', error)
+      }
+    }
+
+    loadCoaches()
+  }, [isAdmin])
 
   // Infinite scroll: observe sentinel within the actual panel (admin All‑coaches only)
   useEffect(() => {
@@ -813,6 +839,7 @@ export default function DashboardPage() {
               setOpenDropdown,
               session?.user?.email,
               coachProfile ? `${coachProfile.first_name} ${coachProfile.last_name}` : session?.user?.email,
+              coachDirectory,
               isAdmin && !ctxLoading && coachId === null,
               (isAdmin && !ctxLoading && coachId === null),
               'Select a coach to edit'

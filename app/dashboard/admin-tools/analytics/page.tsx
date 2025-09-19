@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
+import { DemographicCharts, DemographicChartConfig } from '@/components/dashboard/admin/demographic-charts'
 
 export const dynamic = 'force-dynamic'
 
@@ -79,6 +80,99 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   }
 
   const notStarted = (competitorCount || 0) - (completeRelease || 0) - (sentCount || 0)
+
+  // Demographic breakdowns
+  let demographicRows: Array<{ gender: string | null; race: string | null; ethnicity: string | null; level_of_technology: string | null; years_competing: number | null }> = []
+  {
+    let demoQuery = supabase
+      .from('competitors')
+      .select('gender, race, ethnicity, level_of_technology, years_competing')
+
+    if (coachId) {
+      demoQuery = demoQuery.eq('coach_id', coachId)
+    }
+
+    const { data: demoData } = await demoQuery
+    if (demoData) {
+      demographicRows = demoData as typeof demographicRows
+    }
+  }
+
+  const normalizeLabel = (value: string | null | undefined) => {
+    if (!value) return null
+    const base = value.trim().toLowerCase()
+    if (!base) return null
+    return base
+      .split(/\s+/)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+  }
+
+  const buildChartData = (
+    key: 'gender' | 'race' | 'ethnicity' | 'level_of_technology',
+    fallbackLabel: string
+  ): DemographicChartConfig['data'] => {
+    if (!demographicRows.length) return []
+    const counts = new Map<string, number>()
+    for (const row of demographicRows) {
+      const raw = row[key]
+      const normalized = normalizeLabel(typeof raw === 'string' ? raw : null)
+      const label = normalized || fallbackLabel
+      counts.set(label, (counts.get(label) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+  }
+
+  const demographicCharts: DemographicChartConfig[] = [
+    {
+      title: 'Gender Identity',
+      description: 'Self-reported gender from competitor profiles.',
+      data: buildChartData('gender', 'Not provided'),
+    },
+    {
+      title: 'Race',
+      description: 'Self-reported race categories.',
+      data: buildChartData('race', 'Not provided'),
+    },
+    {
+      title: 'Ethnicity',
+      description: 'Self-reported ethnicity.',
+      data: buildChartData('ethnicity', 'Not provided'),
+    },
+    {
+      title: 'Technology Access',
+      description: 'Preferred level of technology reported by competitors.',
+      data: buildChartData('level_of_technology', 'Not provided'),
+    },
+  ]
+
+  // Years competing histogram (grouped buckets)
+  const yearsCounts = new Map<string, number>()
+  if (demographicRows.length) {
+    for (const row of demographicRows) {
+      const value = row.years_competing
+      let label = 'Not provided'
+      if (typeof value === 'number' && !Number.isNaN(value) && value >= 0) {
+        if (value < 1) label = '< 1 year'
+        else if (value < 3) label = '1-2 years'
+        else if (value < 5) label = '3-4 years'
+        else label = '5+ years'
+      }
+      yearsCounts.set(label, (yearsCounts.get(label) ?? 0) + 1)
+    }
+  }
+
+  if (yearsCounts.size) {
+    demographicCharts.push({
+      title: 'Years Participating',
+      description: 'How long competitors have been participating.',
+      data: Array.from(yearsCounts.entries())
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value),
+    })
+  }
 
   const pct = (n: number | null | undefined) => {
     const total = competitorCount || 0
@@ -170,6 +264,17 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
               <div className="flex items-center justify-between"><span className="text-meta-muted">Complete</span><span className="text-meta-light font-semibold">{completeRelease || 0}</span></div>
             </div>
           </div>
+        </div>
+
+        <div className="rounded border border-meta-border bg-meta-card p-5">
+          <div className="mb-4">
+            <div className="text-sm text-meta-muted">Demographics</div>
+            <div className="text-meta-light text-lg font-semibold">Competitor Breakdown</div>
+            <p className="text-sm text-meta-muted mt-1">
+              Distributions are filtered by the current coach context.
+            </p>
+          </div>
+          <DemographicCharts charts={demographicCharts} />
         </div>
 
         {/* Game platform placeholder */}

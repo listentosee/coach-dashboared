@@ -64,6 +64,7 @@ export const createCompetitorColumns = (
   setOpenDropdown: (id: string | null) => void,
   coachEmail?: string,
   coachName?: string,
+  coachDirectory?: Record<string, { name?: string | null; email?: string | null }>,
   showCoachContextHint?: boolean,
   disableEdits?: boolean,
   disableTooltip?: string
@@ -88,7 +89,9 @@ export const createCompetitorColumns = (
     ),
     cell: ({ row }) => {
       const competitor = row.original;
-      const coachLabel = competitor.coach_name || competitor.coach_email || competitor.coach_id || 'Unknown coach';
+      const directoryEntry = competitor.coach_id ? coachDirectory?.[competitor.coach_id] : undefined
+      const idFallback = competitor.coach_id ? `${competitor.coach_id.slice(0, 8)}…` : 'Unknown coach';
+      const coachLabel = directoryEntry?.name || competitor.coach_name || directoryEntry?.email || competitor.coach_email || idFallback;
       const showCoachHint = !!showCoachContextHint && coachLabel;
       return (
         <div title={showCoachHint ? `Coach: ${coachLabel}` : undefined}>

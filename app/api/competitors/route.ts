@@ -48,8 +48,7 @@ export async function GET(request: NextRequest) {
         profile_update_token_expires,
         created_at,
         is_active,
-        coach_id,
-        coach:profiles(first_name,last_name,email)
+        coach_id
       `);
 
     // Apply coach filtering only for non-admin users
@@ -66,6 +65,24 @@ export async function GET(request: NextRequest) {
     if (competitorsError) {
       console.error('Database error:', competitorsError);
       return NextResponse.json({ error: 'Failed to fetch competitors' }, { status: 400 });
+    }
+
+    // Prefetch coach profiles for admin view context hints
+    const coachLookup = new Map<string, { full_name?: string | null; first_name?: string | null; last_name?: string | null; email?: string | null }>()
+    const coachIds = (competitors || [])
+      .map((c) => c.coach_id)
+      .filter((id): id is string => !!id);
+
+    if (coachIds.length) {
+      const uniqueIds = Array.from(new Set(coachIds));
+      const { data: coachProfiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, first_name, last_name, email')
+        .in('id', uniqueIds);
+
+      for (const coach of coachProfiles || []) {
+        coachLookup.set(coach.id, coach);
+      }
     }
 
     // Fetch team data separately to avoid complex joins
@@ -102,8 +119,9 @@ export async function GET(request: NextRequest) {
       const teamMember = teamMembersData.find(tm => tm.competitor_id === competitor.id);
       const computedStatus = calculateCompetitorStatus(competitor as any)
       const latestAgreement = agreementsData.find(a => a.competitor_id === competitor.id) || null
-      const coachProfile = (competitor as any).coach as { first_name?: string | null; last_name?: string | null; email?: string | null } | null | undefined
-      const coachFullName = coachProfile ? [coachProfile.first_name, coachProfile.last_name].filter(Boolean).join(' ').trim() : ''
+      const coachProfile = competitor.coach_id ? coachLookup.get(competitor.coach_id) : null
+      const joinedName = coachProfile ? [coachProfile.first_name, coachProfile.last_name].filter(Boolean).join(' ').trim() : ''
+      const coachFullName = coachProfile?.full_name?.trim() || joinedName
       const coachLabel = coachFullName || coachProfile?.email || null
 
       return {

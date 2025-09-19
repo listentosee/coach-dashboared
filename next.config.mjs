@@ -1,4 +1,8 @@
 let userConfig = undefined
+
+if (!process.env.NEXT_DISABLE_DEVTOOLS) {
+  process.env.NEXT_DISABLE_DEVTOOLS = '1';
+}
 try {
   // try to import ESM first
   userConfig = await import('./v0-user-next.config.mjs')
@@ -24,6 +28,7 @@ const nextConfig = {
   },
   env: {
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000',
+    NEXT_DISABLE_DEVTOOLS: process.env.NEXT_DISABLE_DEVTOOLS || '1',
   },
   experimental: {
     webpackBuildWorker: true,

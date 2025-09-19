@@ -64,7 +64,11 @@ export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies();
     const secretParam = request.nextUrl.searchParams.get('secret');
-    const isCronCall = request.method === 'GET' && CRON_SECRET && secretParam === CRON_SECRET;
+    const isCronAttempt = request.method === 'GET' && !!CRON_SECRET;
+    if (isCronAttempt && secretParam !== CRON_SECRET) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const isCronCall = isCronAttempt && secretParam === CRON_SECRET;
     const supabase = await buildSupabaseClient(isCronCall, cookieStore);
 
     if (!isCronCall) {

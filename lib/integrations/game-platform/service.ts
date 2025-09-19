@@ -129,6 +129,18 @@ export async function onboardCompetitorToGamePlatform({
 
     const updatedCompetitor = await persistCompetitorSyncSuccess(supabase, competitorId, competitor, remoteUserId);
 
+    try {
+      await syncCompetitorGameStats({
+        supabase,
+        client: resolvedClient,
+        competitorId,
+        dryRun: false,
+        logger,
+      });
+    } catch (syncErr) {
+      logger?.warn?.('Post-onboarding stats sync failed', { competitorId, error: syncErr });
+    }
+
     return {
       status: 'synced',
       competitor: updatedCompetitor,

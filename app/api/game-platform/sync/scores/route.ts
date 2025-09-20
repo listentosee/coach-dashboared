@@ -63,9 +63,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const cookieStore = await cookies();
-    const secretParam = request.nextUrl.searchParams.get('secret') ?? request.headers.get('x-vercel-cron-secret');
-    const isCronAttempt = request.method === 'GET' && !!CRON_SECRET;
-    const isCronCall = isCronAttempt && secretParam === CRON_SECRET;
+    const secretParam = request.nextUrl.searchParams.get('secret');
+    const headerSecret = request.headers.get('x-vercel-cron-secret');
+    const hasCronHeader = !!request.headers.get('x-vercel-cron');
+    const secretMatches = CRON_SECRET
+      ? secretParam === CRON_SECRET || headerSecret === CRON_SECRET
+      : false;
+    const isCronAttempt = request.method === 'GET' && (hasCronHeader || CRON_SECRET);
+    const isCronCall = request.method === 'GET' && (hasCronHeader || secretMatches);
+
     if (isCronAttempt && !isCronCall) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

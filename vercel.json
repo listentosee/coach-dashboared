@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/game-platform/sync/scores",
+      "path": "/api/internal/sync",
       "schedule": "0 * * * *"
     }
   ]

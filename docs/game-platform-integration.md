@@ -88,7 +88,7 @@ Background Sync (cron/job) -> Next.js route or Edge Function -> GamePlatformClie
 
 ## 9. Background Jobs & Sync
 - **Roster Reconciliation**: Nightly job fetches `get_team_assignments` per team, compares to Supabase memberships, flags discrepancies (store in alert table).
-- **Score Polling**: Hourly Vercel Cron job hits `/api/game-platform/sync/scores` and relies on the `x-vercel-cron` header (automatically added) plus an optional `?secret=@env:GAME_PLATFORM_CRON_SECRET`. The sync accepts either the header or the query secret; admins can also trigger it manually with `dryRun=true` via POST.
+- **Score Polling**: Hourly Vercel Cron job hits `/api/game-platform/sync/scores` (Vercel adds the `x-vercel-cron` header automatically). For manual GETs, pass `?secret=GAME_PLATFORM_CRON_SECRET`; admins can also trigger it via POST with `dryRun=true`.
 - **Retry Queue**: For failed sync operations, enqueue retries (simple table with exponential backoff metadata processed by cron).
 
 ## 10. Error Handling & Observability

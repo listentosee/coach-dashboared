@@ -63,10 +63,18 @@ export async function POST(request: NextRequest) {
 
   try {
     const cookieStore = await cookies();
-    const hasCronHeader = !!request.headers.get('x-vercel-cron');
+    const cronHeader = request.headers.get('x-vercel-cron');
     const secretParam = request.nextUrl.searchParams.get('secret');
-    const secretMatches = CRON_SECRET ? secretParam === CRON_SECRET : false;
-    const isCronCall = request.method === 'GET' && (hasCronHeader || secretMatches);
+    const secretMatches = CRON_SECRET && secretParam === CRON_SECRET;
+    const isCronCall = request.method === 'GET' && (!!cronHeader || secretMatches);
+
+    console.log('[sync/scores] request received', {
+      method: request.method,
+      cronHeader,
+      secretProvided: !!secretParam,
+      secretMatches,
+      isCronCall,
+    });
 
     if (request.method === 'GET' && !isCronCall) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -90,7 +98,7 @@ export async function POST(request: NextRequest) {
     const dryRun = params.get('dryRun') === 'true';
     const actingCoachId = isCronCall ? null : cookieStore.get('admin_coach_id')?.value || null;
 
-    if (hasCronHeader && (competitorId || dryRun)) {
+    if (isCronCall && cronHeader && (competitorId || dryRun)) {
       return NextResponse.json({ error: 'Cron requests cannot specify competitorId or dryRun' }, { status: 400 });
     }
 

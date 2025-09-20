@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/game-platform/sync/scores?secret=@GAME_PLATFORM_CRON_SECRET",
+      "path": "/api/game-platform/sync/scores?secret=@env:GAME_PLATFORM_CRON_SECRET",
       "schedule": "0 * * * *"
     }
   ]

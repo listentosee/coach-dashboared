@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const cookieStore = await cookies();
-    const secretParam = request.nextUrl.searchParams.get('secret');
+    const secretParam = request.nextUrl.searchParams.get('secret') ?? request.headers.get('x-vercel-cron-secret');
     const isCronAttempt = request.method === 'GET' && !!CRON_SECRET;
     const isCronCall = isCronAttempt && secretParam === CRON_SECRET;
     if (isCronAttempt && !isCronCall) {

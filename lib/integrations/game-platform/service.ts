@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { GamePlatformClient, GamePlatformClientMock, CreateUserPayload, CreateTeamPayload } from './client';
 import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 
@@ -47,6 +48,8 @@ export interface SyncCompetitorStatsResult {
 }
 
 const FEATURE_ENABLED = process.env.GAME_PLATFORM_INTEGRATION_ENABLED === 'true';
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 function resolveClient(client?: GamePlatformClient | GamePlatformClientMock, logger?: Pick<Console, 'error' | 'warn' | 'info'>) {
   if (client) return client;
@@ -425,6 +428,10 @@ export async function syncCompetitorGameStats({
 
   const resolvedClient = resolveClient(client, logger);
 
+  const statsClient: AnySupabaseClient = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
+    : supabase;
+
   let scores: any = null;
   try {
     scores = await resolvedClient.getScores({ syned_user_id: competitor.game_platform_id });
@@ -456,7 +463,7 @@ export async function syncCompetitorGameStats({
     flash_ctfs: flashEntries,
   };
 
-  const existing = await getOrCreateStatsRow(supabase, competitorId);
+  const existing = await getOrCreateStatsRow(statsClient, competitorId);
 
   const payload: any = {
     competitor_id: competitorId,
@@ -470,7 +477,7 @@ export async function syncCompetitorGameStats({
   };
 
   if (existing?.id) {
-    const { error: updateError } = await supabase
+    const { error: updateError } = await statsClient
       .from('game_platform_stats')
       .update(payload)
       .eq('id', existing.id);
@@ -478,7 +485,7 @@ export async function syncCompetitorGameStats({
       throw new Error(`Failed to update game platform stats: ${updateError.message}`);
     }
   } else {
-    const { error: insertError } = await supabase
+    const { error: insertError } = await statsClient
       .from('game_platform_stats')
       .insert(payload);
     if (insertError) {

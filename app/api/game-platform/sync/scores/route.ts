@@ -77,6 +77,10 @@ export async function POST(request: NextRequest) {
     });
 
     if (request.method === 'GET' && !isCronCall) {
+      console.warn('[sync/scores] rejecting cron request', {
+        reason: 'missing cron header or secret',
+        method: request.method,
+      });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const supabase = await buildSupabaseClient(isCronCall, cookieStore);
@@ -84,11 +88,13 @@ export async function POST(request: NextRequest) {
     if (!isCronCall) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
+      console.warn('[sync/scores] rejecting manual request: no session');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
       const isAdminUser = await isUserAdmin(supabase, user.id);
       if (!isAdminUser) {
+        console.warn('[sync/scores] rejecting manual request: not admin', { user: user.id });
         return NextResponse.json({ error: 'Admins only' }, { status: 403 });
       }
     }

@@ -4,6 +4,8 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { JobPlaybookDialog } from '@/components/dashboard/admin/job-playbook-dialog';
+import { JobProcessingToggle } from '@/components/dashboard/admin/job-processing-toggle';
+import { JobHealthDialog } from '@/components/dashboard/admin/job-health-dialog';
 
 interface SearchParams {
   status?: string;
@@ -65,6 +67,11 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
 
   const { data: jobs } = await jobsQuery;
   const { count: totalJobs } = await supabase.from('job_queue').select('id', { count: 'exact', head: true });
+  const { data: settings } = await supabase
+    .from('job_queue_settings')
+    .select('processing_enabled, paused_reason, updated_at')
+    .eq('id', 1)
+    .single();
   const playbookContent = loadPlaybook();
 
   return (
@@ -77,9 +84,22 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
           </p>
           <div className="flex items-center gap-3">
             <JobPlaybookDialog content={playbookContent} totalJobs={totalJobs ?? 0} />
-            <span className="text-sm text-gray-500">Total jobs: {totalJobs ?? 0}</span>
+            <JobHealthDialog />
           </div>
         </div>
+      </div>
+
+      <div className="mb-6">
+        <JobProcessingToggle
+          enabled={settings?.processing_enabled ?? true}
+          pausedReason={settings?.paused_reason ?? undefined}
+        />
+        {!settings?.processing_enabled && settings?.paused_reason && (
+          <p className="mt-2 text-sm text-red-500">
+            Currently paused: {settings.paused_reason}
+          </p>
+        )}
+        <p className="mt-2 text-xs text-gray-500">Total recorded jobs: {totalJobs ?? 0}</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-8">

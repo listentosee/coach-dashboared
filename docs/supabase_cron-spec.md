@@ -108,7 +108,7 @@
    - [x] Store/rotate the shared secret in Vault (`job_queue_runner_secret`) and configure app env `JOB_QUEUE_RUNNER_SECRET`.
    - [x] Confirm cron logs show HTTP 200 responses post-change. *(Latest response: 200 with `{"status":"ok","processed":0,...}`)*
 5. **Admin monitoring UI**
-   - [x] Add Admin Tools page showing queue metrics, list with filters, and actions (retry, cancel).
+   - [x] Add Admin Tools page showing queue metrics, list with filters, toggle for processing, cron health modal, and actions (retry, cancel).
    - [ ] Expose job detail modal (payload, attempt history) and archive/run-now controls.
 6. **Operational polish**
    - [x] Add structured logging/Sentry alerts for repeated failures.

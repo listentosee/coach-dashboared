@@ -37,6 +37,48 @@ before update on public.job_queue
 for each row
 execute function public.set_job_queue_updated_at();
 
+create table if not exists public.job_queue_settings (
+  id int primary key default 1,
+  processing_enabled boolean not null default true,
+  paused_reason text,
+  updated_at timestamptz not null default now(),
+  constraint job_queue_settings_singleton check (id = 1)
+);
+
+insert into public.job_queue_settings (id)
+values (1)
+on conflict (id) do nothing;
+
+create or replace function public.set_job_queue_settings_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists job_queue_settings_set_updated_at on public.job_queue_settings;
+create trigger job_queue_settings_set_updated_at
+before update on public.job_queue_settings
+for each row
+execute function public.set_job_queue_settings_updated_at();
+
+alter table public.job_queue_settings enable row level security;
+
+create policy job_queue_settings_service_role
+  on public.job_queue_settings
+  for all
+  using (auth.role() = 'service_role')
+  with check (auth.role() = 'service_role');
+
+create policy job_queue_settings_admin
+  on public.job_queue_settings
+  for all
+  using (auth.role() = 'authenticated' and is_admin_user())
+  with check (auth.role() = 'authenticated' and is_admin_user());
+
 create or replace function public.job_queue_enqueue(
   p_task_type text,
   p_payload jsonb default '{}'::jsonb,
@@ -144,5 +186,54 @@ begin
      and coalesce(completed_at, updated_at, run_at) < now() - p_max_age
   returning 1 into deleted;
   return coalesce(deleted, 0);
+end;
+$$;
+
+create or replace function public.job_queue_health()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, cron, net, extensions
+as $$
+declare
+  result jsonb;
+begin
+  select jsonb_build_object(
+    'queueCounts', (
+      select coalesce(jsonb_agg(jsonb_build_object('status', status, 'count', count)), '[]'::jsonb)
+      from (
+        select status, count(*) as count
+        from public.job_queue
+        group by status
+      ) q
+    ),
+    'pendingQueueCount', (select count(*) from net.http_request_queue),
+    'latestResponses', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'created', created,
+        'status_code', status_code,
+        'error', error_msg,
+        'content', substring(content for 200)
+      ) order by created desc), '[]'::jsonb)
+      from (
+        select * from net._http_response order by created desc limit 10
+      ) r
+    ),
+    'latestRuns', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'jobname', j.jobname,
+        'start_time', d.start_time,
+        'end_time', d.end_time,
+        'status', d.status,
+        'message', d.return_message
+      ) order by d.start_time desc), '[]'::jsonb)
+      from cron.job_run_details d
+      join cron.job j on j.jobid = d.jobid
+      order by d.start_time desc
+      limit 10
+    )
+  ) into result;
+
+  return coalesce(result, '{}'::jsonb);
 end;
 $$;

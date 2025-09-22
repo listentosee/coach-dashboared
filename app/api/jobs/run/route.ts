@@ -84,6 +84,20 @@ export async function POST(req: NextRequest) {
     const limit = body.limit && body.limit > 0 ? Math.min(body.limit, 10) : 5;
 
     const supabase = getServiceRoleSupabaseClient();
+    const { data: settings } = await supabase
+      .from('job_queue_settings')
+      .select('processing_enabled, paused_reason')
+      .eq('id', 1)
+      .maybeSingle();
+
+    if (settings && settings.processing_enabled === false) {
+      return NextResponse.json({
+        status: 'paused',
+        processed: 0,
+        message: settings.paused_reason ?? 'Job processing is paused by an administrator.',
+      });
+    }
+
     const jobs = await claimJobs({ limit, client: supabase });
 
     if (jobs.length === 0) {

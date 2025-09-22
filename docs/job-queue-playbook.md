@@ -2,88 +2,36 @@
 
 This playbook documents how to monitor, pause, resume, and recover the Game Platform job queue.
 
-## Quick Links
-- Admin UI: `/dashboard/admin-tools/jobs`
-- Worker endpoint: `/api/jobs/run`
-- SQL helpers: `job_queue_enqueue`, `job_queue_claim`, `job_queue_mark_succeeded`, `job_queue_mark_failed`, `job_queue_cleanup`
-
-## Daily Monitoring
-- Check the Admin UI:
-  - Verify the **status tiles** show low pending/running counts.
-  - Verify jobs are transitioning to **Succeeded** (or retrying when expected).
-- Cron health:
-  - `select * from cron.job_run_details order by start_time desc limit 20;`
-  - `select count(*) from net.http_request_queue;` should stay low.
-  - `select created, status_code, error_msg from net._http_response order by created desc limit 5;`
-- Alerts: Sentry events tagged `job_runner` flag failures without retries.
+## Daily Checklist
+- Open **Admin Tools → Job Queue** and confirm:
+  - Pending/Running tiles remain low and jobs move to **Succeeded**.
+  - Automatic processing toggle is on unless maintenance is planned.
+  - `View cron health` modal shows recent HTTP 200 responses and no growing `net.http_request_queue` backlog.
+- Review the queue table for repeated failures; use **Retry** or **Cancel** as needed.
 
 ## Pause & Resume Processing
-### Pause automatic processing
-1. Disable the worker secret by updating Vault to a dummy value:
-   ```sql
-   select vault.update_secret('d8a9d3fc-e58e-427a-adfe-4b749f8c081d', new_secret := 'PAUSED');
-   ```
-2. Optional: set a maintenance flag env (`JOB_QUEUE_DISABLED=true`) and redeploy so the worker returns 503.
-3. Cron runs will fail with 401—acknowledge in runbook.
-
-### Resume processing
-1. Restore `job_queue_runner_secret` in Vault and `.env`.
-2. Re-run the smoke test:
-   ```sql
-   with secrets as (
-     select
-       (select decrypted_secret from vault.decrypted_secrets where name = 'job_queue_worker_endpoint') as endpoint,
-       (select decrypted_secret from vault.decrypted_secrets where name = 'job_queue_runner_secret') as secret
-   )
-   select net.http_post(
-     url := (select endpoint from secrets),
-     headers := jsonb_build_object('Content-Type','application/json','x-job-runner-secret',(select secret from secrets)),
-     body := jsonb_build_object('limit',1),
-     timeout_milliseconds := 5000
-   );
-   ```
-3. Confirm cron history records HTTP 200.
+1. Toggle **Automatic Processing** off in the Job Queue console.
+2. Optionally record a pause reason for other admins.
+3. When ready, toggle back on and run the cron health check to confirm 200 responses.
 
 ## Manual Replay / Retry
-- From the Admin UI, use **Retry now** to reset a job to `pending` with `run_at = now()`.
-- To replay a job via SQL:
-  ```sql
-  update job_queue
-     set status = 'pending', run_at = now(), last_error = null, completed_at = null
-   where id = '<job-id>';
-  ```
-- To force a fresh job, call the RPC:
-  ```sql
-  select job_queue_enqueue('game_platform_sync', jsonb_build_object('dryRun', false));
-  ```
-
-## Cancelling Jobs
-- Admin UI **Cancel** marks the job as `cancelled` and sets `completed_at`.
-- Via SQL:
-  ```sql
-  update job_queue set status = 'cancelled', completed_at = now() where id = '<job-id>';
-  ```
+- Use **Retry** from the table to push a job back to `pending` for immediate execution.
+- Use **Cancel** to stop jobs that should not run (sets status to `cancelled`).
+- Need a fresh sync? Enqueue a `game_platform_sync` job via SQL if necessary (see engineering runbook).
 
 ## Cleanup
-- Automatic: daily cron `job_queue_cleanup_daily` removes succeeded/cancelled jobs older than 14 days.
-- Manual trigger:
-  ```sql
-  select job_queue_cleanup(interval '7 days');
-  ```
+- A daily cron (`job_queue_cleanup_daily`) removes succeeded/cancelled jobs older than 14 days.
+- Trigger manual cleanup from SQL if you need to reclaim space sooner: `select job_queue_cleanup(interval '7 days');`.
 
-## Schema Changes
-- Add new job types by extending the `JobTaskType` union in `lib/jobs/types.ts` and registering handlers in `lib/jobs/handlers/index.ts`.
-- Include migrations to create any additional tables/data referenced by new handlers.
-- Deploy migrations **before** application code that enqueues new task types.
+## Schema & Code Changes
+- Add new job types by extending `JobTaskType` and registering handlers in `lib/jobs/handlers/index.ts`.
+- Ship migrations before deploying worker/cron changes.
 
 ## Incident Response
-1. Identify failing jobs:
-   - Admin UI last_error column.
-   - `select * from job_queue where status = 'failed';`
-   - Sentry traces.
-2. Fix root cause (e.g., upstream API, data issue).
-3. Use `Retry now` (or SQL) to rerun affected jobs.
-4. Confirm `cron.job_run_details` resumes HTTP 200.
+1. Identify failing jobs in the queue view or Sentry alerts tagged `job_runner`.
+2. Inspect the cron health modal for recent errors or stalled HTTP responses.
+3. Pause automatic processing if the failure is widespread or external.
+4. Resolve the root cause, retry affected jobs, re-enable processing, and monitor until stable.
 
 ## Contacts
 - Primary: Engineering on-call.

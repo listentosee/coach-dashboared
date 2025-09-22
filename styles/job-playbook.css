@@ -14,3 +14,17 @@
   width: 100%;
   border-collapse: collapse;
 }
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3,
+.markdown-preview h4 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.markdown-preview ul {
+  margin-left: 1.25rem;
+  list-style: disc;
+}

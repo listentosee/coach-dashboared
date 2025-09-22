@@ -113,7 +113,7 @@
 6. **Operational polish**
    - [x] Add structured logging/Sentry alerts for repeated failures.
    - [x] Schedule cleanup for succeeded jobs older than N days. *(cron: `job_queue_cleanup_daily` @ 03:15 UTC, retains 14 days)*
-   - [ ] Document maintenance playbook (pause processing, replay jobs, schema updates).
+   - [x] Document maintenance playbook (pause processing, replay jobs, schema updates).
 
 ### Verification checklist
 - [ ] Enqueue inserts a `pending` row with expected payload/run_at.
@@ -127,6 +127,7 @@
 - Future enhancements (staleness filter, run ledger) can be modeled as additional job types or columns on `job_queue`.
 - Shared secret and endpoint live in Supabase Vault (`job_queue_runner_secret`, `job_queue_worker_endpoint`); keep the cron payload minimal to avoid heavy `net.http_post` conversions.
 - Consider feature flags / env toggles to pause automatic processing while leaving manual tools available.
+- Admin UI includes an inline playbook modal for quick access to recovery procedures.
 - Configure `JOB_QUEUE_RUNNER_SECRET` in app env and Supabase cron payload; rotate periodically.
 
 ### Cron Troubleshooting (per Supabase guidance)

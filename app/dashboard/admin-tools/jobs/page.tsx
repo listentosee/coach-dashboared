@@ -1,6 +1,9 @@
+import fs from 'fs';
+import path from 'path';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { JobPlaybookDialog } from '@/components/dashboard/admin/job-playbook-dialog';
 
 interface SearchParams {
   status?: string;
@@ -15,6 +18,10 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export const dynamic = 'force-dynamic';
+
+function loadPlaybook(): string {
+  return fs.readFileSync(path.join(process.cwd(), 'docs', 'job-queue-playbook.md'), 'utf8');
+}
 
 export default async function JobQueuePage({ searchParams }: { searchParams?: SearchParams }) {
   const cookieStore = await cookies();
@@ -58,12 +65,21 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
 
   const { data: jobs } = await jobsQuery;
   const { count: totalJobs } = await supabase.from('job_queue').select('id', { count: 'exact', head: true });
+  const playbookContent = loadPlaybook();
 
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Job Queue</h1>
-        <p className="text-gray-600 mt-2">Monitor background sync jobs and run manual actions when needed.</p>
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-gray-600">
+            Monitor background sync jobs and run manual actions when needed.
+          </p>
+          <div className="flex items-center gap-3">
+            <JobPlaybookDialog content={playbookContent} totalJobs={totalJobs ?? 0} />
+            <span className="text-sm text-gray-500">Total jobs: {totalJobs ?? 0}</span>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-8">
@@ -129,7 +145,6 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
         </table>
       </div>
 
-      <div className="mt-4 text-sm text-gray-500">Total jobs: {totalJobs ?? 0}</div>
     </div>
   );
 }

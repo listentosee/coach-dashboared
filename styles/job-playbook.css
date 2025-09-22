@@ -1,0 +1,16 @@
+.markdown-preview {
+  --w-md-preview-background-color: transparent;
+  --w-md-preview-font-size: 0.95rem;
+  color: inherit;
+}
+
+.markdown-preview pre,
+.markdown-preview code {
+  background-color: rgba(148, 163, 184, 0.1);
+  border-radius: 0.375rem;
+}
+
+.markdown-preview table {
+  width: 100%;
+  border-collapse: collapse;
+}

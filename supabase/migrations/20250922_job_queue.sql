@@ -210,27 +210,35 @@ begin
     'pendingQueueCount', (select count(*) from net.http_request_queue),
     'latestResponses', (
       select coalesce(jsonb_agg(jsonb_build_object(
-        'created', created,
-        'status_code', status_code,
-        'error', error_msg,
-        'content', substring(content for 200)
-      ) order by created desc), '[]'::jsonb)
+        'created', r.created,
+        'status_code', r.status_code,
+        'error', r.error_msg,
+        'content', substring(r.content for 200)
+      ) order by r.created desc), '[]'::jsonb)
       from (
         select * from net._http_response order by created desc limit 10
       ) r
     ),
     'latestRuns', (
       select coalesce(jsonb_agg(jsonb_build_object(
-        'jobname', j.jobname,
-        'start_time', d.start_time,
-        'end_time', d.end_time,
-        'status', d.status,
-        'message', d.return_message
-      ) order by d.start_time desc), '[]'::jsonb)
-      from cron.job_run_details d
-      join cron.job j on j.jobid = d.jobid
-      order by d.start_time desc
-      limit 10
+        'jobname', sub.jobname,
+        'start_time', sub.start_time,
+        'end_time', sub.end_time,
+        'status', sub.status,
+        'message', sub.return_message
+      ) order by sub.start_time desc), '[]'::jsonb)
+      from (
+        select
+          d.start_time,
+          d.end_time,
+          d.status,
+          d.return_message,
+          j.jobname
+        from cron.job_run_details d
+        join cron.job j on j.jobid = d.jobid
+        order by d.start_time desc
+        limit 10
+      ) sub
     )
   ) into result;
 

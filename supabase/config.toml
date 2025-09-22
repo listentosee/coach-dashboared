@@ -1,0 +1,8 @@
+project_id = "ejoplrkrqvddiklwsfoj"
+
+[db]
+  major_version = 15
+
+[functions]
+  [functions.sync]
+    verify_jwt = false

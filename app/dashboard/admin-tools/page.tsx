@@ -4,7 +4,8 @@ import { cookies } from 'next/headers';
 import CoachAssistTool from '@/components/dashboard/coach-assist-tool';
 
 export default async function AdminToolsPage() {
-  const supabase = createServerComponentClient({ cookies });
+  const cookieStore = await cookies();
+  const supabase = createServerComponentClient({ cookies: () => cookieStore });
   
   // Check if user is authenticated (verified by Supabase Auth)
   const { data: { user } } = await supabase.auth.getUser();

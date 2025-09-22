@@ -106,12 +106,13 @@
 4. **Supabase cron integration**
    - [x] Update the cron command to call the worker endpoint with a minimal payload (now reads secrets from Vault: `job_queue_worker_endpoint`, `job_queue_runner_secret`).
    - [x] Store/rotate the shared secret in Vault (`job_queue_runner_secret`) and configure app env `JOB_QUEUE_RUNNER_SECRET`.
-   - [ ] Confirm cron logs show HTTP 200 responses post-change. *(Currently 405 until worker endpoint URL is updated to the production domain.)*
+   - [x] Confirm cron logs show HTTP 200 responses post-change. *(Latest response: 200 with `{"status":"ok","processed":0,...}`)*
 5. **Admin monitoring UI**
-   - [ ] Add Admin Tools page showing queue metrics, list with filters, job detail drawer (payload, attempts, history), and actions (retry, cancel, archive, run-now).
+   - [x] Add Admin Tools page showing queue metrics, list with filters, and actions (retry, cancel).
+   - [ ] Expose job detail modal (payload, attempt history) and archive/run-now controls.
 6. **Operational polish**
-   - [ ] Add structured logging/Sentry alerts for repeated failures.
-   - [ ] Schedule cleanup for succeeded jobs older than N days.
+   - [x] Add structured logging/Sentry alerts for repeated failures.
+   - [x] Schedule cleanup for succeeded jobs older than N days. *(cron: `job_queue_cleanup_daily` @ 03:15 UTC, retains 14 days)*
    - [ ] Document maintenance playbook (pause processing, replay jobs, schema updates).
 
 ### Verification checklist

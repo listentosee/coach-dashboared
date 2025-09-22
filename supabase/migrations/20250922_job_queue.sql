@@ -129,3 +129,20 @@ begin
   return updated;
 end;
 $$;
+
+create or replace function public.job_queue_cleanup(
+  p_max_age interval default interval '14 days'
+)
+returns integer
+language plpgsql
+as $$
+declare
+  deleted integer;
+begin
+  delete from public.job_queue
+   where status in ('succeeded', 'cancelled')
+     and coalesce(completed_at, updated_at, run_at) < now() - p_max_age
+  returning 1 into deleted;
+  return coalesce(deleted, 0);
+end;
+$$;

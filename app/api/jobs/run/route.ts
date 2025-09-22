@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { getJobHandler } from '@/lib/jobs/handlers';
 import { claimJobs, markJobFailed, markJobSucceeded } from '@/lib/jobs/queue';
-import type { JobRecord } from '@/lib/jobs/types';
-import type { JobResult } from '@/lib/jobs/types';
+import type { JobRecord, JobResult } from '@/lib/jobs/types';
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase';
 
 interface RunRequestBody {
@@ -24,6 +24,19 @@ async function processJob(job: JobRecord) {
   try {
     const result = (await handler(job, { supabase, logger: console })) as JobResult | void;
     if (result && result.status === 'failed') {
+      console.warn('[job-runner] handler reported failure', {
+        jobId: job.id,
+        taskType: job.taskType,
+        error: result.error,
+        retryInMs: result.retryInMs,
+      });
+      if (result.retryInMs === undefined) {
+        Sentry.captureMessage('Job permanently failed', {
+          level: 'error',
+          tags: { jobId: job.id, taskType: job.taskType },
+          extra: { error: result.error, attempts: job.attempts, maxAttempts: job.maxAttempts },
+        });
+      }
       return await markJobFailed({
         jobId: job.id,
         error: result.error,
@@ -41,6 +54,10 @@ async function processJob(job: JobRecord) {
     console.error('[job-runner] job failed unexpectedly', {
       jobId: job.id,
       error,
+    });
+    Sentry.captureException(error, {
+      tags: { jobId: job.id, taskType: job.taskType },
+      extra: { attempts: job.attempts, maxAttempts: job.maxAttempts },
     });
 
     return await markJobFailed({
@@ -96,6 +113,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('[job-runner] internal error', error);
+    Sentry.captureException(error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown job runner error' },
       { status: 500 },

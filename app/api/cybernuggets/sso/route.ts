@@ -132,11 +132,9 @@ export async function GET(req: NextRequest) {
       target.searchParams.set('redirect', redirectValue)
     }
 
-    return NextResponse.json({ url: target.toString(), ts }, {
-      headers: {
-        'Cache-Control': 'no-store'
-      }
-    })
+    const response = NextResponse.redirect(target.toString(), 302)
+    response.headers.set('Cache-Control', 'no-store')
+    return response
   } catch (error) {
     console.error('CyberNuggets SSO error', error)
     return NextResponse.json({ error: 'Failed to start CyberNuggets session' }, { status: 500, headers: { 'Cache-Control': 'no-store' } })

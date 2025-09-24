@@ -11,7 +11,7 @@ import { Edit, UserCheck, Gamepad2, Ban, LogIn, Link as LinkIcon, ChevronDown, C
 import { DataTable } from '@/components/ui/data-table';
 import { createCompetitorColumns, Competitor as CompetitorType } from '@/components/dashboard/competitor-columns';
 import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 
 interface Competitor {
@@ -933,7 +933,7 @@ export default function DashboardPage() {
         }}
       >
         {profileLinkDialog && (
-          <DialogContent className="bg-meta-card border-meta-border text-meta-light">
+          <DialogContent className="bg-meta-card border-meta-border text-meta-light w-full max-w-3xl sm:max-w-4xl">
             <DialogHeader>
               <DialogTitle>Share Profile Update Link</DialogTitle>
               <DialogDescription className="text-meta-muted">
@@ -943,7 +943,7 @@ export default function DashboardPage() {
             <div className="space-y-4">
               <div>
                 <p className="text-sm font-medium text-meta-light">Recipients</p>
-                <p className="mt-1 text-sm text-meta-muted break-words">
+                <p className="mt-1 text-sm text-meta-muted break-words break-all">
                   {profileLinkDialog.recipients.join(', ')}
                 </p>
               </div>
@@ -964,12 +964,12 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-meta-light">Profile Link</p>
-                <div className="mt-1 rounded border border-meta-border bg-meta-dark px-3 py-2 text-sm text-meta-light break-words">
+                <div className="mt-1 rounded border border-meta-border bg-meta-dark px-3 py-2 text-sm text-meta-light break-words break-all">
                   {profileLinkDialog.profileUrl}
                 </div>
               </div>
             </div>
-            <DialogFooter className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" onClick={() => composeEmail('gmail')}>
                   Open Gmail
@@ -1004,7 +1004,7 @@ export default function DashboardPage() {
                   <Copy className="mr-2 h-4 w-4" /> Copy Link
                 </Button>
               </div>
-            </DialogFooter>
+            </div>
           </DialogContent>
         )}
       </Dialog>

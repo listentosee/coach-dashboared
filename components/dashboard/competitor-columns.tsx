@@ -3,8 +3,8 @@
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Edit, UserCheck, Gamepad2, Ban, Link as LinkIcon, ChevronDown, ChevronUp, ChevronsUpDown, Mail, Send } from "lucide-react"
-import { sendEmail, emailTemplates } from "@/components/ui/email-composer"
+import { Edit, UserCheck, Gamepad2, Ban, Link as LinkIcon, ChevronDown, ChevronUp, ChevronsUpDown, Send } from "lucide-react"
+import { emailTemplates } from "@/components/ui/email-composer"
 
 export interface Competitor {
   id: string;
@@ -62,8 +62,16 @@ export const createCompetitorColumns = (
   teams: Array<{id: string, name: string, memberCount?: number}>,
   openDropdown: string | null,
   setOpenDropdown: (id: string | null) => void,
-  coachEmail?: string,
-  coachName?: string,
+  onProfileLinkPrepared: (payload: {
+    competitor: Competitor
+    profileUrl: string
+    recipients: string[]
+    template: { subject: string; body: string }
+    coachEmail?: string | null
+    coachName?: string | null
+  }) => void,
+  coachEmail?: string | null,
+  coachName?: string | null,
   coachDirectory?: Record<string, { name?: string | null; email?: string | null }>,
   showCoachContextHint?: boolean,
   disableEdits?: boolean,
@@ -340,16 +348,28 @@ export const createCompetitorColumns = (
             size="sm"
             onClick={async () => {
               const newProfileUrl = await onRegenerateLink(competitor.id);
-              if (newProfileUrl && coachEmail && coachName) {
-                const competitorEmail = competitor.email_school || competitor.email_personal;
-                if (competitorEmail) {
-                  const template = emailTemplates.profileUpdate(
-                    competitor.first_name,
-                    newProfileUrl,
-                    coachName
-                  );
-                  sendEmail(competitorEmail, coachEmail, template);
-                }
+              if (newProfileUrl) {
+                const emailRegex = /.+@.+\..+/;
+                const recipients = competitor.is_18_or_over
+                  ? [competitor.email_school, competitor.email_personal].filter((value): value is string => !!value && emailRegex.test(value))
+                  : [competitor.parent_email].filter((value): value is string => !!value && emailRegex.test(value))
+
+                if (!recipients.length) return;
+
+                const template = emailTemplates.profileUpdate(
+                  competitor.first_name,
+                  newProfileUrl,
+                  coachName || 'Coach'
+                );
+
+                onProfileLinkPrepared({
+                  competitor,
+                  profileUrl: newProfileUrl,
+                  recipients,
+                  template,
+                  coachEmail,
+                  coachName,
+                });
               }
             }}
             title={globalDisabled ? (disableTooltip || 'Select a coach to edit') : 'Regenerate Profile Link & Send Email'}

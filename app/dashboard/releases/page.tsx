@@ -79,11 +79,6 @@ export default function ReleaseManagementPage() {
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const [analytics, setAnalytics] = useState<{ competitorCount?: number; teamCount?: number; statusCounts?: any } | null>(null)
 
-  // Initial and context-based fetch
-  useEffect(() => {
-    if (!ctxLoading) fetchData();
-  }, [ctxLoading, fetchData])
-
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -151,6 +146,11 @@ export default function ReleaseManagementPage() {
       setLoading(false);
     }
   }, [coachId]);
+
+  // Initial and context-based fetch
+  useEffect(() => {
+    if (!ctxLoading) fetchData();
+  }, [ctxLoading, fetchData])
 
   const sendRelease = async (competitorId: string, mode: 'email' | 'print' = 'email') => {
     try {

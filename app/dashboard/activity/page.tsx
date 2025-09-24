@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { createClient } from '@supabase/supabase-js';
 
@@ -17,11 +17,7 @@ export default function ActivityPage() {
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    fetchActivities();
-  }, []);
-
-  const fetchActivities = async () => {
+  const fetchActivities = useCallback(async () => {
     try {
       const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -46,7 +42,11 @@ export default function ActivityPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchActivities();
+  }, [fetchActivities]);
 
   const getActionIcon = (action: string) => {
     switch (action) {

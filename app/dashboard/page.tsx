@@ -7,10 +7,12 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase/client';
 import { CompetitorForm } from '@/components/dashboard/competitor-form';
 import { CompetitorEditForm } from '@/components/dashboard/competitor-edit-form';
-import { Edit, UserCheck, Gamepad2, Ban, LogIn, Link as LinkIcon, ChevronDown } from 'lucide-react';
+import { Edit, UserCheck, Gamepad2, Ban, LogIn, Link as LinkIcon, ChevronDown, Copy } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table';
 import { createCompetitorColumns, Competitor as CompetitorType } from '@/components/dashboard/competitor-columns';
 import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 
 interface Competitor {
   id: string;
@@ -39,6 +41,15 @@ interface Competitor {
   coach_name?: string | null;
   coach_email?: string | null;
   coach_id?: string | null;
+}
+
+interface ProfileLinkDialogState {
+  competitorName: string;
+  recipients: string[];
+  profileUrl: string;
+  template: { subject: string; body: string };
+  coachEmail?: string | null;
+  coachName?: string | null;
 }
 
 interface DashboardStats {
@@ -85,6 +96,7 @@ export default function DashboardPage() {
   const competitorsLengthRef = useRef<number>(0)
   const adminLoadingRef = useRef<boolean>(false)
   const [registeringId, setRegisteringId] = useState<string | null>(null)
+  const [profileLinkDialog, setProfileLinkDialog] = useState<ProfileLinkDialogState | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -545,6 +557,56 @@ export default function DashboardPage() {
     }
   };
 
+  const handleProfileLinkPrepared = useCallback((details: {
+    competitor: CompetitorType;
+    profileUrl: string;
+    recipients: string[];
+    template: { subject: string; body: string };
+    coachEmail?: string | null;
+    coachName?: string | null;
+  }) => {
+    const fullName = `${details.competitor.first_name} ${details.competitor.last_name}`.trim();
+    setProfileLinkDialog({
+      competitorName: fullName || details.competitor.first_name || 'Competitor',
+      recipients: details.recipients,
+      profileUrl: details.profileUrl,
+      template: details.template,
+      coachEmail: details.coachEmail,
+      coachName: details.coachName,
+    });
+  }, []);
+
+  const handleCopy = useCallback(async (value: string, message = 'Copied to clipboard.') => {
+    try {
+      await navigator.clipboard.writeText(value);
+      alert(message);
+    } catch (error) {
+      console.error('Clipboard write failed', error);
+      window.prompt('Copy to clipboard:', value);
+    }
+  }, []);
+
+  const composeEmail = useCallback((mode: 'mailto' | 'gmail' | 'outlook') => {
+    if (!profileLinkDialog) return;
+    if (!profileLinkDialog.recipients.length) return;
+    const to = profileLinkDialog.recipients.join(',');
+    const encodedSubject = encodeURIComponent(profileLinkDialog.template.subject);
+    const encodedBody = encodeURIComponent(profileLinkDialog.template.body);
+    let url = '';
+    switch (mode) {
+      case 'gmail':
+        url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodedSubject}&body=${encodedBody}`;
+        break;
+      case 'outlook':
+        url = `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(to)}&subject=${encodedSubject}&body=${encodedBody}`;
+        break;
+      default:
+        url = `mailto:${encodeURIComponent(to)}?subject=${encodedSubject}&body=${encodedBody}`;
+        break;
+    }
+    window.open(url, '_blank', 'noopener');
+  }, [profileLinkDialog]);
+
   const handleRegister = async (competitorId: string) => {
     const competitor = competitors.find((c) => c.id === competitorId);
     if (!competitor) return;
@@ -837,6 +899,7 @@ export default function DashboardPage() {
               teams,
               openDropdown,
               setOpenDropdown,
+              handleProfileLinkPrepared,
               session?.user?.email,
               coachProfile ? `${coachProfile.first_name} ${coachProfile.last_name}` : session?.user?.email,
               coachDirectory,
@@ -862,6 +925,89 @@ export default function DashboardPage() {
           }}
         />
       )}
+
+      <Dialog
+        open={!!profileLinkDialog}
+        onOpenChange={(open) => {
+          if (!open) setProfileLinkDialog(null)
+        }}
+      >
+        {profileLinkDialog && (
+          <DialogContent className="bg-meta-card border-meta-border text-meta-light">
+            <DialogHeader>
+              <DialogTitle>Share Profile Update Link</DialogTitle>
+              <DialogDescription className="text-meta-muted">
+                Send {profileLinkDialog.competitorName}&apos;s profile link using your preferred email client. Copy the text below or open a compose window directly.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium text-meta-light">Recipients</p>
+                <p className="mt-1 text-sm text-meta-muted break-words">
+                  {profileLinkDialog.recipients.join(', ')}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-meta-light">Subject</p>
+                <div className="mt-1 rounded border border-meta-border bg-meta-dark px-3 py-2 text-sm text-meta-light">
+                  {profileLinkDialog.template.subject}
+                </div>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-meta-light">Message</p>
+                <Textarea
+                  value={profileLinkDialog.template.body}
+                  readOnly
+                  rows={8}
+                  className="mt-1 bg-meta-dark border-meta-border text-meta-light"
+                />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-meta-light">Profile Link</p>
+                <div className="mt-1 rounded border border-meta-border bg-meta-dark px-3 py-2 text-sm text-meta-light break-words">
+                  {profileLinkDialog.profileUrl}
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => composeEmail('gmail')}>
+                  Open Gmail
+                </Button>
+                <Button variant="outline" onClick={() => composeEmail('outlook')}>
+                  Open Outlook Web
+                </Button>
+                <Button variant="outline" onClick={() => composeEmail('mailto')}>
+                  Default Mail App
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => handleCopy(profileLinkDialog.template.subject, 'Subject copied to clipboard.')}
+                  className="text-meta-light hover:text-meta-accent"
+                >
+                  <Copy className="mr-2 h-4 w-4" /> Copy Subject
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => handleCopy(profileLinkDialog.template.body, 'Email body copied to clipboard.')}
+                  className="text-meta-light hover:text-meta-accent"
+                >
+                  <Copy className="mr-2 h-4 w-4" /> Copy Message
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => handleCopy(profileLinkDialog.profileUrl, 'Profile link copied to clipboard.')}
+                  className="text-meta-light hover:text-meta-accent"
+                >
+                  <Copy className="mr-2 h-4 w-4" /> Copy Link
+                </Button>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
 
 
     </div>

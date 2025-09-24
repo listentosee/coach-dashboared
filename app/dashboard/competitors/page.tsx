@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,10 +40,28 @@ export default function CompetitorsPage() {
     return nameStarts || !!emailMatches;
   });
 
+  const fetchCompetitors = useCallback(async () => {
+    try {
+      // Use server-filtered API route for both admin and coach reads
+      const r = await fetch('/api/competitors')
+      if (r.ok) {
+        const j = await r.json()
+        setCompetitors((j.competitors || []) as Competitor[])
+        setIsAdmin(!!j.isAdmin)
+      } else {
+        setCompetitors([])
+      }
+    } catch (error) {
+      console.error('Error fetching competitors:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   // Initial and context-based fetch
   useEffect(() => {
     if (!ctxLoading) fetchCompetitors();
-  }, [ctxLoading, coachId])
+  }, [ctxLoading, coachId, fetchCompetitors])
 
   // Reset paging when data or filters change
   useEffect(() => { setVisibleCount(40) }, [searchTerm])
@@ -64,23 +82,19 @@ export default function CompetitorsPage() {
     return () => obs.disconnect()
   }, [filteredCompetitors.length])
 
-  const fetchCompetitors = async () => {
-    try {
-      // Use server-filtered API route for both admin and coach reads
-      const r = await fetch('/api/competitors')
-      if (r.ok) {
-        const j = await r.json()
-        setCompetitors((j.competitors || []) as Competitor[])
-        setIsAdmin(!!j.isAdmin)
-      } else {
-        setCompetitors([])
-      }
-    } catch (error) {
-      console.error('Error fetching competitors:', error);
-    } finally {
-      setIsLoading(false);
+  // Realtime updates when competitor records change (status, inserts, deletes)
+  useEffect(() => {
+    const channel = supabase
+      .channel('competitors-list')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'competitors' }, () => {
+        fetchCompetitors()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
     }
-  };
+  }, [fetchCompetitors])
 
   const getStatusColor = (status: string) => {
     switch (status) {

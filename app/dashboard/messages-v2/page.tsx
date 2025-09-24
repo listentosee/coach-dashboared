@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -157,7 +157,7 @@ export default function MessagesV2Page() {
   }
 
   // Data loaders
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async () => {
     const res = await fetch('/api/messaging/conversations')
     if (res.ok) {
       const json = await res.json()
@@ -170,9 +170,9 @@ export default function MessagesV2Page() {
         channelBootstrappedRef.current = true
       }
     }
-  }
+  }, [])
 
-  const fetchThreads = async (conversationId: string): Promise<Thread[]> => {
+  const fetchThreads = useCallback(async (conversationId: string): Promise<Thread[]> => {
     const res = await fetch(`/api/messaging/conversations/${conversationId}/threads?limit=200`)
     if (res.ok) {
       const json = await res.json()
@@ -182,9 +182,24 @@ export default function MessagesV2Page() {
     }
     setThreads([])
     return []
-  }
+  }, [])
 
-  const fetchThreadMessages = async (rootId: number) => {
+  const loadReadStatus = useCallback(async (ids: number[]) => {
+    if (!ids.length) return
+    try {
+      const res = await fetch(`/api/messaging/read-receipts?messageIds=${ids.join(',')}`)
+      if (res.ok) {
+        const { readStatus: rows } = await res.json()
+        const map: typeof readStatus = {}
+        for (const row of rows || []) {
+          map[row.message_id] = { read_count: row.read_count || 0, readers: row.readers || [] }
+        }
+        setReadStatus(prev => ({ ...prev, ...map }))
+      }
+    } catch {}
+  }, [])
+
+  const fetchThreadMessages = useCallback(async (rootId: number) => {
     const res = await fetch(`/api/messaging/threads/${rootId}`)
     if (res.ok) {
       const json = await res.json()
@@ -199,9 +214,9 @@ export default function MessagesV2Page() {
     } else {
       setMessages([])
     }
-  }
+  }, [loadReadStatus])
 
-  const loadDirectory = async () => {
+  const loadDirectory = useCallback(async () => {
     // Messaging-scoped minimal directory (id + name + role)
     try {
       const res = await fetch('/api/messaging/users', { headers: { 'x-messaging-client': '1' } })
@@ -220,28 +235,13 @@ export default function MessagesV2Page() {
       const { data: profile } = await supabase.from('profiles').select('first_name,last_name,email,role').eq('id', user.id).single()
       setMe({ id: user.id, first_name: (profile as any)?.first_name ?? null, last_name: (profile as any)?.last_name ?? null, email: (profile as any)?.email ?? null, role: (profile as any)?.role ?? null })
     }
-  }
-
-  // Read status loader
-  const loadReadStatus = async (ids: number[]) => {
-    try {
-      const res = await fetch(`/api/messaging/read-receipts?messageIds=${ids.join(',')}`)
-      if (res.ok) {
-        const { readStatus: rows } = await res.json()
-        const map: typeof readStatus = {}
-        for (const row of rows || []) {
-          map[row.message_id] = { read_count: row.read_count || 0, readers: row.readers || [] }
-        }
-        setReadStatus(prev => ({ ...prev, ...map }))
-      }
-    } catch {}
-  }
+  }, [])
 
   // No viewport-based read marking anymore; reads are explicit on leave
   const setMsgRef = (_id: number) => (_el: HTMLElement | null) => {}
 
   // Effects
-  useEffect(() => { loadDirectory(); fetchConversations() }, [])
+  useEffect(() => { loadDirectory(); fetchConversations() }, [fetchConversations, loadDirectory])
 
   // Prefetch members for conversations when display_title is not available (fallback)
   useEffect(() => {
@@ -263,7 +263,7 @@ export default function MessagesV2Page() {
       if (entries.length) setConvMembers(prev => ({ ...prev, ...Object.fromEntries(entries) }))
     }
     run()
-  }, [selectedChannel, conversations, me])
+  }, [selectedChannel, conversations, convMembers, me])
 
   // Ensure full member list loaded for active conversation (for Seen/Not Seen roster)
   useEffect(() => {
@@ -279,7 +279,7 @@ export default function MessagesV2Page() {
       } catch {}
     }
     loadMembers()
-  }, [selectedConversationId])
+  }, [convMembers, selectedConversationId])
 
   useEffect(() => {
     if (!selectedConversationId) return
@@ -302,7 +302,7 @@ export default function MessagesV2Page() {
         }
       } catch {}
     })()
-  }, [selectedConversationId])
+  }, [fetchConversations, fetchThreadMessages, fetchThreads, selectedConversationId])
 
   // When channel changes, ensure a conversation in that channel is selected
   useEffect(() => {
@@ -318,7 +318,7 @@ export default function MessagesV2Page() {
     if (!selectedConversationId || !list.find(c => c.id === selectedConversationId)) {
       setSelectedConversationId(list[0].id)
     }
-  }, [selectedChannel, conversations])
+  }, [conversations, selectedChannel, selectedConversationId])
 
   // Remove auto-read by focus/visibility
 
@@ -341,7 +341,7 @@ export default function MessagesV2Page() {
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [selectedConversationId, selectedThreadRoot])
+  }, [fetchConversations, fetchThreadMessages, fetchThreads, me?.id, selectedConversationId, selectedThreadRoot])
 
   useEffect(() => {
     // Realtime: read receipts for current thread
@@ -362,7 +362,7 @@ export default function MessagesV2Page() {
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [receiptsEnabled, messages, selectedThreadRoot])
+  }, [fetchConversations, fetchThreads, loadReadStatus, me?.id, messages, receiptsEnabled, selectedConversationId, selectedThreadRoot])
 
   // Detect reader overflow to decide if pop-out should be shown
   useEffect(() => {
@@ -391,10 +391,10 @@ export default function MessagesV2Page() {
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [me?.id, selectedConversationId])
+  }, [fetchConversations, fetchThreads, me?.id, selectedConversationId])
 
   // Actions
-  const markMessagesRead = async (ids: number[]) => {
+  const markMessagesRead = useCallback(async (ids: number[]) => {
     try {
       if (!ids || ids.length === 0) return
       await fetch('/api/messaging/read-receipts', {
@@ -406,7 +406,7 @@ export default function MessagesV2Page() {
       if (selectedConversationId) await fetchThreads(selectedConversationId)
       window.dispatchEvent(new Event('unread-refresh'))
     } catch {}
-  }
+  }, [fetchConversations, fetchThreads, loadReadStatus, selectedConversationId])
 
   // Mark current message as read when user navigates away to another message/thread/conversation
   const prevSelectedRef = useRef<number | null>(null)
@@ -416,14 +416,14 @@ export default function MessagesV2Page() {
       markMessagesRead([prev])
     }
     prevSelectedRef.current = selectedMessageId
-  }, [selectedMessageId])
+  }, [markMessagesRead, selectedMessageId])
 
   // When switching conversation, mark the current selected message read
   useEffect(() => {
     if (!selectedConversationId) return
     const current = prevSelectedRef.current
     if (current) markMessagesRead([current])
-  }, [selectedConversationId])
+  }, [markMessagesRead, selectedConversationId])
 
   const sendReply = async () => {
     if (!selectedConversationId || !selectedThreadRoot) return

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase/client';
 import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext';
 import ActingAsBanner from '@/components/admin/ActingAsBanner';
 import { Plus, Minus, Users, X, UserPlus, ChevronDown, ChevronRight, Upload, Image as ImageIcon } from 'lucide-react';
+import Image from 'next/image';
 import {
   DndContext,
   DragEndEvent,
@@ -135,14 +136,17 @@ function TeamImage({ teamId, teamName, hasImage }: { teamId: string; teamName: s
   }
 
   return (
-    <img
+    <Image
       src={imageUrl}
       alt={`${teamName} team`}
+      width={96}
+      height={96}
       className="w-24 h-24 rounded object-contain bg-transparent"
-      onError={(e) => {
+      onError={() => {
         console.error('Failed to load team image:', imageUrl);
-        e.currentTarget.style.display = 'none';
+        setImageUrl(null);
       }}
+      unoptimized
     />
   );
 }
@@ -339,11 +343,7 @@ export default function TeamsPage() {
   );
 
   // Initial and context-based fetch
-  useEffect(() => {
-    if (!ctxLoading) fetchData();
-  }, [ctxLoading, coachId]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -414,7 +414,11 @@ export default function TeamsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [coachId]);
+
+  useEffect(() => {
+    if (!ctxLoading) fetchData();
+  }, [ctxLoading, fetchData]);
 
   const createTeam = async () => {
     if (!newTeamName.trim()) return;

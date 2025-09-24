@@ -758,7 +758,7 @@ export default function DashboardPage() {
           <CardContent>
             <div className="text-2xl font-bold text-meta-light">{stats.totalTeams}</div>
             <p className="text-xs text-meta-muted">
-              Teams you've created
+              Teams you&apos;ve created
             </p>
           </CardContent>
         </Card>

@@ -7,17 +7,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase/client';
 import { 
-  LayoutDashboard, 
-  Users, 
-  Trophy, 
-  Settings, 
+  LayoutDashboard,
+  Users,
+  Trophy,
+  Settings,
   LogOut,
   Menu,
   X,
   FileSignature,
   ChevronDown,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  Loader2
 } from 'lucide-react';
 import AdminToolsLink from '@/components/dashboard/admin-tools-link';
 import SingleSessionGuard from '@/components/SingleSessionGuard';
@@ -34,6 +35,7 @@ export default function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [coachToolsExpanded, setCoachToolsExpanded] = useState(false);
   const [unread, setUnread] = useState<number>(0);
+  const [cyberNuggetsLoading, setCyberNuggetsLoading] = useState(false);
 
   useEffect(() => {
     const getUser = async () => {
@@ -91,6 +93,27 @@ export default function DashboardLayout({
     } catch {}
     await supabase.auth.signOut();
     router.push('/auth/login');
+  };
+
+  const handleCyberNuggetsSso = async () => {
+    try {
+      setCyberNuggetsLoading(true);
+      const response = await fetch('/api/cybernuggets/sso');
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+      const payload = await response.json();
+      if (payload?.url) {
+        window.open(payload.url, '_blank', 'noopener');
+      } else {
+        throw new Error('Missing SSO URL in response');
+      }
+    } catch (error) {
+      console.error('Failed to launch CyberNuggets SSO', error);
+      window.alert('Unable to start CyberNuggets right now. Please try again later or contact support.');
+    } finally {
+      setCyberNuggetsLoading(false);
+    }
   };
 
   return (
@@ -205,14 +228,19 @@ export default function DashboardLayout({
                       </Button>
                     </Link>
                   )}
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm"
-                    onClick={() => window.open('https://nuggets.cyber-guild.org', '_blank')}
+                    onClick={handleCyberNuggetsSso}
+                    disabled={cyberNuggetsLoading}
                   >
                     CyberNuggets
-                    <ExternalLink className="h-4 w-4 ml-auto" />
+                    {cyberNuggetsLoading ? (
+                      <Loader2 className="h-4 w-4 ml-auto animate-spin" />
+                    ) : (
+                      <ExternalLink className="h-4 w-4 ml-auto" />
+                    )}
                   </Button>
                 </div>
               )}

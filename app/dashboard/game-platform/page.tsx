@@ -224,11 +224,12 @@ export default function GamePlatformDashboard() {
       staleCompetitors: dashboard.alerts.staleCompetitors.filter((item) => allowedCompetitors.has(item.competitorId)),
     };
   }, [dashboard, coachScope]);
+  const lastSyncedAt = dashboard?.global.lastSyncedAt ?? null;
   const timeline = useMemo(() => {
     const events: Array<{ time: string; label: string; type: keyof typeof accentByType }> = [];
-    if (dashboard?.global.lastSyncedAt) {
+    if (lastSyncedAt) {
       events.push({
-        time: new Date(dashboard.global.lastSyncedAt).toLocaleString(),
+        time: new Date(lastSyncedAt).toLocaleString(),
         label: 'Stats sync completed',
         type: 'sync',
       });
@@ -244,7 +245,7 @@ export default function GamePlatformDashboard() {
       });
     }
     return events.slice(0, 6);
-  }, [dashboard]);
+  }, [alerts, lastSyncedAt]);
 
   const handleRefresh = () => {
     setRefreshKey((key) => key + 1);

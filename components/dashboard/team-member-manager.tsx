@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -48,11 +48,7 @@ export function TeamMemberManager({ teamId, teamName, onSuccess }: TeamMemberMan
   const [isAdding, setIsAdding] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
 
-  useEffect(() => {
-    fetchData();
-  }, [teamId]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       // Fetch available competitors (not on any team)
       const competitorsResponse = await fetch('/api/competitors');
@@ -73,7 +69,11 @@ export function TeamMemberManager({ teamId, teamName, onSuccess }: TeamMemberMan
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [teamId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleAddMember = async () => {
     if (!selectedCompetitor) return;

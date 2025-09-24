@@ -162,7 +162,7 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
         <DialogHeader>
           <DialogTitle className="text-gray-900">Add New Competitor</DialogTitle>
           <DialogDescription className="text-gray-700">
-            Enter the competitor's basic information. They will receive a secure link to complete their profile.
+            Enter the competitor&apos;s basic information. They will receive a secure link to complete their profile.
           </DialogDescription>
         </DialogHeader>
         

@@ -254,7 +254,15 @@ export default function BulkImportPage() {
     })
     setErrors(err)
     setInvalid(invalidMap)
-  }, [currentRows])
+  }, [
+    currentRows,
+    allowedDivisions,
+    allowedEthnicities,
+    allowedGenders,
+    allowedGrades,
+    allowedLevels,
+    allowedRaces,
+  ])
 
   const errorCount = Object.keys(errors).length
 

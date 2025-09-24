@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ActingAsBanner from '@/components/admin/ActingAsBanner'
 import { supabase } from '@/lib/supabase/client';
 import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext';
@@ -82,9 +82,9 @@ export default function ReleaseManagementPage() {
   // Initial and context-based fetch
   useEffect(() => {
     if (!ctxLoading) fetchData();
-  }, [ctxLoading, coachId])
+  }, [ctxLoading, fetchData])
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -150,7 +150,7 @@ export default function ReleaseManagementPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [coachId]);
 
   const sendRelease = async (competitorId: string, mode: 'email' | 'print' = 'email') => {
     try {

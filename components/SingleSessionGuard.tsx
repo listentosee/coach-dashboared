@@ -7,14 +7,15 @@ import { supabase } from '@/lib/supabase/client'
 // When a different user logs in in another tab, all tabs reload to adopt
 // the most-recent session, preventing mixed admin/coach states.
 export default function SingleSessionGuard() {
-  const enabled = process.env.NEXT_PUBLIC_SINGLE_SESSION_GUARD === '1'
-  if (!enabled) return null
   const userIdRef = useRef<string | null>(null)
   const roleRef = useRef<string | null>(null)
   const channelRef = useRef<BroadcastChannel | null>(null)
+  const enabled = process.env.NEXT_PUBLIC_SINGLE_SESSION_GUARD === '1'
 
   useEffect(() => {
+    if (!enabled) return
     let mounted = true
+    let authSubscription: { unsubscribe: () => void } | null = null
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!mounted) return
@@ -74,8 +75,7 @@ export default function SingleSessionGuard() {
         }
         announce()
       })
-
-      return () => sub.subscription.unsubscribe()
+      authSubscription = sub.subscription
     }
 
     init()
@@ -83,8 +83,10 @@ export default function SingleSessionGuard() {
     return () => {
       mounted = false
       channelRef.current?.close()
+      authSubscription?.unsubscribe()
     }
-  }, [])
+  }, [enabled])
 
+  if (!enabled) return null
   return null
 }

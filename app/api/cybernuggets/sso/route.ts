@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { createHmac } from 'crypto'
 
+export const dynamic = 'force-dynamic'
+
 function toBase64Url(buffer: Buffer) {
   return buffer
     .toString('base64')
@@ -67,12 +69,12 @@ export async function GET(req: NextRequest) {
     } = await supabase.auth.getUser()
 
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: { 'Cache-Control': 'no-store' } })
     }
 
     const email = user.email?.trim().toLowerCase()
     if (!email) {
-      return NextResponse.json({ error: 'User email missing' }, { status: 400 })
+      return NextResponse.json({ error: 'User email missing' }, { status: 400, headers: { 'Cache-Control': 'no-store' } })
     }
 
     const { data: profile, error: profileError } = await supabase
@@ -83,7 +85,7 @@ export async function GET(req: NextRequest) {
 
     if (profileError && profileError.code !== 'PGRST116') {
       console.error('CyberNuggets profile lookup error', profileError)
-      return NextResponse.json({ error: 'Failed to load profile' }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to load profile' }, { status: 500, headers: { 'Cache-Control': 'no-store' } })
     }
 
     const partnerAppId = process.env.CYBERNUGGETS_PARTNER_APP_ID
@@ -91,7 +93,7 @@ export async function GET(req: NextRequest) {
 
     if (!partnerAppId || !secret) {
       console.error('CyberNuggets SSO missing configuration')
-      return NextResponse.json({ error: 'CyberNuggets SSO not configured' }, { status: 503 })
+      return NextResponse.json({ error: 'CyberNuggets SSO not configured' }, { status: 503, headers: { 'Cache-Control': 'no-store' } })
     }
 
     const baseUrl = process.env.CYBERNUGGETS_SSO_BASE_URL || 'https://nuggets.cyber-guild.org'
@@ -100,7 +102,7 @@ export async function GET(req: NextRequest) {
       target = new URL('/auth/partner-sso', baseUrl)
     } catch (error) {
       console.error('Invalid CYBERNUGGETS_SSO_BASE_URL value', error)
-      return NextResponse.json({ error: 'CyberNuggets SSO misconfigured' }, { status: 500 })
+      return NextResponse.json({ error: 'CyberNuggets SSO misconfigured' }, { status: 500, headers: { 'Cache-Control': 'no-store' } })
     }
 
     let redirectValue: string
@@ -108,7 +110,7 @@ export async function GET(req: NextRequest) {
       redirectValue = resolveRedirect(req.nextUrl.searchParams.get('redirect'))
     } catch (validationError) {
       const message = validationError instanceof Error ? validationError.message : 'Invalid redirect parameter'
-      return NextResponse.json({ error: message }, { status: 400 })
+      return NextResponse.json({ error: message }, { status: 400, headers: { 'Cache-Control': 'no-store' } })
     }
 
     const name = buildDisplayName(
@@ -130,9 +132,13 @@ export async function GET(req: NextRequest) {
       target.searchParams.set('redirect', redirectValue)
     }
 
-    return NextResponse.json({ url: target.toString(), ts })
+    return NextResponse.json({ url: target.toString(), ts }, {
+      headers: {
+        'Cache-Control': 'no-store'
+      }
+    })
   } catch (error) {
     console.error('CyberNuggets SSO error', error)
-    return NextResponse.json({ error: 'Failed to start CyberNuggets session' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to start CyberNuggets session' }, { status: 500, headers: { 'Cache-Control': 'no-store' } })
   }
 }

@@ -96,6 +96,9 @@ export default function DashboardLayout({
   };
 
   const handleCyberNuggetsSso = async () => {
+    // Open a tab immediately on the user gesture to avoid popup blockers.
+    const pendingWindow = window.open('about:blank', '_blank', 'noopener');
+
     try {
       setCyberNuggetsLoading(true);
       const response = await fetch('/api/cybernuggets/sso');
@@ -103,13 +106,20 @@ export default function DashboardLayout({
         throw new Error(`Request failed with status ${response.status}`);
       }
       const payload = await response.json();
-      if (payload?.url) {
-        window.open(payload.url, '_blank', 'noopener');
-      } else {
+      if (!payload?.url) {
         throw new Error('Missing SSO URL in response');
+      }
+
+      if (pendingWindow) {
+        pendingWindow.location.href = payload.url;
+        pendingWindow.focus?.();
+      } else {
+        // Popup blocked: fall back to same-tab navigation.
+        window.location.href = payload.url;
       }
     } catch (error) {
       console.error('Failed to launch CyberNuggets SSO', error);
+      pendingWindow?.close();
       window.alert('Unable to start CyberNuggets right now. Please try again later or contact support.');
     } finally {
       setCyberNuggetsLoading(false);

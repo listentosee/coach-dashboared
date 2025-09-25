@@ -109,7 +109,7 @@ export default function DashboardLayout({
       </div>
 
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-meta-card shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-meta-card shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 flex flex-col ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         {/* Logo/Brand */}
@@ -127,105 +127,107 @@ export default function DashboardLayout({
         </div>
 
         {/* Navigation */}
-        <nav className="mt-8">
-          <div className="px-4 space-y-2">
-            <Link href="/dashboard">
-              <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
-                <LayoutDashboard className="h-5 w-5 mr-3" />
-                Competitors
-              </Button>
-            </Link>
-            
-            <Link href="/dashboard/teams">
-              <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
-                <Users className="h-5 w-5 mr-3" />
-                Teams
-              </Button>
-            </Link>
-            
-            <Link href="/dashboard/game-platform">
-              <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
-                <Trophy className="h-5 w-5 mr-3" />
-                Game Platform
-              </Button>
-            </Link>
-            
-            <Link href="/dashboard/releases">
-              <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
-                <FileSignature className="h-5 w-5 mr-3" />
-                Release Management
-              </Button>
-            </Link>
+        <div className="flex-1 overflow-hidden">
+          <nav className="mt-8 h-full overflow-y-auto pb-24">
+            <div className="px-4 space-y-2">
+              <Link href="/dashboard">
+                <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
+                  <LayoutDashboard className="h-5 w-5 mr-3" />
+                  Competitors
+                </Button>
+              </Link>
 
-            <Link href="/dashboard/messages">
-              <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
-                {/* Reusing Users icon for simplicity */}
-                <Users className="h-5 w-5 mr-3" />
-                Messages
-                {unread > 0 && (
-                  <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-600 text-white text-xs px-2 py-0.5">
-                    {unread}
-                  </span>
-                )}
-              </Button>
-            </Link>
-            
-            {/* Admin Tools - Only visible to system administrators */}
-            {typeof window !== 'undefined' && (
-              <AdminToolsLink />
-            )}
-            
-            {/* Coach Tools with Sub-menu */}
-            <div>
-              <Button 
-                variant="ghost" 
-                className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white"
-                onClick={() => setCoachToolsExpanded(!coachToolsExpanded)}
-              >
-                <Settings className="h-5 w-5 mr-3" />
-                Coach Tools
-                {coachToolsExpanded ? (
-                  <ChevronDown className="h-4 w-4 ml-auto" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 ml-auto" />
-                )}
-              </Button>
-              
-              {coachToolsExpanded && (
-                <div className="ml-6 mt-1 space-y-1">
-                  <Link href="/dashboard/settings">
-                    <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
-                      Profile & Settings
-                    </Button>
-                  </Link>
-                  {profile?.role !== 'admin' && (
-                    <Link href="/dashboard/bulk-import">
+              <Link href="/dashboard/teams">
+                <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
+                  <Users className="h-5 w-5 mr-3" />
+                  Teams
+                </Button>
+              </Link>
+
+              <Link href="/dashboard/game-platform">
+                <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
+                  <Trophy className="h-5 w-5 mr-3" />
+                  Game Platform
+                </Button>
+              </Link>
+
+              <Link href="/dashboard/releases">
+                <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
+                  <FileSignature className="h-5 w-5 mr-3" />
+                  Release Management
+                </Button>
+              </Link>
+
+              <Link href="/dashboard/messages">
+                <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
+                  {/* Reusing Users icon for simplicity */}
+                  <Users className="h-5 w-5 mr-3" />
+                  Messages
+                  {unread > 0 && (
+                    <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-600 text-white text-xs px-2 py-0.5">
+                      {unread}
+                    </span>
+                  )}
+                </Button>
+              </Link>
+
+              {/* Admin Tools - Only visible to system administrators */}
+              {typeof window !== 'undefined' && (
+                <AdminToolsLink />
+              )}
+
+              {/* Coach Tools with Sub-menu */}
+              <div>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white"
+                  onClick={() => setCoachToolsExpanded(!coachToolsExpanded)}
+                >
+                  <Settings className="h-5 w-5 mr-3" />
+                  Coach Tools
+                  {coachToolsExpanded ? (
+                    <ChevronDown className="h-4 w-4 ml-auto" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 ml-auto" />
+                  )}
+                </Button>
+
+                {coachToolsExpanded && (
+                  <div className="ml-6 mt-1 space-y-1">
+                    <Link href="/dashboard/settings">
                       <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
-                        Bulk Import
+                        Profile & Settings
                       </Button>
                     </Link>
-                  )}
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="sm"
-                    className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm"
-                  >
-                    <a href="/api/cybernuggets/sso" target="_blank" rel="noopener noreferrer">
-                      <span className="flex w-full items-center justify-between">
-                        <span>CyberNuggets</span>
-                        <ExternalLink className="h-4 w-4" />
-                      </span>
-                    </a>
-                  </Button>
-                </div>
-              )}
+                    {profile?.role !== 'admin' && (
+                      <Link href="/dashboard/bulk-import">
+                        <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
+                          Bulk Import
+                        </Button>
+                      </Link>
+                    )}
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm"
+                    >
+                      <a href="/api/cybernuggets/sso" target="_blank" rel="noopener noreferrer">
+                        <span className="flex w-full items-center justify-between">
+                          <span>CyberNuggets</span>
+                          <ExternalLink className="h-4 w-4" />
+                        </span>
+                      </a>
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </nav>
+          </nav>
+        </div>
 
         {/* User Info & Sign Out */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-meta-border">
+        <div className="mt-auto p-4 border-t border-meta-border">
           {user && profile && (
             <div className="mb-4">
               <p className="text-sm text-meta-light font-medium">

@@ -68,14 +68,19 @@ export default function AdminToolsLink() {
 
       {expanded && (
         <div className="ml-6 mt-1 space-y-1">
-          <Link href="/dashboard/admin-tools">
-            <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
-              General
-            </Button>
-          </Link>
           <Link href="/dashboard/admin-tools/analytics">
             <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
               Analytics
+            </Button>
+          </Link>
+          <Link href="/dashboard/admin-tools/jobs">
+            <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
+              Job Queue
+            </Button>
+          </Link>
+          <Link href="/dashboard/admin-tools/assist-coach">
+            <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
+              Assist Coach
             </Button>
           </Link>
         </div>

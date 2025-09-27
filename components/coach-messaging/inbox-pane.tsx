@@ -53,7 +53,7 @@ export function CoachInboxPane({
 }: CoachInboxPaneProps) {
   const [filters, setFilters] = useState<Record<ConversationType, boolean>>({ dm: true, group: true, announcement: true })
   const [viewMode, setViewMode] = useState<InboxViewMode>('all')
-  const [listMode, setListMode] = useState<InboxListMode>('threads')
+  const [listMode, setListMode] = useState<InboxListMode>('messages')
   const [expandedThreads, setExpandedThreads] = useState<Record<string, boolean>>({})
   const [selection, setSelection] = useState<SelectionState>({ conversationId: null, threadId: null, messageId: null })
   const [readMessageIds, setReadMessageIds] = useState<Set<string>>(new Set())
@@ -208,7 +208,6 @@ export function CoachInboxPane({
         filters={filters}
         onFiltersChange={setFilters}
         onCompose={onCompose}
-        listModeDisabled={viewMode === 'unread'}
       />
       <div className="flex-1 min-h-0 overflow-y-auto">
         {listMode === 'threads' ? (

@@ -2,10 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Switch } from '@/components/ui/switch'
-import { Filter, MessageSquare, Users, SendHorizontal } from 'lucide-react'
+import { Filter, MessageSquare, Users, PenSquare } from 'lucide-react'
 
 export type ConversationType = 'dm' | 'group' | 'announcement'
 export type InboxListMode = 'threads' | 'messages'
@@ -25,7 +23,6 @@ export type InboxActionBarProps = {
   filters: Record<ConversationType, boolean>
   onFiltersChange: (filters: Record<ConversationType, boolean>) => void
   onCompose?: (target: 'dm' | 'group') => void
-  listModeDisabled?: boolean
 }
 
 export function InboxActionBar({
@@ -36,12 +33,13 @@ export function InboxActionBar({
   filters,
   onFiltersChange,
   onCompose,
-  listModeDisabled = false,
 }: InboxActionBarProps) {
   const [filterMenuOpen, setFilterMenuOpen] = useState(false)
   const [sendMenuOpen, setSendMenuOpen] = useState(false)
   const filterMenuRef = useRef<HTMLDivElement | null>(null)
   const sendMenuRef = useRef<HTMLDivElement | null>(null)
+  const unreadOnly = viewMode === 'unread'
+  const conversationsChecked = !unreadOnly && listMode === 'threads'
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -63,21 +61,27 @@ export function InboxActionBar({
     onFiltersChange(next)
   }
 
+  const handleUnreadToggle = (next: boolean | "indeterminate") => {
+    const checked = next === true
+    onViewModeChange(checked ? 'unread' : 'all')
+    if (checked) onListModeChange('messages')
+  }
+
+  const handleConversationsToggle = (next: boolean | "indeterminate") => {
+    const checked = next === true
+    onListModeChange(checked ? 'threads' : 'messages')
+  }
+
   return (
     <div className="flex items-center gap-3 border-b border-meta-border bg-meta-card/40 px-4 py-3">
-      <Select
-        value={listMode}
-        onValueChange={(value) => onListModeChange(value as InboxListMode)}
-        disabled={listModeDisabled}
-      >
-        <SelectTrigger className="w-36 text-xs" aria-label="List mode">
-          <SelectValue placeholder="Threads" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="threads">Threads</SelectItem>
-          <SelectItem value="messages">Messages</SelectItem>
-        </SelectContent>
-      </Select>
+      <label className="flex items-center gap-2 text-xs font-medium text-meta-light">
+        <Checkbox
+          checked={conversationsChecked}
+          onCheckedChange={handleConversationsToggle}
+          disabled={unreadOnly}
+        />
+        Conversations
+      </label>
 
       <div className="relative" ref={filterMenuRef}>
         <Button
@@ -90,13 +94,28 @@ export function InboxActionBar({
           Filters
         </Button>
         {filterMenuOpen ? (
-          <div className="absolute left-0 z-20 mt-2 w-48 rounded-md border border-meta-border bg-meta-card p-2 shadow-lg">
+          <div className="absolute left-0 z-20 mt-2 w-56 rounded-md border border-meta-border bg-meta-card p-2 shadow-lg">
+            <div className="mb-1 rounded px-2 py-1 text-xs uppercase tracking-wide text-meta-muted">
+              Visibility
+            </div>
+            <label className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-meta-dark/10">
+              <Checkbox checked={unreadOnly} onCheckedChange={handleUnreadToggle} />
+              <span>Unread only</span>
+            </label>
+            <div className="mt-3 mb-1 rounded px-2 py-1 text-xs uppercase tracking-wide text-meta-muted">
+              Conversation Types
+            </div>
             {(Object.keys(typeMeta) as ConversationType[]).map((type) => (
               <label
                 key={type}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-meta-dark/10"
+                className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-meta-dark/10"
+                style={unreadOnly ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
               >
-                <Checkbox checked={filters[type]} onCheckedChange={() => toggleFilter(type)} />
+                <Checkbox
+                  checked={filters[type]}
+                  onCheckedChange={() => toggleFilter(type)}
+                  disabled={unreadOnly}
+                />
                 <span>{typeMeta[type].label}</span>
               </label>
             ))}
@@ -104,21 +123,10 @@ export function InboxActionBar({
         ) : null}
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-meta-muted">
-        <Switch
-          id="coach-inbox-unread-toggle"
-          checked={viewMode === 'unread'}
-          onCheckedChange={(checked) => onViewModeChange(checked ? 'unread' : 'all')}
-        />
-        <label htmlFor="coach-inbox-unread-toggle" className="select-none">
-          {viewMode === 'unread' ? 'Unread only' : 'Show all'}
-        </label>
-      </div>
-
       <div className="relative ml-auto" ref={sendMenuRef}>
         <Button size="sm" className="text-xs" onClick={() => setSendMenuOpen((open) => !open)}>
-          <SendHorizontal className="mr-2 h-4 w-4" />
-          Send
+          <PenSquare className="mr-2 h-4 w-4" />
+          New
         </Button>
         {sendMenuOpen ? (
           <div className="absolute right-0 z-20 mt-2 w-44 rounded-md border border-meta-border bg-meta-card py-1 shadow-lg">

@@ -586,7 +586,7 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const composeEmail = useCallback((mode: 'mailto' | 'gmail' | 'outlook') => {
+  const composeEmail = useCallback(async (mode: 'mailto' | 'gmail' | 'outlook') => {
     if (!profileLinkDialog) return;
     if (!profileLinkDialog.recipients.length) return;
     const to = profileLinkDialog.recipients.join(',');
@@ -597,9 +597,13 @@ export default function DashboardPage() {
       case 'gmail':
         url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodedSubject}&body=${encodedBody}`;
         break;
-      case 'outlook':
-        url = `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(to)}&subject=${encodedSubject}&body=${encodedBody}`;
+      case 'outlook': {
+        if (!window.confirm('Make sure you have Outlook Web open and signed in, then click OK to continue.')) {
+          return;
+        }
+        url = `https://outlook.office.com/mail/deeplink/compose?mailtoui=1&to=${encodeURIComponent(to)}&subject=${encodedSubject}&body=${encodedBody}`;
         break;
+      }
       default:
         url = `mailto:${encodeURIComponent(to)}?subject=${encodedSubject}&body=${encodedBody}`;
         break;

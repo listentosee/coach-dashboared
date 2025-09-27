@@ -14,13 +14,20 @@ export async function GET(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await context.params
-    const threadRootId = parseInt(id, 10)
-    if (!Number.isFinite(threadRootId)) {
+    const threadRootId = id.trim()
+    if (!/^\d+$/.test(threadRootId)) {
       return NextResponse.json({ error: 'Invalid thread ID' }, { status: 400 })
     }
 
-    const { data, error } = await supabase.rpc('get_thread_messages', { p_thread_root_id: threadRootId })
-    if (!error) return NextResponse.json({ messages: data })
+    const { data, error } = await supabase.rpc('get_thread_messages', { p_thread_root_id: threadRootId as any })
+    if (!error) {
+      const normalized = (data || []).map((row: any) => ({
+        ...row,
+        id: `${row.id}`,
+        parent_message_id: row.parent_message_id != null ? `${row.parent_message_id}` : null,
+      }))
+      return NextResponse.json({ messages: normalized })
+    }
 
     // Fallback if RPC missing: fetch root + direct replies using base columns
     console.warn('get_thread_messages RPC unavailable, falling back:', error.message)
@@ -36,14 +43,24 @@ export async function GET(
       .from('messages')
       .select('id, sender_id, body, created_at, parent_message_id')
       .eq('conversation_id', (root as any).conversation_id)
-      .or(`id.eq.${root.id},parent_message_id.eq.${root.id}`)
+      .or(`id.eq.${threadRootId},parent_message_id.eq.${threadRootId}`)
       .order('created_at', { ascending: true })
 
     if (childErr) {
-      return NextResponse.json({ messages: [root] })
+      const normalizedRoot = [{
+        ...root,
+        id: `${root.id}`,
+        parent_message_id: root.parent_message_id != null ? `${root.parent_message_id}` : null,
+      }]
+      return NextResponse.json({ messages: normalizedRoot })
     }
 
-    return NextResponse.json({ messages: children || [root] })
+    const normalizedFallback = (children || [root]).map((row: any) => ({
+      ...row,
+      id: `${row.id}`,
+      parent_message_id: row.parent_message_id != null ? `${row.parent_message_id}` : null,
+    }))
+    return NextResponse.json({ messages: normalizedFallback })
   } catch (e) {
     console.error('Thread fetch error', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

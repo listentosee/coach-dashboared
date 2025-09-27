@@ -19,7 +19,13 @@ export async function GET(
     const limit = parseInt(url.searchParams.get('limit') || '200', 10)
 
     const { data, error } = await supabase.rpc('list_threads', { p_conversation_id: id, p_limit: limit })
-    if (!error) return NextResponse.json({ threads: data || [] })
+    if (!error) {
+      const threads = (data || []).map((thread: any) => ({
+        ...thread,
+        root_id: `${thread.root_id}`,
+      }))
+      return NextResponse.json({ threads })
+    }
 
     // Fallback path if RPC is missing (schema cache or migration not applied)
     console.warn('list_threads RPC unavailable, falling back to direct query:', error.message)
@@ -35,7 +41,7 @@ export async function GET(
     if (rootsErr) return NextResponse.json({ error: rootsErr.message }, { status: 400 })
 
     const threads = (roots || []).map((m: any) => ({
-      root_id: m.id,
+      root_id: `${m.id}`,
       sender_id: m.sender_id,
       created_at: m.created_at,
       snippet: String(m.body || '').replace(/\n+/g, ' ').slice(0, 160),

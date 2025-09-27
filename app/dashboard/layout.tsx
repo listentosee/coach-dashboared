@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -54,35 +54,36 @@ export default function DashboardLayout({
     getUser();
   }, []);
 
-  useEffect(() => {
-    // Initial fetch
-    fetch('/api/messaging/unread/count').then(async res => {
-      if (res.ok) { const json = await res.json(); setUnread(json.count || 0) }
-    })
-    // Realtime updates
-    const channel = supabase.channel('messages-unread')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async () => {
-        const res = await fetch('/api/messaging/unread/count'); if (res.ok) { const json = await res.json(); setUnread(json.count || 0) }
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversation_members' }, async () => {
-        const res = await fetch('/api/messaging/unread/count'); if (res.ok) { const json = await res.json(); setUnread(json.count || 0) }
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
+  const refreshUnread = useCallback(async () => {
+    const res = await fetch('/api/messaging/unread/count')
+    if (res.ok) {
+      const json = await res.json()
+      setUnread(json.count || 0)
+    }
   }, [])
 
   useEffect(() => {
-    const handler = () => {
-      fetch('/api/messaging/unread/count').then(async res => {
-        if (res.ok) {
-          const json = await res.json()
-          setUnread(json.count || 0)
-        }
+    // Initial fetch
+    void refreshUnread()
+    // Realtime updates
+    const channel = supabase.channel('messages-unread')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {
+        void refreshUnread()
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversation_members' }, () => {
+        void refreshUnread()
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [refreshUnread])
+
+  useEffect(() => {
+    const handler = () => {
+      void refreshUnread()
     }
     window.addEventListener('unread-refresh', handler)
     return () => window.removeEventListener('unread-refresh', handler)
-  }, [])
+  }, [refreshUnread])
 
   const handleSignOut = async () => {
     try {
@@ -249,10 +250,12 @@ export default function DashboardLayout({
 
       {/* Main Content */}
       <main className={`lg:ml-64 transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}>
-        <div className="p-6">
+        <div className="flex min-h-[calc(100vh-1.5rem)] flex-col gap-6 px-6 pt-6 pb-0 overflow-hidden">
           {/* Admin-only: Context switcher renders nothing for non-admins */}
           <AdminContextSwitcher />
-          {children}
+          <div className="flex-1 min-h-0">
+            {children}
+          </div>
         </div>
       </main>
 

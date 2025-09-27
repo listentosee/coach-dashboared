@@ -23,7 +23,12 @@ export async function GET(
       .rpc('list_messages_with_sender_v2', { p_conversation_id: id, p_limit: Math.min(Math.max(limit, 1), 200) })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ messages })
+    const normalized = (messages || []).map((row: any) => ({
+      ...row,
+      id: `${row.id}`,
+      parent_message_id: row.parent_message_id != null ? `${row.parent_message_id}` : null,
+    }))
+    return NextResponse.json({ messages: normalized })
   } catch (e) {
     console.error('Get messages error', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -43,9 +48,17 @@ export async function POST(
 
     const { id } = await context.params
 
-    const { body, parentMessageId, privateTo } = await req.json() as { body?: string; parentMessageId?: number; privateTo?: string }
+    const { body, parentMessageId, privateTo } = await req.json() as { body?: string; parentMessageId?: string | number | null; privateTo?: string }
     if (!body || body.trim().length === 0) {
       return NextResponse.json({ error: 'Message body required' }, { status: 400 })
+    }
+
+    let normalizedParentId: string | null = null
+    if (parentMessageId != null) {
+      const asString = typeof parentMessageId === 'number' ? parentMessageId.toString() : String(parentMessageId).trim()
+      if (/^\d+$/.test(asString)) {
+        normalizedParentId = asString
+      }
     }
 
     // Private reply path (e.g., announcements): use RPC to bypass RLS safely
@@ -61,7 +74,7 @@ export async function POST(
           p_conversation_id: id,
           p_body: body,
           p_recipient: privateTo,
-          p_parent_message_id: parentMessageId ?? null
+          p_parent_message_id: normalizedParentId ? (normalizedParentId as any) : null
         })
         if (error) return NextResponse.json({ error: error.message }, { status: 400 })
         return NextResponse.json({ ok: true, id: data })
@@ -70,8 +83,8 @@ export async function POST(
     }
 
     const payload: Record<string, any> = { conversation_id: id, sender_id: user.id, body }
-    if (typeof parentMessageId === 'number' && Number.isFinite(parentMessageId)) {
-      payload.parent_message_id = parentMessageId
+    if (normalizedParentId) {
+      payload.parent_message_id = normalizedParentId
     }
 
     const { data: inserted, error } = await supabase

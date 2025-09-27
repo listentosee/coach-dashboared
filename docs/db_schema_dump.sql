@@ -1,5 +1,6 @@
 
 
+
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -10,6 +11,20 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+
+CREATE EXTENSION IF NOT EXISTS "pg_cron" WITH SCHEMA "pg_catalog";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pg_net" WITH SCHEMA "extensions";
+
+
+
+
 
 
 COMMENT ON SCHEMA "public" IS 'standard public schema';
@@ -31,13 +46,6 @@ CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" WITH SCHEMA "extensions";
 
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
-
-
-
-
-
-
-CREATE EXTENSION IF NOT EXISTS "pgjwt" WITH SCHEMA "extensions";
 
 
 
@@ -585,6 +593,199 @@ $$;
 
 ALTER FUNCTION "public"."is_admin_user"() OWNER TO "postgres";
 
+SET default_tablespace = '';
+
+SET default_table_access_method = "heap";
+
+
+CREATE TABLE IF NOT EXISTS "public"."job_queue" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "task_type" "text" NOT NULL,
+    "payload" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    "status" "text" DEFAULT 'pending'::"text" NOT NULL,
+    "run_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "attempts" integer DEFAULT 0 NOT NULL,
+    "max_attempts" integer DEFAULT 5 NOT NULL,
+    "last_error" "text",
+    "output" "jsonb",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "completed_at" timestamp with time zone,
+    CONSTRAINT "job_queue_attempts_check" CHECK ((("attempts" >= 0) AND ("max_attempts" >= 1))),
+    CONSTRAINT "job_queue_status_check" CHECK (("status" = ANY (ARRAY['pending'::"text", 'running'::"text", 'succeeded'::"text", 'failed'::"text", 'cancelled'::"text"])))
+);
+
+
+ALTER TABLE "public"."job_queue" OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."job_queue_claim"("p_limit" integer DEFAULT 1) RETURNS SETOF "public"."job_queue"
+    LANGUAGE "plpgsql"
+    AS $$
+begin
+  return query
+  with next_jobs as (
+    select id
+    from public.job_queue
+    where status = 'pending'
+      and run_at <= now()
+    order by run_at asc
+    for update skip locked
+    limit greatest(p_limit, 1)
+  )
+  update public.job_queue
+     set status = 'running',
+         attempts = attempts + 1,
+         updated_at = now()
+   where id in (select id from next_jobs)
+   returning *;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."job_queue_claim"("p_limit" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."job_queue_cleanup"("p_max_age" interval DEFAULT '14 days'::interval) RETURNS integer
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  deleted integer;
+begin
+  delete from public.job_queue
+   where status in ('succeeded', 'cancelled')
+     and coalesce(completed_at, updated_at, run_at) < now() - p_max_age
+  returning 1 into deleted;
+  return coalesce(deleted, 0);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."job_queue_cleanup"("p_max_age" interval) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."job_queue_enqueue"("p_task_type" "text", "p_payload" "jsonb" DEFAULT '{}'::"jsonb", "p_run_at" timestamp with time zone DEFAULT "now"(), "p_max_attempts" integer DEFAULT 5) RETURNS "public"."job_queue"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  inserted job_queue;
+begin
+  insert into public.job_queue (task_type, payload, run_at, max_attempts)
+  values (p_task_type, coalesce(p_payload, '{}'::jsonb), coalesce(p_run_at, now()), greatest(p_max_attempts, 1))
+  returning * into inserted;
+  return inserted;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."job_queue_enqueue"("p_task_type" "text", "p_payload" "jsonb", "p_run_at" timestamp with time zone, "p_max_attempts" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."job_queue_health"() RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'cron', 'net', 'extensions'
+    AS $$
+declare
+  result jsonb;
+begin
+  select jsonb_build_object(
+    'queueCounts', (
+      select coalesce(jsonb_agg(jsonb_build_object('status', status, 'count', count)), '[]'::jsonb)
+      from (
+        select status, count(*) as count
+        from public.job_queue
+        group by status
+      ) q
+    ),
+    'pendingQueueCount', (select count(*) from net.http_request_queue),
+    'latestResponses', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'created', r.created,
+        'status_code', r.status_code,
+        'error', r.error_msg,
+        'content', substring(r.content for 200)
+      ) order by r.created desc), '[]'::jsonb)
+      from (
+        select * from net._http_response order by created desc limit 10
+      ) r
+    ),
+    'latestRuns', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'jobname', sub.jobname,
+        'start_time', sub.start_time,
+        'end_time', sub.end_time,
+        'status', sub.status,
+        'message', sub.return_message
+      ) order by sub.start_time desc), '[]'::jsonb)
+      from (
+        select
+          d.start_time,
+          d.end_time,
+          d.status,
+          d.return_message,
+          j.jobname
+        from cron.job_run_details d
+        join cron.job j on j.jobid = d.jobid
+        order by d.start_time desc
+        limit 10
+      ) sub
+    )
+  ) into result;
+
+  return coalesce(result, '{}'::jsonb);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."job_queue_health"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."job_queue_mark_failed"("p_id" "uuid", "p_error" "text", "p_retry_in" interval DEFAULT '00:05:00'::interval) RETURNS "public"."job_queue"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  updated job_queue;
+  should_retry boolean;
+begin
+  select attempts < max_attempts into should_retry from public.job_queue where id = p_id;
+
+  update public.job_queue
+     set status = case when should_retry then 'pending' else 'failed' end,
+         last_error = p_error,
+         run_at = case when should_retry then now() + coalesce(p_retry_in, interval '5 minutes') else run_at end,
+         completed_at = case when should_retry then completed_at else now() end,
+         updated_at = now()
+   where id = p_id
+   returning * into updated;
+  return updated;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."job_queue_mark_failed"("p_id" "uuid", "p_error" "text", "p_retry_in" interval) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."job_queue_mark_succeeded"("p_id" "uuid", "p_output" "jsonb" DEFAULT NULL::"jsonb") RETURNS "public"."job_queue"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  updated job_queue;
+begin
+  update public.job_queue
+     set status = 'succeeded',
+         output = coalesce(p_output, output),
+         last_error = null,
+         completed_at = now(),
+         updated_at = now()
+   where id = p_id
+   returning * into updated;
+  return updated;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."job_queue_mark_succeeded"("p_id" "uuid", "p_output" "jsonb") OWNER TO "postgres";
+
 
 CREATE OR REPLACE FUNCTION "public"."list_admins_minimal"() RETURNS TABLE("id" "uuid", "first_name" "text", "last_name" "text", "email" "text")
     LANGUAGE "sql" STABLE SECURITY DEFINER
@@ -980,6 +1181,32 @@ $$;
 ALTER FUNCTION "public"."post_private_reply"("p_conversation_id" "uuid", "p_body" "text", "p_recipient" "uuid", "p_parent_message_id" bigint) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."set_job_queue_settings_updated_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."set_job_queue_settings_updated_at"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."set_job_queue_updated_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."set_job_queue_updated_at"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."set_profile_update_token_with_expiry"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -1029,10 +1256,6 @@ $$;
 
 
 ALTER FUNCTION "public"."update_updated_at_column"() OWNER TO "postgres";
-
-SET default_tablespace = '';
-
-SET default_table_access_method = "heap";
 
 
 CREATE TABLE IF NOT EXISTS "public"."activity_logs" (
@@ -1206,7 +1429,7 @@ CREATE OR REPLACE VIEW "public"."comp_team_view" WITH ("security_invoker"='on') 
   WHERE ("c"."coach_id" = "auth"."uid"());
 
 
-ALTER TABLE "public"."comp_team_view" OWNER TO "postgres";
+ALTER VIEW "public"."comp_team_view" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."conversation_members" (
@@ -1250,6 +1473,18 @@ CREATE TABLE IF NOT EXISTS "public"."game_platform_stats" (
 
 
 ALTER TABLE "public"."game_platform_stats" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."job_queue_settings" (
+    "id" integer DEFAULT 1 NOT NULL,
+    "processing_enabled" boolean DEFAULT true NOT NULL,
+    "paused_reason" "text",
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "job_queue_settings_singleton" CHECK (("id" = 1))
+);
+
+
+ALTER TABLE "public"."job_queue_settings" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."message_read_receipts" (
@@ -1342,7 +1577,7 @@ CREATE OR REPLACE VIEW "public"."v_conversation_members_with_profile" WITH ("sec
      JOIN "public"."profiles" "p" ON (("p"."id" = "cm"."user_id")));
 
 
-ALTER TABLE "public"."v_conversation_members_with_profile" OWNER TO "postgres";
+ALTER VIEW "public"."v_conversation_members_with_profile" OWNER TO "postgres";
 
 
 CREATE OR REPLACE VIEW "public"."v_messages_with_sender" WITH ("security_invoker"='on') AS
@@ -1358,7 +1593,7 @@ CREATE OR REPLACE VIEW "public"."v_messages_with_sender" WITH ("security_invoker
      JOIN "public"."profiles" "p" ON (("p"."id" = "m"."sender_id")));
 
 
-ALTER TABLE "public"."v_messages_with_sender" OWNER TO "postgres";
+ALTER VIEW "public"."v_messages_with_sender" OWNER TO "postgres";
 
 
 ALTER TABLE ONLY "public"."activity_logs"
@@ -1403,6 +1638,16 @@ ALTER TABLE ONLY "public"."conversations"
 
 ALTER TABLE ONLY "public"."game_platform_stats"
     ADD CONSTRAINT "game_platform_stats_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."job_queue"
+    ADD CONSTRAINT "job_queue_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."job_queue_settings"
+    ADD CONSTRAINT "job_queue_settings_pkey" PRIMARY KEY ("id");
 
 
 
@@ -1524,6 +1769,14 @@ CREATE INDEX "idx_game_platform_stats_competitor_id" ON "public"."game_platform_
 
 
 
+CREATE INDEX "idx_job_queue_status_run_at" ON "public"."job_queue" USING "btree" ("status", "run_at");
+
+
+
+CREATE INDEX "idx_job_queue_task_type" ON "public"."job_queue" USING "btree" ("task_type");
+
+
+
 CREATE INDEX "idx_message_read_receipts_user" ON "public"."message_read_receipts" USING "btree" ("user_id", "read_at" DESC);
 
 
@@ -1565,6 +1818,14 @@ CREATE INDEX "idx_teams_image_url" ON "public"."teams" USING "btree" ("image_url
 
 
 CREATE OR REPLACE TRIGGER "enforce_team_size" BEFORE INSERT ON "public"."team_members" FOR EACH ROW EXECUTE FUNCTION "public"."check_team_size"();
+
+
+
+CREATE OR REPLACE TRIGGER "job_queue_set_updated_at" BEFORE UPDATE ON "public"."job_queue" FOR EACH ROW EXECUTE FUNCTION "public"."set_job_queue_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "job_queue_settings_set_updated_at" BEFORE UPDATE ON "public"."job_queue_settings" FOR EACH ROW EXECUTE FUNCTION "public"."set_job_queue_settings_updated_at"();
 
 
 
@@ -1908,6 +2169,32 @@ CREATE POLICY "convo_members_update_self_read" ON "public"."conversation_members
 ALTER TABLE "public"."game_platform_stats" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."job_queue" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "job_queue_admin_modify" ON "public"."job_queue" USING ((("auth"."role"() = 'authenticated'::"text") AND "public"."is_admin_user"())) WITH CHECK ((("auth"."role"() = 'authenticated'::"text") AND "public"."is_admin_user"()));
+
+
+
+CREATE POLICY "job_queue_admin_read" ON "public"."job_queue" FOR SELECT USING ((("auth"."role"() = 'authenticated'::"text") AND "public"."is_admin_user"()));
+
+
+
+CREATE POLICY "job_queue_service_role_full" ON "public"."job_queue" USING (("auth"."role"() = 'service_role'::"text")) WITH CHECK (("auth"."role"() = 'service_role'::"text"));
+
+
+
+ALTER TABLE "public"."job_queue_settings" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "job_queue_settings_admin" ON "public"."job_queue_settings" USING ((("auth"."role"() = 'authenticated'::"text") AND "public"."is_admin_user"())) WITH CHECK ((("auth"."role"() = 'authenticated'::"text") AND "public"."is_admin_user"()));
+
+
+
+CREATE POLICY "job_queue_settings_service_role" ON "public"."job_queue_settings" USING (("auth"."role"() = 'service_role'::"text")) WITH CHECK (("auth"."role"() = 'service_role'::"text"));
+
+
+
 ALTER TABLE "public"."message_read_receipts" ENABLE ROW LEVEL SECURITY;
 
 
@@ -1973,6 +2260,12 @@ ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."messages";
 
 
 
+
+
+
+
+
+
 GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
@@ -1981,6 +2274,30 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 GRANT ALL ON TYPE "public"."completion_source" TO "authenticated";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2359,6 +2676,48 @@ GRANT ALL ON FUNCTION "public"."is_admin_user"() TO "service_role";
 
 
 
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."job_queue" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."job_queue" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."job_queue" TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."job_queue_claim"("p_limit" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."job_queue_claim"("p_limit" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."job_queue_claim"("p_limit" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."job_queue_cleanup"("p_max_age" interval) TO "anon";
+GRANT ALL ON FUNCTION "public"."job_queue_cleanup"("p_max_age" interval) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."job_queue_cleanup"("p_max_age" interval) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."job_queue_enqueue"("p_task_type" "text", "p_payload" "jsonb", "p_run_at" timestamp with time zone, "p_max_attempts" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."job_queue_enqueue"("p_task_type" "text", "p_payload" "jsonb", "p_run_at" timestamp with time zone, "p_max_attempts" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."job_queue_enqueue"("p_task_type" "text", "p_payload" "jsonb", "p_run_at" timestamp with time zone, "p_max_attempts" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."job_queue_health"() TO "anon";
+GRANT ALL ON FUNCTION "public"."job_queue_health"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."job_queue_health"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."job_queue_mark_failed"("p_id" "uuid", "p_error" "text", "p_retry_in" interval) TO "anon";
+GRANT ALL ON FUNCTION "public"."job_queue_mark_failed"("p_id" "uuid", "p_error" "text", "p_retry_in" interval) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."job_queue_mark_failed"("p_id" "uuid", "p_error" "text", "p_retry_in" interval) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."job_queue_mark_succeeded"("p_id" "uuid", "p_output" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."job_queue_mark_succeeded"("p_id" "uuid", "p_output" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."job_queue_mark_succeeded"("p_id" "uuid", "p_output" "jsonb") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."list_admins_minimal"() TO "anon";
 GRANT ALL ON FUNCTION "public"."list_admins_minimal"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."list_admins_minimal"() TO "service_role";
@@ -2443,6 +2802,18 @@ GRANT ALL ON FUNCTION "public"."post_private_reply"("p_conversation_id" "uuid", 
 
 
 
+GRANT ALL ON FUNCTION "public"."set_job_queue_settings_updated_at"() TO "anon";
+GRANT ALL ON FUNCTION "public"."set_job_queue_settings_updated_at"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_job_queue_settings_updated_at"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."set_job_queue_updated_at"() TO "anon";
+GRANT ALL ON FUNCTION "public"."set_job_queue_updated_at"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_job_queue_updated_at"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."set_profile_update_token_with_expiry"() TO "anon";
 GRANT ALL ON FUNCTION "public"."set_profile_update_token_with_expiry"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_profile_update_token_with_expiry"() TO "service_role";
@@ -2479,69 +2850,78 @@ GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."activity_logs" TO "anon";
-GRANT ALL ON TABLE "public"."activity_logs" TO "authenticated";
-GRANT ALL ON TABLE "public"."activity_logs" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."agreements" TO "anon";
-GRANT ALL ON TABLE "public"."agreements" TO "authenticated";
-GRANT ALL ON TABLE "public"."agreements" TO "service_role";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."activity_logs" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."activity_logs" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."activity_logs" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."competitors" TO "anon";
-GRANT ALL ON TABLE "public"."competitors" TO "authenticated";
-GRANT ALL ON TABLE "public"."competitors" TO "service_role";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."agreements" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."agreements" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."agreements" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."team_members" TO "anon";
-GRANT ALL ON TABLE "public"."team_members" TO "authenticated";
-GRANT ALL ON TABLE "public"."team_members" TO "service_role";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."competitors" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."competitors" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."competitors" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."teams" TO "anon";
-GRANT ALL ON TABLE "public"."teams" TO "authenticated";
-GRANT ALL ON TABLE "public"."teams" TO "service_role";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."team_members" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."team_members" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."team_members" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."comp_team_view" TO "anon";
-GRANT ALL ON TABLE "public"."comp_team_view" TO "authenticated";
-GRANT ALL ON TABLE "public"."comp_team_view" TO "service_role";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."teams" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."teams" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."teams" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."conversation_members" TO "anon";
-GRANT ALL ON TABLE "public"."conversation_members" TO "authenticated";
-GRANT ALL ON TABLE "public"."conversation_members" TO "service_role";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."comp_team_view" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."comp_team_view" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."comp_team_view" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."conversations" TO "anon";
-GRANT ALL ON TABLE "public"."conversations" TO "authenticated";
-GRANT ALL ON TABLE "public"."conversations" TO "service_role";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."conversation_members" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."conversation_members" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."conversation_members" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."game_platform_stats" TO "anon";
-GRANT ALL ON TABLE "public"."game_platform_stats" TO "authenticated";
-GRANT ALL ON TABLE "public"."game_platform_stats" TO "service_role";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."conversations" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."conversations" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."conversations" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."message_read_receipts" TO "anon";
-GRANT ALL ON TABLE "public"."message_read_receipts" TO "authenticated";
-GRANT ALL ON TABLE "public"."message_read_receipts" TO "service_role";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_stats" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_stats" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_stats" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."messages" TO "anon";
-GRANT ALL ON TABLE "public"."messages" TO "authenticated";
-GRANT ALL ON TABLE "public"."messages" TO "service_role";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."job_queue_settings" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."job_queue_settings" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."job_queue_settings" TO "service_role";
+
+
+
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."message_read_receipts" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."message_read_receipts" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."message_read_receipts" TO "service_role";
+
+
+
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."messages" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."messages" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."messages" TO "service_role";
 
 
 
@@ -2551,60 +2931,61 @@ GRANT ALL ON SEQUENCE "public"."messages_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."profiles" TO "anon";
-GRANT ALL ON TABLE "public"."profiles" TO "authenticated";
-GRANT ALL ON TABLE "public"."profiles" TO "service_role";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."profiles" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."profiles" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."profiles" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."system_config" TO "anon";
-GRANT ALL ON TABLE "public"."system_config" TO "authenticated";
-GRANT ALL ON TABLE "public"."system_config" TO "service_role";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."system_config" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."system_config" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."system_config" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."v_conversation_members_with_profile" TO "anon";
-GRANT ALL ON TABLE "public"."v_conversation_members_with_profile" TO "authenticated";
-GRANT ALL ON TABLE "public"."v_conversation_members_with_profile" TO "service_role";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."v_conversation_members_with_profile" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."v_conversation_members_with_profile" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."v_conversation_members_with_profile" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."v_messages_with_sender" TO "anon";
-GRANT ALL ON TABLE "public"."v_messages_with_sender" TO "authenticated";
-GRANT ALL ON TABLE "public"."v_messages_with_sender" TO "service_role";
-
-
-
-
-
-
-
-
-
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES  TO "postgres";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES  TO "anon";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES  TO "authenticated";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES  TO "service_role";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."v_messages_with_sender" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."v_messages_with_sender" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."v_messages_with_sender" TO "service_role";
 
 
 
 
 
 
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS  TO "postgres";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS  TO "anon";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS  TO "authenticated";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS  TO "service_role";
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "service_role";
 
 
 
 
 
 
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES  TO "postgres";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES  TO "anon";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES  TO "authenticated";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES  TO "service_role";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "service_role";
+
+
+
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLES TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLES TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLES TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLES TO "service_role";
+
 
 
 

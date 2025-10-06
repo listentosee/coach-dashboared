@@ -26,25 +26,25 @@ const SYNC_PATTERNS = [
     icon: PlayCircle,
     color: 'blue',
     steps: [
-      { type: 'incremental' as const, name: 'Incremental Sync' },
-      { type: 'totals' as const, name: 'Totals Sweep', delayMs: 30000 },
+      { type: 'incremental' as const, name: 'game_platform_sync' },
+      { type: 'totals' as const, name: 'game_platform_totals_sweep', delayMs: 30000 },
     ],
   },
   {
     id: 'incremental-only',
-    name: 'Incremental Sync Only',
+    name: 'Incremental Sync (game_platform_sync)',
     description: 'Fetch recent challenge solves without refreshing totals',
     icon: Timer,
     color: 'green',
-    steps: [{ type: 'incremental' as const, name: 'Incremental Sync' }],
+    steps: [{ type: 'incremental' as const, name: 'game_platform_sync' }],
   },
   {
     id: 'totals-only',
-    name: 'Totals Sweep Only',
+    name: 'Totals Sweep (game_platform_totals_sweep)',
     description: 'Refresh aggregate stats for flagged competitors',
     icon: Timer,
     color: 'purple',
-    steps: [{ type: 'totals' as const, name: 'Totals Sweep' }],
+    steps: [{ type: 'totals' as const, name: 'game_platform_totals_sweep' }],
   },
 ];
 
@@ -198,8 +198,8 @@ export function QuickSyncActions({ className }: QuickSyncActionsProps) {
                   {getStatusIcon(status.status)}
                   <div className="flex-1">
                     <div className="font-medium text-foreground">
-                      {status.type === 'incremental' && 'Incremental Sync'}
-                      {status.type === 'totals' && 'Totals Sweep'}
+                      {status.type === 'incremental' && 'game_platform_sync'}
+                      {status.type === 'totals' && 'game_platform_totals_sweep'}
                       {!status.type && 'Waiting'}
                     </div>
                     {status.message && (

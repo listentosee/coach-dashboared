@@ -70,21 +70,22 @@ async function processJob(job: JobRecord) {
   }
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    const sharedSecret = getSharedSecret();
-    const headerSecret = req.headers.get('x-job-runner-secret') ?? req.headers.get('x-job-runner-key');
-    const authHeader = req.headers.get('authorization');
+async function handleRequest(req: NextRequest) {
+  const sharedSecret = getSharedSecret();
+  const headerSecret = req.headers.get('x-job-runner-secret') ?? req.headers.get('x-job-runner-key');
+  const authHeader = req.headers.get('authorization');
 
-    // Accept either custom secret header or Vercel cron authorization
-    const isVercelCron = authHeader === `Bearer ${process.env.CRON_SECRET}`;
-    const hasValidSecret = headerSecret && headerSecret === sharedSecret;
+  // Accept either custom secret header or Vercel cron authorization
+  const isVercelCron = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  const hasValidSecret = headerSecret && headerSecret === sharedSecret;
 
-    if (!isVercelCron && !hasValidSecret) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  if (!isVercelCron && !hasValidSecret) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
-    const body = (await req.json().catch(() => ({}))) as RunRequestBody;
+  const body = req.method === 'POST'
+    ? (await req.json().catch(() => ({}))) as RunRequestBody
+    : {};
     const limit = body.limit && body.limit > 0 ? Math.min(body.limit, 10) : 5;
     const force = body.force === true;
 
@@ -124,13 +125,31 @@ export async function POST(req: NextRequest) {
     const succeeded = results.filter((r) => r.status === 'succeeded').length;
     const failed = results.length - succeeded;
 
-    return NextResponse.json({
-      status: 'ok',
-      processed: results.length,
-      succeeded,
-      failed,
-      results,
-    });
+  return NextResponse.json({
+    status: 'ok',
+    processed: results.length,
+    succeeded,
+    failed,
+    results,
+  });
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    return await handleRequest(req);
+  } catch (error) {
+    console.error('[job-runner] internal error', error);
+    Sentry.captureException(error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Unknown job runner error' },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    return await handleRequest(req);
   } catch (error) {
     console.error('[job-runner] internal error', error);
     Sentry.captureException(error);

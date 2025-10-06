@@ -1,10 +1,19 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { getStatusColor } from '@/components/dashboard/competitor-columns';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import type { ColumnDef } from '@tanstack/react-table';
+import { DrilldownDialog, DrilldownDataset } from '@/components/dashboard/drilldown-dialog';
+import { FileText, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import MonthlyCtfMomentum from '@/components/game-platform/monthly-ctf-momentum';
 
 interface LeaderboardEntry {
   competitorId: string;
@@ -14,7 +23,30 @@ interface LeaderboardEntry {
   totalPoints: number;
   lastActivity: string | null;
   categoryPoints: Record<string, number>;
+  categoryCounts: Record<string, number>;
 }
+
+type TeamMemberSynced = {
+  competitorId: string;
+  name: string;
+  status: string | null;
+  challengesCompleted: number;
+  monthlyCtf: number;
+  categoryPoints: Record<string, number>;
+  categoryCounts: Record<string, number>;
+};
+
+type TeamMemberPending = {
+  competitorId: string;
+  name: string;
+  status: string | null;
+};
+
+type TeamMemberRosterEntry = {
+  competitorId: string;
+  name: string;
+  status: 'Active' | 'Waiting for Add';
+};
 
 interface TeamSummary {
   teamId: string;
@@ -24,6 +56,10 @@ interface TeamSummary {
   totalChallenges: number;
   totalPoints: number;
   memberCount: number;
+  totalMembers: number;
+  pendingMembers: number;
+  membersOnPlatform: TeamMemberSynced[];
+  membersOffPlatform: TeamMemberPending[];
   avgScore: number;
   lastSync: string | null;
 }
@@ -65,6 +101,11 @@ const accentByType: Record<string, string> = {
   sync: 'text-emerald-400 border-emerald-500/40',
 };
 
+const rosterStatusStyles: Record<TeamMemberRosterEntry['status'], string> = {
+  Active: 'border-transparent bg-green-100 text-green-800',
+  'Waiting for Add': 'border-transparent bg-yellow-100 text-yellow-800',
+};
+
 function formatNumber(value: number): string {
   return Number.isFinite(value) ? value.toLocaleString() : '0';
 }
@@ -88,6 +129,7 @@ function relativeFromNow(iso: string | null): string {
 }
 
 export default function GamePlatformDashboard() {
+  const router = useRouter();
   const [division, setDivision] = useState('all');
   const [coachScope, setCoachScope] = useState<'my' | 'all'>('my');
   const [range, setRange] = useState('30d');
@@ -95,13 +137,37 @@ export default function GamePlatformDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedTeam, setSelectedTeam] = useState<TeamSummary | null>(null);
+  const [teamDrilldownOpen, setTeamDrilldownOpen] = useState(false);
+  const [competitorDrilldown, setCompetitorDrilldown] = useState<{
+    name: string;
+    categories: Array<{ topic: string; score: number; challenges: number }>;
+  } | null>(null);
+  const [competitorDrilldownOpen, setCompetitorDrilldownOpen] = useState(false);
+  const [teamInitialDataset, setTeamInitialDataset] = useState<string | undefined>(undefined);
+  const [ctfView, setCtfView] = useState<'score' | 'pace'>('score');
+  const [flashCtfDrilldown, setFlashCtfDrilldown] = useState<{
+    competitorId: string;
+    name: string;
+    eventName?: string;
+    events: Array<{ eventName: string; date: string; challenges: number; points: number }>;
+    challenges?: Array<{ name: string; category: string; points: number; solvedAt: string }>;
+  } | null>(null);
+  const [flashCtfDrilldownOpen, setFlashCtfDrilldownOpen] = useState(false);
+  const [leaderboardSort, setLeaderboardSort] = useState<{
+    column: 'name' | 'challenges';
+    direction: 'asc' | 'desc';
+  }>({ column: 'name', direction: 'asc' });
 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
 
-    fetch('/api/game-platform/dashboard', { signal: controller.signal })
+    const url = new URL('/api/game-platform/dashboard', window.location.origin);
+    url.searchParams.set('range', range);
+
+    fetch(url.toString(), { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) {
           const text = await res.text();
@@ -120,15 +186,17 @@ export default function GamePlatformDashboard() {
       .finally(() => setLoading(false));
 
     return () => controller.abort();
-  }, [refreshKey]);
+  }, [refreshKey, range]);
 
   const statCards: StatCard[] = useMemo(() => {
+    const rangeLabel = range === '7d' ? '7d' : range === '90d' ? '90d' : range === 'all' ? 'All Time' : '30d';
+
     if (!dashboard) {
       return [
         { label: 'Active on Platform', value: '—', accent: 'from-sky-500/40 via-sky-400/10 to-transparent' },
         { label: 'Synced Competitors', value: '—', accent: 'from-emerald-500/40 via-emerald-400/10 to-transparent' },
         { label: 'Total Challenges', value: '—', accent: 'from-fuchsia-500/40 via-fuchsia-400/10 to-transparent' },
-        { label: 'Monthly CTF Participants', value: '—', accent: 'from-amber-500/40 via-amber-400/10 to-transparent' },
+        { label: `CTF Participants (${rangeLabel})`, value: '—', accent: 'from-amber-500/40 via-amber-400/10 to-transparent' },
         { label: 'Last Sync', value: '—', accent: 'from-indigo-500/40 via-indigo-400/10 to-transparent' },
       ];
     }
@@ -152,7 +220,7 @@ export default function GamePlatformDashboard() {
         accent: 'from-fuchsia-500/40 via-fuchsia-400/10 to-transparent',
       },
       {
-        label: 'Monthly CTF Participants',
+        label: `CTF Participants (${rangeLabel})`,
         value: formatNumber(dashboard.global.monthlyCtfParticipants),
         accent: 'from-amber-500/40 via-amber-400/10 to-transparent',
       },
@@ -163,22 +231,35 @@ export default function GamePlatformDashboard() {
         accent: 'from-indigo-500/40 via-indigo-400/10 to-transparent',
       },
     ];
-  }, [dashboard]);
+  }, [dashboard, range]);
 
   const leaderboard = useMemo(() => {
     if (!dashboard) return [] as LeaderboardEntry[];
+    let filteredLeaderboard: LeaderboardEntry[];
     if (dashboard.controller?.isAdmin && coachScope === 'all') {
-      return dashboard.leaderboard;
+      filteredLeaderboard = dashboard.leaderboard;
+    } else {
+      const currentCoachId = dashboard.controller?.coachId || null;
+      if (!currentCoachId || !dashboard.competitors) {
+        filteredLeaderboard = dashboard.leaderboard;
+      } else {
+        const allowedCompetitors = new Set(
+          (dashboard.competitors as any[]).filter((c) => c.coach_id === currentCoachId).map((c) => c.id)
+        );
+        filteredLeaderboard = dashboard.leaderboard.filter((entry) => allowedCompetitors.has(entry.competitorId));
+      }
     }
-    const currentCoachId = dashboard.controller?.coachId || null;
-    if (!currentCoachId || !dashboard.competitors) {
-      return dashboard.leaderboard;
-    }
-    const allowedCompetitors = new Set(
-      (dashboard.competitors as any[]).filter((c) => c.coach_id === currentCoachId).map((c) => c.id)
-    );
-    return dashboard.leaderboard.filter((entry) => allowedCompetitors.has(entry.competitorId));
-  }, [dashboard, coachScope]);
+
+    // Apply sorting
+    return [...filteredLeaderboard].sort((a, b) => {
+      const multiplier = leaderboardSort.direction === 'asc' ? 1 : -1;
+      if (leaderboardSort.column === 'name') {
+        return multiplier * a.name.localeCompare(b.name);
+      } else {
+        return multiplier * (a.challenges - b.challenges);
+      }
+    });
+  }, [dashboard, coachScope, leaderboardSort]);
 
   const teams = useMemo(() => {
     if (!dashboard) return [] as TeamSummary[];
@@ -195,10 +276,245 @@ export default function GamePlatformDashboard() {
         .map((c) => c.team.id as string)
     );
     if (!allowedTeamIds.size) {
-      return dashboard.teams.filter((team) => team.memberCount > 0);
+      return dashboard.teams.filter((team) => team.totalMembers > 0);
     }
     return dashboard.teams.filter((team) => allowedTeamIds.has(team.teamId));
   }, [dashboard, coachScope]);
+
+  const handleCompetitorChallengeDrilldown = useCallback(
+    (source: {
+      name: string;
+      categoryPoints?: Record<string, number> | null;
+      categoryCounts?: Record<string, number> | null;
+    }) => {
+      const topics = new Set<string>();
+      for (const [topic] of Object.entries(source.categoryPoints ?? {})) {
+        topics.add(topic);
+      }
+      for (const [topic] of Object.entries(source.categoryCounts ?? {})) {
+        topics.add(topic);
+      }
+
+      const categories = Array.from(topics).map((topicKey) => {
+        const score = Number(source.categoryPoints?.[topicKey] ?? 0);
+        const challenges = Number(source.categoryCounts?.[topicKey] ?? 0);
+        return {
+          topic: topicKey || 'Uncategorized',
+          score,
+          challenges,
+        };
+      });
+
+      categories.sort((a, b) => {
+        if (b.challenges === a.challenges) {
+          return b.score - a.score;
+        }
+        return b.challenges - a.challenges;
+      });
+
+      setCompetitorDrilldown({
+        name: source.name,
+        categories: categories.length
+          ? categories
+          : [{ topic: 'No challenge activity recorded', score: 0, challenges: 0 }],
+      });
+      setCompetitorDrilldownOpen(true);
+    },
+    []
+  );
+
+  const onPlatformColumns = useMemo<ColumnDef<TeamMemberSynced>[]>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => <span className="text-meta-light">{row.original.name}</span>,
+      },
+      {
+        accessorKey: 'challengesCompleted',
+        header: 'Challenges',
+        cell: ({ row }) => (
+          <button
+            className="text-meta-accent hover:underline"
+            onClick={() => handleCompetitorChallengeDrilldown(row.original)}
+          >
+            {formatNumber(row.original.challengesCompleted)}
+          </button>
+        ),
+      },
+      {
+        accessorKey: 'monthlyCtf',
+        header: 'CTF Participation',
+        cell: ({ row }) => (
+          <button
+            className="text-meta-accent hover:underline"
+            onClick={() => handleCompetitorChallengeDrilldown(row.original)}
+          >
+            {formatNumber(row.original.monthlyCtf)}
+          </button>
+        ),
+      },
+    ],
+    [handleCompetitorChallengeDrilldown]
+  );
+
+  const awaitingColumns = useMemo<ColumnDef<TeamMemberPending>[]>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => <span className="text-meta-light">{row.original.name}</span>,
+      },
+      {
+        accessorKey: 'status',
+        header: 'Status',
+        cell: ({ row }) => {
+          const statusValue = row.original.status ? row.original.status.toLowerCase() : '';
+          return (
+            <Badge className={getStatusColor(statusValue)}>
+              {row.original.status ?? 'Unknown'}
+            </Badge>
+          );
+        },
+      },
+    ],
+    []
+  );
+
+  const rosterColumns = useMemo<ColumnDef<TeamMemberRosterEntry>[]>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => <span className="text-meta-light">{row.original.name}</span>,
+      },
+      {
+        accessorKey: 'status',
+        header: 'Status',
+        cell: ({ row }) => (
+          <Badge className={rosterStatusStyles[row.original.status]}>
+            {row.original.status}
+          </Badge>
+        ),
+      },
+    ],
+    []
+  );
+
+  const competitorChallengeColumns = useMemo<ColumnDef<{ topic: string; score: number; challenges: number }>[]>(
+    () => [
+      {
+        accessorKey: 'topic',
+        header: 'Topic',
+        cell: ({ row }) => <span className="text-meta-light">{row.original.topic}</span>,
+      },
+      {
+        accessorKey: 'score',
+        header: 'Score',
+        cell: ({ row }) => <span className="text-meta-light">{formatNumber(row.original.score)}</span>,
+      },
+      {
+        accessorKey: 'challenges',
+        header: 'Challenges',
+        cell: ({ row }) => <span className="text-meta-light">{formatNumber(row.original.challenges)}</span>,
+      },
+    ],
+    []
+  );
+
+  const flashCtfEventColumns = useMemo<ColumnDef<{ eventName: string; date: string; challenges: number; points: number }>[]>(
+    () => [
+      {
+        accessorKey: 'eventName',
+        header: 'Event',
+        cell: ({ row }) => <span className="text-meta-light">{row.original.eventName}</span>,
+      },
+      {
+        accessorKey: 'date',
+        header: 'Date',
+        cell: ({ row }) => <span className="text-meta-light">{new Date(row.original.date).toLocaleDateString()}</span>,
+      },
+      {
+        accessorKey: 'challenges',
+        header: 'Challenges',
+        cell: ({ row }) => <span className="text-meta-light">{formatNumber(row.original.challenges)}</span>,
+      },
+      {
+        accessorKey: 'points',
+        header: 'Points',
+        cell: ({ row }) => <span className="text-meta-light">{formatNumber(row.original.points)}</span>,
+      },
+    ],
+    []
+  );
+
+  const flashCtfChallengeColumns = useMemo<ColumnDef<{ name: string; category: string; points: number; solvedAt: string }>[]>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Challenge',
+        cell: ({ row }) => <span className="text-meta-light">{row.original.name}</span>,
+      },
+      {
+        accessorKey: 'category',
+        header: 'Category',
+        cell: ({ row }) => <span className="text-meta-light">{row.original.category}</span>,
+      },
+      {
+        accessorKey: 'points',
+        header: 'Points',
+        cell: ({ row }) => <span className="text-meta-light">{formatNumber(row.original.points)}</span>,
+      },
+      {
+        accessorKey: 'solvedAt',
+        header: 'Solved At',
+        cell: ({ row }) => <span className="text-meta-light">{new Date(row.original.solvedAt).toLocaleString()}</span>,
+      },
+    ],
+    []
+  );
+
+  const teamDatasets = useMemo<DrilldownDataset[]>(() => {
+    if (!selectedTeam) return [];
+
+    const rosterData: TeamMemberRosterEntry[] = [
+      ...selectedTeam.membersOnPlatform.map((member) => ({
+        competitorId: member.competitorId,
+        name: member.name,
+        status: 'Active' as const,
+      })),
+      ...selectedTeam.membersOffPlatform.map((member) => ({
+        competitorId: member.competitorId,
+        name: member.name,
+        status: 'Waiting for Add' as const,
+      })),
+    ];
+
+    return [
+      {
+        key: 'on-platform',
+        label: 'On Game Platform',
+        columns: onPlatformColumns,
+        data: selectedTeam.membersOnPlatform,
+        emptyMessage: 'No members currently on the Game Platform.',
+        onRowClick: handleCompetitorChallengeDrilldown,
+      },
+      {
+        key: 'awaiting',
+        label: 'Awaiting Add',
+        columns: awaitingColumns,
+        data: selectedTeam.membersOffPlatform,
+        emptyMessage: 'No members awaiting add.',
+      },
+      {
+        key: 'full-roster',
+        label: 'Full Roster',
+        columns: rosterColumns,
+        data: rosterData,
+        emptyMessage: 'No members on file.',
+      },
+    ];
+  }, [selectedTeam, onPlatformColumns, awaitingColumns, rosterColumns, handleCompetitorChallengeDrilldown]);
 
   const alerts = useMemo(() => {
     if (!dashboard) {
@@ -267,9 +583,19 @@ export default function GamePlatformDashboard() {
 
       <div className="relative space-y-8">
         <header className="flex flex-col gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-wide text-meta-light">Game Platform Command</h1>
-            <p className="text-meta-muted">Monitor challenge activity, team performance, and onboarding health.</p>
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="text-3xl font-bold tracking-wide text-meta-light">Game Platform Dashboard</h1>
+              <p className="text-meta-muted">Monitor challenge activity, team performance, and onboarding health.</p>
+            </div>
+            <Image
+              src="/MetaCTF-white.png"
+              alt="MetaCTF"
+              width={346}
+              height={115}
+              className="h-[115px] w-auto opacity-80"
+              priority
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -307,7 +633,7 @@ export default function GamePlatformDashboard() {
                 <option value="7d">Last 7 days</option>
                 <option value="30d">Last 30 days</option>
                 <option value="90d">Last 90 days</option>
-                <option value="custom">Custom…</option>
+                <option value="all">All Time</option>
               </select>
             </div>
             <Button
@@ -350,6 +676,75 @@ export default function GamePlatformDashboard() {
           ))}
         </section>
 
+        <DrilldownDialog
+          open={teamDrilldownOpen}
+          onOpenChange={(open) => {
+            setTeamDrilldownOpen(open);
+            if (!open) {
+              setSelectedTeam(null);
+              setTeamInitialDataset(undefined);
+            }
+          }}
+          title={selectedTeam?.name ?? 'Team roster'}
+          description={selectedTeam ? `${selectedTeam.affiliation || 'Affiliation unknown'} • ${formatNumber(selectedTeam.memberCount)} synced of ${formatNumber(selectedTeam.totalMembers)}` : undefined}
+          datasets={teamDatasets}
+          initialKey={teamInitialDataset}
+        />
+
+        <DrilldownDialog
+          open={competitorDrilldownOpen}
+          onOpenChange={(open) => {
+            setCompetitorDrilldownOpen(open);
+            if (!open) setCompetitorDrilldown(null);
+          }}
+          title={competitorDrilldown?.name ?? 'Competitor challenge breakdown'}
+          description="Challenge totals by topic"
+          datasets={competitorDrilldown ? [{
+            key: 'challenges',
+            label: 'Challenges',
+            columns: competitorChallengeColumns,
+            data: competitorDrilldown.categories,
+            emptyMessage: 'No challenge activity recorded.',
+          }] : []}
+        />
+
+        <DrilldownDialog
+          open={flashCtfDrilldownOpen}
+          onOpenChange={(open) => {
+            setFlashCtfDrilldownOpen(open);
+            if (!open) setFlashCtfDrilldown(null);
+          }}
+          title={
+            flashCtfDrilldown?.eventName
+              ? `${flashCtfDrilldown.eventName} - ${flashCtfDrilldown.name}`
+              : flashCtfDrilldown?.name
+              ? `Flash CTF History: ${flashCtfDrilldown.name}`
+              : 'Flash CTF History'
+          }
+          description={
+            flashCtfDrilldown?.challenges
+              ? `Challenges solved in ${flashCtfDrilldown.eventName}`
+              : 'All Flash CTF events this competitor has participated in'
+          }
+          datasets={flashCtfDrilldown ? (
+            flashCtfDrilldown.challenges
+              ? [{
+                  key: 'challenges',
+                  label: 'Challenges',
+                  columns: flashCtfChallengeColumns,
+                  data: flashCtfDrilldown.challenges,
+                  emptyMessage: 'No challenges recorded for this event.',
+                }]
+              : [{
+                  key: 'events',
+                  label: 'Flash CTF Events',
+                  columns: flashCtfEventColumns,
+                  data: flashCtfDrilldown.events,
+                  emptyMessage: 'No Flash CTF participation recorded.',
+                }]
+          ) : []}
+        />
+
         <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <Card className="border-meta-border bg-meta-card">
             <CardHeader>
@@ -357,27 +752,97 @@ export default function GamePlatformDashboard() {
               <CardDescription>Top competitors by solved challenges</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="max-h-96 overflow-y-auto overflow-x-auto rounded border border-meta-border/60">
+              <div className="h-96 overflow-y-auto overflow-x-auto rounded border border-meta-border/60">
                 <table className="min-w-full text-left text-sm text-meta-light/90">
-                  <thead className="text-xs uppercase text-meta-muted">
+                  <thead className="text-xs uppercase text-meta-muted sticky top-0 bg-meta-card">
                     <tr>
                       <th className="py-2 pr-3 font-medium">Rank</th>
-                      <th className="py-2 pr-3 font-medium">Competitor</th>
-                      <th className="py-2 pr-3 font-medium">Challenges</th>
+                      <th
+                        className="py-2 pr-3 font-medium cursor-pointer hover:text-meta-accent select-none"
+                        onClick={() => {
+                          setLeaderboardSort({
+                            column: 'name',
+                            direction: leaderboardSort.column === 'name' && leaderboardSort.direction === 'asc' ? 'desc' : 'asc'
+                          });
+                        }}
+                      >
+                        <div className="flex items-center gap-1">
+                          Competitor
+                          {leaderboardSort.column === 'name' ? (
+                            leaderboardSort.direction === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-50" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="py-2 pr-3 font-medium cursor-pointer hover:text-meta-accent select-none"
+                        onClick={() => {
+                          setLeaderboardSort({
+                            column: 'challenges',
+                            direction: leaderboardSort.column === 'challenges' && leaderboardSort.direction === 'asc' ? 'desc' : 'asc'
+                          });
+                        }}
+                      >
+                        <div className="flex items-center gap-1">
+                          Challenges
+                          {leaderboardSort.column === 'challenges' ? (
+                            leaderboardSort.direction === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-50" />
+                          )}
+                        </div>
+                      </th>
                       <th className="py-2 pr-3 font-medium">Last Active</th>
+                      <th className="py-2 pr-3 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-meta-border/80">
-                    {(loading ? Array.from({ length: 5 }) : leaderboard).map((entry, idx) => (
-                      <tr key={entry ? entry.competitorId : idx} className="hover:bg-meta-dark/40">
-                        <td className="py-2 pr-3 text-meta-muted">#{idx + 1}</td>
-                        <td className="py-2 pr-3">{entry ? entry.name : '—'}</td>
-                        <td className="py-2 pr-3 font-medium">{entry ? formatNumber(entry.challenges) : '—'}</td>
-                        <td className="py-2 pr-3 text-meta-muted">
-                          {entry ? relativeFromNow(entry.lastActivity) : '—'}
-                        </td>
-                      </tr>
-                    ))}
+                    {(loading ? Array.from({ length: 5 }) : leaderboard).map((entry, idx) => {
+                      const hasChallengeData = !!entry && Number(entry.challenges) > 0;
+                      return (
+                        <tr
+                          key={entry ? entry.competitorId : idx}
+                          className="hover:bg-meta-dark/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-meta-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-meta-card"
+                        >
+                          <td className="py-2 pr-3 text-meta-muted">#{idx + 1}</td>
+                          <td
+                            className={cn("py-2 pr-3", hasChallengeData ? "cursor-pointer" : "")}
+                            role={hasChallengeData ? 'button' : undefined}
+                            tabIndex={hasChallengeData ? 0 : undefined}
+                            onClick={hasChallengeData ? () => handleCompetitorChallengeDrilldown(entry!) : undefined}
+                            onKeyDown={hasChallengeData ? (event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                handleCompetitorChallengeDrilldown(entry!);
+                              }
+                            } : undefined}
+                          >
+                            {entry ? entry.name : '—'}
+                          </td>
+                          <td className="py-2 pr-3 font-medium">{entry ? formatNumber(entry.challenges) : '—'}</td>
+                          <td className="py-2 pr-3 text-meta-muted">
+                            {entry ? relativeFromNow(entry.lastActivity) : '—'}
+                          </td>
+                          <td className="py-2 pr-3 text-right">
+                            {entry && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  router.push(`/dashboard/game-platform/report-card/${entry.competitorId}`);
+                                }}
+                                title="View Report Card"
+                                className="p-1 text-meta-light hover:text-meta-accent"
+                              >
+                                <FileText className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -391,17 +856,47 @@ export default function GamePlatformDashboard() {
                   <CardTitle>Monthly CTF Momentum</CardTitle>
                   <CardDescription>Flash CTF participation from synced stats</CardDescription>
                 </div>
-                <Tabs defaultValue="absolute">
+                <Tabs value={ctfView} onValueChange={(value) => setCtfView(value as 'score' | 'pace')}>
                   <TabsList className="bg-meta-dark border border-meta-border">
-                    <TabsTrigger value="absolute">Score</TabsTrigger>
+                    <TabsTrigger value="score">Score</TabsTrigger>
                     <TabsTrigger value="pace">Pace</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="h-64 rounded border border-dashed border-meta-border/80 bg-meta-dark/40 flex items-center justify-center text-sm text-meta-muted">
-                Flash CTF charts will populate after nightly syncs.
+              <div className="h-96">
+                {dashboard?.flashCtfMomentum ? (
+                  <MonthlyCtfMomentum
+                    view={ctfView}
+                    data={dashboard.flashCtfMomentum}
+                    onStudentClick={(competitorId, name, eventName) => {
+                      const allEvents = dashboard.flashCtfMomentum.eventsByCompetitor?.[competitorId] || [];
+                      // Filter to specific event if eventName is provided
+                      const events = eventName
+                        ? allEvents.filter(e => e.eventName === eventName)
+                        : allEvents;
+
+                      // Extract challenge details if a specific event is selected
+                      const challenges = eventName && events.length > 0 && events[0].challengeDetails
+                        ? events[0].challengeDetails
+                        : undefined;
+
+                      setFlashCtfDrilldown({
+                        competitorId,
+                        name,
+                        eventName,
+                        events,
+                        challenges
+                      });
+                      setFlashCtfDrilldownOpen(true);
+                    }}
+                  />
+                ) : (
+                  <div className="h-full flex items-center justify-center text-sm text-meta-muted">
+                    Loading Flash CTF data...
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -432,105 +927,151 @@ export default function GamePlatformDashboard() {
                     <span>Total Challenges</span>
                     <span className="text-meta-light font-semibold">{team ? formatNumber(team.totalChallenges) : '—'}</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span>Members</span>
-                    <span className="text-meta-light font-semibold">{team ? formatNumber(team.memberCount) : '—'}</span>
-                  </div>
+                  <button
+                    type="button"
+                    className="group flex w-full items-center justify-between rounded-sm text-left text-meta-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-meta-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-meta-card"
+                    onClick={() => {
+                      if (!team) return;
+                      setSelectedTeam(team);
+                      setTeamInitialDataset('on-platform');
+                      setTeamDrilldownOpen(true);
+                    }}
+                  >
+                    <span className="group-hover:text-meta-light">Members</span>
+                    <span className="font-semibold text-meta-accent group-hover:underline">
+                      {team ? formatNumber(team.memberCount) : '—'}
+                      {team && team.totalMembers > team.memberCount
+                        ? ` / ${formatNumber(team.totalMembers)}`
+                        : ''}
+                    </span>
+                  </button>
+                  {team && team.pendingMembers > 0 ? (
+                    <button
+                      className="text-xs text-amber-400 hover:underline"
+                      onClick={() => {
+                        setSelectedTeam(team);
+                        setTeamInitialDataset('awaiting');
+                        setTeamDrilldownOpen(true);
+                      }}
+                    >
+                      {formatNumber(team.pendingMembers)} awaiting add
+                    </button>
+                  ) : null}
                   <div className="text-xs text-meta-muted">
                     {team?.division ? `${team.division} • ` : ''}
                     {team?.affiliation || 'Affiliation unknown'}
                   </div>
+                  {team ? (
+                    <div className="pt-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full border-meta-border/70 text-meta-light hover:border-meta-accent/60"
+                        onClick={() => {
+                          setSelectedTeam(team);
+                          setTeamInitialDataset('full-roster');
+                          setTeamDrilldownOpen(true);
+                        }}
+                      >
+                        View roster
+                      </Button>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             ))}
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <Card className="border-meta-border bg-meta-card/90">
-            <CardHeader>
-              <CardTitle>Onboarding & Sync Alerts</CardTitle>
-              <CardDescription>Competitors needing attention</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {alerts.unsyncedCompetitors.length ? (
-                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                  {alerts.unsyncedCompetitors.map((item) => (
-                    <div
-                      key={item.competitorId}
-                      className="rounded border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-amber-100"
-                    >
-                      <div className="font-medium text-meta-light">{item.name}</div>
-                      <div className="text-xs text-meta-muted">No Game Platform ID assigned</div>
+        {dashboard?.controller?.isAdmin && (
+          <>
+            <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <Card className="border-meta-border bg-meta-card/90">
+                <CardHeader>
+                  <CardTitle>Onboarding & Sync Alerts</CardTitle>
+                  <CardDescription>Competitors needing attention</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  {alerts.unsyncedCompetitors.length ? (
+                    <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                      {alerts.unsyncedCompetitors.map((item) => (
+                        <div
+                          key={item.competitorId}
+                          className="rounded border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-amber-100"
+                        >
+                          <div className="font-medium text-meta-light">{item.name}</div>
+                          <div className="text-xs text-meta-muted">No Game Platform ID assigned</div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded border border-meta-border/60 bg-meta-dark/40 px-3 py-2 text-meta-muted">
-                  All competitors have platform IDs.
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  ) : (
+                    <div className="rounded border border-meta-border/60 bg-meta-dark/40 px-3 py-2 text-meta-muted">
+                      All competitors have platform IDs.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
-          <Card className="border-meta-border bg-meta-card/90">
-            <CardHeader>
-              <CardTitle>Sync Errors & Inactivity</CardTitle>
-              <CardDescription>Keep tabs on stalled records</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {alerts.syncErrors.length ? (
-                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                  {alerts.syncErrors.map((item) => (
-                    <div
-                      key={item.competitorId}
-                      className="rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-red-100"
-                    >
-                      <div className="font-medium text-meta-light">{item.name}</div>
-                      <div className="text-xs text-meta-muted">{item.error}</div>
+              <Card className="border-meta-border bg-meta-card/90">
+                <CardHeader>
+                  <CardTitle>Sync Errors & Inactivity</CardTitle>
+                  <CardDescription>Keep tabs on stalled records</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  {alerts.syncErrors.length ? (
+                    <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                      {alerts.syncErrors.map((item) => (
+                        <div
+                          key={item.competitorId}
+                          className="rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-red-100"
+                        >
+                          <div className="font-medium text-meta-light">{item.name}</div>
+                          <div className="text-xs text-meta-muted">{item.error}</div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded border border-meta-border/60 bg-meta-dark/40 px-3 py-2 text-meta-muted">
-                  No sync errors reported.
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </section>
+                  ) : (
+                    <div className="rounded border border-meta-border/60 bg-meta-dark/40 px-3 py-2 text-meta-muted">
+                      No sync errors reported.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </section>
 
-        <section>
-          <Card className="border-meta-border bg-meta-card">
-            <CardHeader className="flex items-center justify-between">
-              <div>
-                <CardTitle>Activity Timeline</CardTitle>
-                <CardDescription>Recent Game Platform events</CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {timeline.length === 0 ? (
-                <div className="rounded border border-meta-border/60 bg-meta-dark/40 px-3 py-2 text-sm text-meta-muted">
-                  Activity will appear once the first sync job runs.
-                </div>
-              ) : (
-                timeline.map((item, idx) => (
-                  <div key={`${item.label}-${idx}`} className="flex items-start gap-3 text-sm text-meta-light/90">
-                    <div className="w-32 shrink-0 text-xs uppercase tracking-wide text-meta-muted">{item.time}</div>
-                    <div
-                      className={cn(
-                        'flex-1 rounded border px-3 py-2 backdrop-blur',
-                        accentByType[item.type] ?? 'text-meta-muted border-meta-border'
-                      )}
-                    >
-                      {item.label}
-                    </div>
+            <section>
+              <Card className="border-meta-border bg-meta-card">
+                <CardHeader className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Activity Timeline</CardTitle>
+                    <CardDescription>Recent Game Platform events</CardDescription>
                   </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </section>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {timeline.length === 0 ? (
+                    <div className="rounded border border-meta-border/60 bg-meta-dark/40 px-3 py-2 text-sm text-meta-muted">
+                      Activity will appear once the first sync job runs.
+                    </div>
+                  ) : (
+                    timeline.map((item, idx) => (
+                      <div key={`${item.label}-${idx}`} className="flex items-start gap-3 text-sm text-meta-light/90">
+                        <div className="w-32 shrink-0 text-xs uppercase tracking-wide text-meta-muted">{item.time}</div>
+                        <div
+                          className={cn(
+                            'flex-1 rounded border px-3 py-2 backdrop-blur',
+                            accentByType[item.type] ?? 'text-meta-muted border-meta-border'
+                          )}
+                        >
+                          {item.label}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            </section>
+          </>
+        )}
       </div>
     </div>
   );

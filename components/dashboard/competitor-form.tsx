@@ -31,7 +31,7 @@ const formSchema = z.object({
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
   last_name: z.string().min(2, 'Last name must be at least 2 characters'),
   is_18_or_over: z.boolean(),
-  grade: z.string().optional(),
+  grade: z.string({ required_error: 'Grade is required' }).min(1, 'Grade is required'),
   email_personal: z.string().email('Invalid email').optional().or(z.literal('')),
   // School email required for all participants
   email_school: z.string({ required_error: 'School email is required' }).email('Invalid email'),
@@ -174,7 +174,7 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
                 Share this secure link with the competitor to complete their profile:
               </p>
               <div className="flex gap-2">
-                <Input value={profileLink} readOnly className="text-xs bg-white border-gray-300" />
+                <Input value={profileLink} readOnly className="text-xs bg-white border-gray-300 text-gray-900" />
                 <Button size="sm" onClick={copyToClipboard}>
                   <Copy className="h-4 w-4" />
                 </Button>
@@ -307,8 +307,8 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
                 name="grade"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-gray-700">Grade</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormLabel className="text-gray-700">Grade (Required)</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger className="bg-white border-gray-300 text-gray-900">
                           <SelectValue placeholder="Select grade level" />

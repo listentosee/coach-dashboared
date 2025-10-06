@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { CoachInboxSelection } from '@/components/coach-messaging/inbox-pane'
 
-export type ComposerMode = 'dm' | 'group' | 'reply' | 'forward'
+export type ComposerMode = 'dm' | 'group' | 'announcement' | 'reply' | 'forward'
 
 export type ComposerPayload = {
   mode: ComposerMode
@@ -31,6 +31,7 @@ export type CoachComposerController = {
   attachments: { name: string; url: string; markdown: string }[]
   openDm: () => void
   openGroup: () => void
+  openAnnouncement: () => void
   openReply: (selection: CoachInboxSelection) => void
   openForward: (selection: CoachInboxSelection) => void
   close: () => void
@@ -84,6 +85,17 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
     setAttachments([])
     setOpen(true)
   }, [resetRecipients])
+
+  const openAnnouncement = useCallback(() => {
+    setMode('announcement')
+    setContext(null)
+    setBody('')
+    setSubject('')
+    // For announcements, auto-select all users (don't reset recipients)
+    setPreview(false)
+    setAttachments([])
+    setOpen(true)
+  }, [])
 
   const openReply = useCallback((selection: CoachInboxSelection) => {
     setMode('reply')
@@ -194,6 +206,7 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
     attachments,
     openDm,
     openGroup,
+    openAnnouncement,
     openReply,
     openForward,
     close,
@@ -220,6 +233,7 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
     attachments,
     openDm,
     openGroup,
+    openAnnouncement,
     openReply,
     openForward,
     close,

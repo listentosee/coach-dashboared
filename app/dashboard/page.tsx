@@ -13,6 +13,7 @@ import { createCompetitorColumns, Competitor as CompetitorType } from '@/compone
 import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { toast } from 'sonner';
 
 interface Competitor {
   id: string;
@@ -579,7 +580,7 @@ export default function DashboardPage() {
   const handleCopy = useCallback(async (value: string, message = 'Copied to clipboard.') => {
     try {
       await navigator.clipboard.writeText(value);
-      alert(message);
+      toast.success(message);
     } catch (error) {
       console.error('Clipboard write failed', error);
       window.prompt('Copy to clipboard:', value);
@@ -596,19 +597,21 @@ export default function DashboardPage() {
     switch (mode) {
       case 'gmail':
         url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodedSubject}&body=${encodedBody}`;
+        window.open(url, '_blank', 'noopener');
         break;
       case 'outlook': {
         if (!window.confirm('Make sure you have Outlook Web open and signed in, then click OK to continue.')) {
           return;
         }
         url = `https://outlook.office.com/mail/deeplink/compose?mailtoui=1&to=${encodeURIComponent(to)}&subject=${encodedSubject}&body=${encodedBody}`;
+        window.open(url, '_blank', 'noopener');
         break;
       }
-      default:
+      case 'mailto':
         url = `mailto:${encodeURIComponent(to)}?subject=${encodedSubject}&body=${encodedBody}`;
+        window.location.href = url;
         break;
     }
-    window.open(url, '_blank', 'noopener');
   }, [profileLinkDialog]);
 
   const handleRegister = async (competitorId: string) => {
@@ -968,7 +971,7 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-meta-light">Profile Link</p>
-                <div className="mt-1 rounded border border-meta-border bg-meta-dark px-3 py-2 text-sm text-meta-light break-words break-all">
+                <div className="mt-1 rounded border border-meta-border bg-meta-dark px-3 py-2 text-sm text-foreground break-words break-all">
                   {profileLinkDialog.profileUrl}
                 </div>
               </div>

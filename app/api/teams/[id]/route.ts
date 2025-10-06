@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { isUserAdmin } from '@/lib/utils/admin-check';
+import { deleteTeamFromGamePlatform } from '@/lib/integrations/game-platform/service';
 
 export async function DELETE(
   request: NextRequest,
@@ -43,6 +44,39 @@ export async function DELETE(
       return NextResponse.json({ error: 'Team not found or access denied' }, { status: 404 });
     }
 
+    // Validate that team has no members
+    const { count: memberCount, error: countError } = await supabase
+      .from('team_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('team_id', id);
+
+    if (countError) {
+      return NextResponse.json({ error: 'Failed to verify team members' }, { status: 400 });
+    }
+
+    if ((memberCount ?? 0) > 0) {
+      return NextResponse.json({
+        error: 'Cannot delete team with members. Remove all members first.'
+      }, { status: 400 });
+    }
+
+    // Call MetaCTF API to delete team (before local deletion)
+    let gamePlatformSync: any = null;
+    try {
+      gamePlatformSync = await deleteTeamFromGamePlatform({
+        supabase,
+        teamId: id,
+        logger: console,
+      });
+    } catch (syncError: any) {
+      console.error('Game Platform team deletion failed', syncError);
+      // Don't block local deletion if API fails - log and continue
+      gamePlatformSync = {
+        error: syncError?.message ?? 'Unknown Game Platform deletion error',
+        status: 'api_error_continued'
+      };
+    }
+
     // Delete the team
     const { error: deleteError } = await supabase
       .from('teams')
@@ -69,7 +103,8 @@ export async function DELETE(
       });
 
     return NextResponse.json({
-      message: 'Team deleted successfully'
+      message: 'Team deleted successfully',
+      gamePlatformSync,
     });
 
   } catch (error) {

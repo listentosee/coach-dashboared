@@ -10,11 +10,11 @@ export const ALLOWED_GENDERS = [
 ] as const
 
 export const ALLOWED_RACES = [
-  'white', 'black', 'hispanic', 'asian', 'native', 'pacific', 'other',
+  'white', 'black', 'hispanic', 'asian', 'native', 'pacific', 'other', 'declined_to_answer',
 ] as const
 
 export const ALLOWED_ETHNICITIES = [
-  'not_hispanic', 'hispanic',
+  'not_hispanic', 'hispanic', 'declined_to_answer',
 ] as const
 
 export const ALLOWED_LEVELS_OF_TECHNOLOGY = [

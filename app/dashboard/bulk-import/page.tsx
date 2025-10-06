@@ -44,8 +44,8 @@ const FIELDS: FieldConfig[] = [
   { key: 'parent_email', label: 'Parent Email (Minor)' },
   { key: 'division', label: 'Division (middle_school | high_school | college)' },
   { key: 'gender', label: 'Gender (male | female | other | prefer_not_to_say)' },
-  { key: 'race', label: 'Race (white | black | hispanic | asian | native | pacific | other)' },
-  { key: 'ethnicity', label: 'Ethnicity (not_hispanic | hispanic)' },
+  { key: 'race', label: 'Race (white | black | hispanic | asian | native | pacific | other | declined_to_answer)' },
+  { key: 'ethnicity', label: 'Ethnicity (not_hispanic | hispanic | declined_to_answer)' },
   { key: 'level_of_technology', label: 'Level of Technology (PC | MAC | Chrome book | Linux | Other)' },
   { key: 'years_competing', label: 'Years Competing (0-20)' },
 ]
@@ -315,6 +315,24 @@ export default function BulkImportPage() {
     setEdited(prev => ({ ...prev, [i]: { ...(prev as any)[i], [key]: val } as any }))
   }
 
+  // Helper to get allowed values for enumerated fields
+  const getEnumOptions = (key: FieldKey): readonly string[] | null => {
+    switch (key) {
+      case 'division': return allowedDivisions
+      case 'gender': return allowedGenders
+      case 'race': return allowedRaces
+      case 'ethnicity': return allowedEthnicities
+      case 'level_of_technology': return allowedLevels
+      case 'grade': return allowedGrades
+      default: return null
+    }
+  }
+
+  // Helper to format enum value for display
+  const formatEnumLabel = (value: string): string => {
+    return value.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+  }
+
   const startImport = async () => {
     if (isAdmin) return
     setSubmitting(true)
@@ -519,23 +537,64 @@ export default function BulkImportPage() {
                     {currentRows.map((r, i) => (
                       <tr key={i} className={errors[i]?.length ? 'bg-red-50/10' : ''}>
                         <td className="px-2 py-1 border-b border-meta-border text-meta-muted">{i + 1}</td>
-                        {FIELDS.map(f => (
-                          <td key={f.key} className="px-2 py-1 border-b border-meta-border whitespace-nowrap">
-                            <Input
-                              value={(edited[i]?.[f.key] ?? r[f.key]) || ''}
-                              onChange={e => updateEdit(i, f.key, e.target.value)}
-                              className={`bg-meta-dark border ${invalid[i]?.[f.key] ? 'border-red-500 ring-1 ring-red-500/70' : 'border-meta-border'} text-meta-light h-8 text-xs focus-visible:ring-1 focus-visible:ring-meta-accent ${
-                                (f.key === 'first_name' || f.key === 'last_name') ? 'w-40' :
-                                (f.key === 'is_18_or_over') ? 'w-28' :
-                                (f.key === 'grade' || f.key === 'years_competing') ? 'w-24' :
-                                (f.key === 'email_school' || f.key === 'email_personal' || f.key === 'parent_email') ? 'w-56' :
-                                (f.key === 'parent_name') ? 'w-48' :
-                                (f.key === 'division' || f.key === 'gender' || f.key === 'race' || f.key === 'ethnicity' || f.key === 'level_of_technology') ? 'w-56' :
-                                'w-40'
-                              }`}
-                            />
-                          </td>
-                        ))}
+                        {FIELDS.map(f => {
+                            const rawValue = (edited[i]?.[f.key] ?? r[f.key]) || ''
+                            const enumOptions = getEnumOptions(f.key)
+                            const isInvalid = invalid[i]?.[f.key]
+
+                            // Normalize the value for enum fields to match the select options
+                            let displayValue = rawValue
+                            if (enumOptions) {
+                              if (f.key === 'grade') {
+                                displayValue = normalizeGrade(rawValue)
+                              } else {
+                                displayValue = normalizeEnumValue(rawValue)
+                              }
+                            }
+
+                            return (
+                              <td key={f.key} className="px-2 py-1 border-b border-meta-border whitespace-nowrap">
+                                {enumOptions ? (
+                                  <div className="flex flex-col gap-1">
+                                    <select
+                                      value={displayValue}
+                                      onChange={e => updateEdit(i, f.key, e.target.value)}
+                                      className={`bg-meta-dark border ${isInvalid ? 'border-red-500 ring-1 ring-red-500/70' : 'border-meta-border'} text-meta-light h-8 text-xs rounded px-2 focus-visible:ring-1 focus-visible:ring-meta-accent ${
+                                        (f.key === 'grade') ? 'w-32' :
+                                        (f.key === 'division' || f.key === 'gender' || f.key === 'race' || f.key === 'ethnicity' || f.key === 'level_of_technology') ? 'w-56' :
+                                        'w-40'
+                                      }`}
+                                    >
+                                      <option value="">-- Select --</option>
+                                      {enumOptions.map(opt => (
+                                        <option key={opt} value={opt}>
+                                          {formatEnumLabel(opt)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    {rawValue && isInvalid && (
+                                      <div className="text-[10px] text-red-400 italic truncate max-w-[14rem]" title={`Original value: ${rawValue}`}>
+                                        Was: "{rawValue}"
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <Input
+                                    value={rawValue}
+                                    onChange={e => updateEdit(i, f.key, e.target.value)}
+                                    className={`bg-meta-dark border ${isInvalid ? 'border-red-500 ring-1 ring-red-500/70' : 'border-meta-border'} text-meta-light h-8 text-xs focus-visible:ring-1 focus-visible:ring-meta-accent ${
+                                      (f.key === 'first_name' || f.key === 'last_name') ? 'w-40' :
+                                      (f.key === 'is_18_or_over') ? 'w-28' :
+                                      (f.key === 'years_competing') ? 'w-24' :
+                                      (f.key === 'email_school' || f.key === 'email_personal' || f.key === 'parent_email') ? 'w-56' :
+                                      (f.key === 'parent_name') ? 'w-48' :
+                                      'w-40'
+                                    }`}
+                                  />
+                                )}
+                              </td>
+                            )
+                        })}
                       </tr>
                     ))}
                   </tbody>

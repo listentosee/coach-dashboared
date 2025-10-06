@@ -12,6 +12,7 @@ import type { CoachDirectoryUser } from '@/lib/coach-messaging/types'
 const modeTitle: Record<ComposerMode, string> = {
   dm: 'New Direct Message',
   group: 'New Group Message',
+  announcement: 'New Announcement',
   reply: 'Reply',
   forward: 'Forward Message',
 }
@@ -111,11 +112,15 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
                 ) : null}
               </div>
             </div>
+          ) : mode === 'announcement' ? (
+            <div className="space-y-2">
+              <div className="text-xs text-meta-muted">Announcement will be sent to all coaches.</div>
+            </div>
           ) : null}
 
-          {(mode === 'dm' || mode === 'group' || mode === 'forward') ? (
+          {(mode === 'dm' || mode === 'group' || mode === 'forward' || mode === 'announcement') ? (
             <Input
-              placeholder={mode === 'forward' ? 'Subject' : 'Subject (optional)'}
+              placeholder={mode === 'forward' || mode === 'announcement' ? 'Subject' : 'Subject (optional)'}
               value={subject}
               onChange={(event) => setSubject(event.target.value)}
             />
@@ -162,7 +167,8 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
                 loading ||
                 body.trim().length === 0 ||
                 (mode === 'dm' && !dmRecipientId) ||
-                ((mode === 'group' || mode === 'forward') && selectedGroupCount === 0)
+                ((mode === 'group' || mode === 'forward') && selectedGroupCount === 0) ||
+                (mode === 'announcement' && !subject.trim())
               }
             >
               {loading ? 'Sending…' : 'Send'}

@@ -96,7 +96,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'CyberNuggets SSO not configured' }, { status: 503, headers: { 'Cache-Control': 'no-store' } })
     }
 
-    const baseUrl = process.env.CYBERNUGGETS_SSO_BASE_URL || 'https://nuggets.cyber-guild.org'
+    let baseUrl = process.env.CYBERNUGGETS_SSO_BASE_URL || 'https://nuggets.cyber-guild.org'
+
+    // Ensure baseUrl has a protocol - add https:// if missing
+    if (baseUrl && !baseUrl.match(/^https?:\/\//i)) {
+      baseUrl = `https://${baseUrl}`
+    }
+
     let target: URL
     try {
       target = new URL('/auth/partner-sso', baseUrl)

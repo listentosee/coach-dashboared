@@ -26,6 +26,7 @@ interface DataTableProps<TData, TValue> {
   initialSortDesc?: boolean
   onRowClick?: (row: TData) => void
   getRowClassName?: (row: TData) => string | undefined
+  scrollContainerClassName?: string
 }
 
 export function DataTable<TData, TValue>({
@@ -35,6 +36,7 @@ export function DataTable<TData, TValue>({
   initialSortDesc,
   onRowClick,
   getRowClassName,
+  scrollContainerClassName,
 }: DataTableProps<TData, TValue>) {
   // Determine a safe initial sort: prefer provided id, else 'first_name' if present, else none
   const columnIds = React.useMemo(() => columns.map(c => (c.id as string) || (c as any).accessorKey).filter(Boolean), [columns])
@@ -59,10 +61,8 @@ export function DataTable<TData, TValue>({
     },
   })
 
-  return (
-    <div className="w-full">
-      <div className="rounded-md border">
-        <Table>
+  const tableMarkup = (
+    <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
@@ -110,6 +110,16 @@ export function DataTable<TData, TValue>({
             )}
           </TableBody>
         </Table>
+  )
+
+  return (
+    <div className="w-full">
+      <div className="rounded-md border">
+        {scrollContainerClassName ? (
+          <div className={scrollContainerClassName}>{tableMarkup}</div>
+        ) : (
+          tableMarkup
+        )}
       </div>
     </div>
   )

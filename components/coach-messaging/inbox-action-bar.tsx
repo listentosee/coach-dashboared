@@ -3,11 +3,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Filter, MessageSquare, Users, PenSquare } from 'lucide-react'
+import { Filter, MessageSquare, Users, PenSquare, Archive } from 'lucide-react'
 
 export type ConversationType = 'dm' | 'group' | 'announcement'
 export type InboxListMode = 'threads' | 'messages'
-export type InboxViewMode = 'all' | 'unread'
+export type InboxViewMode = 'all' | 'unread' | 'flagged'
 
 const typeMeta: Record<ConversationType, { label: string; icon: typeof MessageSquare }> = {
   announcement: { label: 'Announcements', icon: MessageSquare },
@@ -22,7 +22,9 @@ export type InboxActionBarProps = {
   onViewModeChange: (view: InboxViewMode) => void
   filters: Record<ConversationType, boolean>
   onFiltersChange: (filters: Record<ConversationType, boolean>) => void
-  onCompose?: (target: 'dm' | 'group') => void
+  onCompose?: (target: 'dm' | 'group' | 'announcement') => void
+  onViewArchived?: () => void
+  isAdmin?: boolean
 }
 
 export function InboxActionBar({
@@ -33,13 +35,16 @@ export function InboxActionBar({
   filters,
   onFiltersChange,
   onCompose,
+  onViewArchived,
+  isAdmin = false,
 }: InboxActionBarProps) {
   const [filterMenuOpen, setFilterMenuOpen] = useState(false)
   const [sendMenuOpen, setSendMenuOpen] = useState(false)
   const filterMenuRef = useRef<HTMLDivElement | null>(null)
   const sendMenuRef = useRef<HTMLDivElement | null>(null)
   const unreadOnly = viewMode === 'unread'
-  const conversationsChecked = !unreadOnly && listMode === 'threads'
+  const flaggedOnly = viewMode === 'flagged'
+  const conversationsChecked = !unreadOnly && !flaggedOnly && listMode === 'threads'
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -67,6 +72,12 @@ export function InboxActionBar({
     if (checked) onListModeChange('messages')
   }
 
+  const handleFlaggedToggle = (next: boolean | "indeterminate") => {
+    const checked = next === true
+    onViewModeChange(checked ? 'flagged' : 'all')
+    if (checked) onListModeChange('messages')
+  }
+
   const handleConversationsToggle = (next: boolean | "indeterminate") => {
     const checked = next === true
     onListModeChange(checked ? 'threads' : 'messages')
@@ -78,7 +89,7 @@ export function InboxActionBar({
         <Checkbox
           checked={conversationsChecked}
           onCheckedChange={handleConversationsToggle}
-          disabled={unreadOnly}
+          disabled={unreadOnly || flaggedOnly}
         />
         Conversations
       </label>
@@ -102,6 +113,10 @@ export function InboxActionBar({
               <Checkbox checked={unreadOnly} onCheckedChange={handleUnreadToggle} />
               <span>Unread only</span>
             </label>
+            <label className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-meta-dark/10">
+              <Checkbox checked={flaggedOnly} onCheckedChange={handleFlaggedToggle} />
+              <span>Flagged</span>
+            </label>
             <div className="mt-3 mb-1 rounded px-2 py-1 text-xs uppercase tracking-wide text-meta-muted">
               Conversation Types
             </div>
@@ -109,12 +124,12 @@ export function InboxActionBar({
               <label
                 key={type}
                 className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-meta-dark/10"
-                style={unreadOnly ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
+                style={unreadOnly || flaggedOnly ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
               >
                 <Checkbox
                   checked={filters[type]}
                   onCheckedChange={() => toggleFilter(type)}
-                  disabled={unreadOnly}
+                  disabled={unreadOnly || flaggedOnly}
                 />
                 <span>{typeMeta[type].label}</span>
               </label>
@@ -123,7 +138,19 @@ export function InboxActionBar({
         ) : null}
       </div>
 
-      <div className="relative ml-auto" ref={sendMenuRef}>
+      {onViewArchived && (
+        <Button
+          size="sm"
+          variant="secondary"
+          className="text-xs ml-auto"
+          onClick={onViewArchived}
+        >
+          <Archive className="mr-2 h-4 w-4" />
+          Archived
+        </Button>
+      )}
+
+      <div className="relative" ref={sendMenuRef}>
         <Button size="sm" className="text-xs" onClick={() => setSendMenuOpen((open) => !open)}>
           <PenSquare className="mr-2 h-4 w-4" />
           New
@@ -152,6 +179,19 @@ export function InboxActionBar({
               <Users className="h-4 w-4" />
               Group message
             </button>
+            {isAdmin && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-meta-dark/10"
+                onClick={() => {
+                  setSendMenuOpen(false)
+                  onCompose?.('announcement')
+                }}
+              >
+                <MessageSquare className="h-4 w-4" />
+                Announcement
+              </button>
+            )}
           </div>
         ) : null}
       </div>

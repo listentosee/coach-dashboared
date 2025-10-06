@@ -28,6 +28,8 @@ import {
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+type DivisionValue = 'middle_school' | 'high_school' | 'college';
+
 interface Competitor {
   id: string;
   first_name: string;
@@ -37,16 +39,18 @@ interface Competitor {
   is_active: boolean;
   team_id?: string;
   coach_id?: string;
+  division?: DivisionValue | null;
 }
 
 interface Team {
   id: string;
   name: string;
-  division?: string;
+  division?: DivisionValue | null;
   status: 'forming' | 'active' | 'archived';
   member_count: number;
   image_url?: string;
   coach_id?: string;
+  affiliation?: string | null;
 }
 
 interface TeamMember {
@@ -56,16 +60,31 @@ interface TeamMember {
     first_name: string;
     last_name: string;
     grade?: string;
+    division?: DivisionValue | null;
   };
 }
 
+const formatDivisionLabel = (division?: DivisionValue | null) => {
+  switch (division) {
+    case 'middle_school':
+      return 'Middle School';
+    case 'high_school':
+      return 'High School';
+    case 'college':
+      return 'College';
+    default:
+      return '—';
+  }
+};
+
 // Draggable Competitor Item
-function TeamImage({ teamId, teamName, hasImage }: { teamId: string; teamName: string; hasImage: boolean }) {
+function TeamImage({ teamId, teamName, hasImage, imageKey }: { teamId: string; teamName: string; hasImage: boolean; imageKey?: string }) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(hasImage);
 
   useEffect(() => {
     if (!hasImage) {
+      setImageUrl(null);
       setIsLoading(false);
       return;
     }
@@ -109,7 +128,7 @@ function TeamImage({ teamId, teamName, hasImage }: { teamId: string; teamName: s
     };
 
     fetchImageUrl();
-  }, [teamId, hasImage]);
+  }, [teamId, hasImage, imageKey]);
 
   if (!hasImage) {
     return (
@@ -179,9 +198,16 @@ function DraggableCompetitor({ competitor }: { competitor: Competitor }) {
         <p className="font-medium text-meta-light">
           {competitor.first_name} {competitor.last_name}
         </p>
-        {competitor.grade && (
-          <p className="text-sm text-meta-muted">Grade {competitor.grade}</p>
-        )}
+        <div className="flex flex-col text-sm text-meta-muted">
+          {competitor.grade ? (
+            <span>Grade {competitor.grade}</span>
+          ) : null}
+          {competitor.division ? (
+            <span>
+              {competitor.division.replace('_', ' ')}
+            </span>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -194,14 +220,16 @@ function DroppableTeamCard({
   onDeleteTeam, 
   onRemoveMember,
   onImageUpload,
+  onRemoveImage,
   disableActions,
   tooltip
-}: { 
-  team: Team; 
+}: {
+  team: Team;
   teamMembers: TeamMember[];
   onDeleteTeam: (teamId: string) => void;
   onRemoveMember: (teamId: string, competitorId: string) => void;
   onImageUpload: (teamId: string, file: File) => void;
+  onRemoveImage: (teamId: string) => void;
   disableActions?: boolean;
   tooltip?: string;
 }) {
@@ -217,6 +245,8 @@ function DroppableTeamCard({
       setImageUploading(true);
       await onImageUpload(team.id, file);
       setImageUploading(false);
+      // Reset input to allow re-selecting the same file
+      event.target.value = '';
     }
   };
 
@@ -243,28 +273,54 @@ function DroppableTeamCard({
             </Button>
 
             {/* Team Image */}
-            <div className="relative">
-              <TeamImage teamId={team.id} teamName={team.name} hasImage={!!team.image_url} />
-              
-              {/* Upload Overlay */}
-              <label className="absolute inset-0 cursor-pointer opacity-0 hover:opacity-100 transition-opacity" title={disableActions ? (tooltip || 'Select a coach to edit') : undefined}>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="hidden"
-                  disabled={imageUploading || !!disableActions}
-                />
-                <div className="w-24 h-24 rounded bg-black/50 flex items-center justify-center">
-                  <Upload className="h-6 w-6 text-white" />
+            <div className="relative group">
+              <TeamImage teamId={team.id} teamName={team.name} hasImage={!!team.image_url} imageKey={team.image_url || undefined} />
+
+              {/* Upload/Change Overlay */}
+              {!team.image_url ? (
+                <label className="absolute inset-0 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity" title={disableActions ? (tooltip || 'Select a coach to edit') : 'Upload team image'}>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={imageUploading || !!disableActions}
+                  />
+                  <div className="w-24 h-24 rounded bg-black/50 flex items-center justify-center">
+                    <Upload className="h-6 w-6 text-white" />
+                  </div>
+                </label>
+              ) : (
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="w-24 h-24 rounded bg-black/70 flex items-center justify-center gap-2">
+                    <label className="cursor-pointer" title={disableActions ? (tooltip || 'Select a coach to edit') : 'Change image'}>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        className="hidden"
+                        disabled={imageUploading || !!disableActions}
+                      />
+                      <Upload className="h-5 w-5 text-white hover:text-blue-300" />
+                    </label>
+                    <button
+                      onClick={() => onRemoveImage(team.id)}
+                      disabled={imageUploading || !!disableActions}
+                      className="text-white hover:text-red-300 disabled:opacity-50"
+                      title={disableActions ? (tooltip || 'Select a coach to edit') : 'Remove image'}
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
                 </div>
-              </label>
+              )}
             </div>
 
             <div>
               <h3 className="font-medium text-meta-light">{team.name}</h3>
-              <p className="text-sm text-meta-muted">
-                {team.member_count}/6
+              <p className="text-sm text-meta-muted flex flex-col leading-tight">
+                <span>{team.member_count}/6 members</span>
+                <span className="text-xs">Division: {formatDivisionLabel(team.division)}</span>
               </p>
             </div>
           </div>
@@ -328,6 +384,7 @@ export default function TeamsPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamMembers, setTeamMembers] = useState<Record<string, TeamMember[]>>({});
   const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamDivision, setNewTeamDivision] = useState<DivisionValue>('high_school');
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -375,7 +432,8 @@ export default function TeamsPage() {
             competitor:competitors(
               first_name,
               last_name,
-              grade
+              grade,
+              division
             )
           `)
           .eq('team_id', team.id);
@@ -430,12 +488,13 @@ export default function TeamsPage() {
       if (!user) return;
 
       // Optimistic update
-      const tempTeam: Team = {
-        id: `temp-${Date.now()}`,
-        name: newTeamName.trim(),
-        status: 'forming',
-        member_count: 0
-      };
+    const tempTeam: Team = {
+      id: `temp-${Date.now()}`,
+      name: newTeamName.trim(),
+      division: newTeamDivision,
+      status: 'forming',
+      member_count: 0
+    };
 
       setTeams(prev => [...prev, tempTeam]);
       setTeamMembers(prev => ({ ...prev, [tempTeam.id]: [] }));
@@ -444,14 +503,22 @@ export default function TeamsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: newTeamName.trim()
+          name: newTeamName.trim(),
+          division: newTeamDivision
         }),
       });
 
       if (response.ok) {
         const { team: newTeam } = await response.json();
         setTeams(prev => prev.map(t => 
-          t.id === tempTeam.id ? { ...newTeam, member_count: 0 } : t
+          t.id === tempTeam.id
+            ? {
+                ...newTeam,
+                member_count: 0,
+                division: (newTeam as Team).division ?? tempTeam.division ?? null,
+                status: (newTeam as Team).status ?? 'forming'
+              }
+            : t
         ));
         setTeamMembers(prev => {
           const newMembers = { ...prev };
@@ -460,6 +527,7 @@ export default function TeamsPage() {
           return newMembers;
         });
         setNewTeamName('');
+        setNewTeamDivision('high_school');
       } else {
         // Revert optimistic update
         setTeams(prev => prev.filter(t => t.id !== tempTeam.id));
@@ -492,6 +560,13 @@ export default function TeamsPage() {
     const prevMembers = JSON.parse(JSON.stringify(teamMembers)) as typeof teamMembers
     const prevTeams = [...teams]
 
+    if (team?.division && comp?.division && team.division !== comp.division) {
+      const competitorDivisionLabel = formatDivisionLabel(comp.division);
+      const teamDivisionLabel = formatDivisionLabel(team.division);
+      alert(`Cannot add ${comp?.first_name ?? 'Competitor'} ${comp?.last_name ?? ''} (${competitorDivisionLabel}) to ${team?.name ?? 'team'} (${teamDivisionLabel})`);
+      return;
+    }
+
     if (comp) {
       setAvailableCompetitors(prev => prev.filter(c => c.id !== competitorId))
       setTeamMembers(prev => ({
@@ -514,14 +589,23 @@ export default function TeamsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ competitor_id: competitorId }),
       })
-      if (!response.ok) throw new Error('Request failed')
+      if (!response.ok) {
+        let message = 'Failed to add member to team'
+        try {
+          const data = await response.json()
+          if (data?.error) message = data.error
+        } catch (parseError) {
+          // ignore parse errors
+        }
+        throw new Error(message)
+      }
     } catch (error) {
       // Revert optimistic updates on failure
       console.error('Error adding member to team:', error)
       setAvailableCompetitors(prevAvailable)
       setTeamMembers(prevMembers)
       setTeams(prevTeams)
-      alert('Failed to add member to team')
+      alert(error instanceof Error ? error.message : 'Failed to add member to team')
     }
   };
 
@@ -536,11 +620,14 @@ export default function TeamsPage() {
         // Optimistic update
         const member = teamMembers[teamId]?.find(m => m.competitor_id === competitorId);
         if (member) {
+          const team = teams.find(t => t.id === teamId);
+          const division = member.competitor.division ?? team?.division ?? null;
           setAvailableCompetitors(prev => [...prev, {
             id: competitorId,
             first_name: member.competitor.first_name,
             last_name: member.competitor.last_name,
             grade: member.competitor.grade,
+            division,
             status: 'profile',
             is_active: true,
             coach_id: coachId || undefined
@@ -644,6 +731,13 @@ export default function TeamsPage() {
     const team = teams.find(t => t.id === overId);
 
     if (competitor && team) {
+      if (team.division && competitor.division && team.division !== competitor.division) {
+        const competitorDivisionLabel = formatDivisionLabel(competitor.division);
+        const teamDivisionLabel = formatDivisionLabel(team.division);
+        alert(`Cannot add ${competitor.first_name} ${competitor.last_name} (${competitorDivisionLabel}) to ${team.name} (${teamDivisionLabel})`);
+        setActiveId(null);
+        return;
+      }
       addMemberToTeam(overId, activeId);
     }
 
@@ -651,11 +745,16 @@ export default function TeamsPage() {
   };
 
   // Filter available competitors based on search term
-  const filteredAvailableCompetitors = availableCompetitors.filter(competitor =>
-    competitor.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    competitor.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    competitor.grade?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredAvailableCompetitors = availableCompetitors.filter((competitor) => {
+    const term = searchTerm.toLowerCase();
+    const divisionLabel = competitor.division ? competitor.division.replace('_', ' ') : '';
+    return (
+      competitor.first_name.toLowerCase().includes(term) ||
+      competitor.last_name.toLowerCase().includes(term) ||
+      competitor.grade?.toLowerCase().includes(term) ||
+      divisionLabel.toLowerCase().includes(term)
+    );
+  });
 
   const uploadTeamImage = async (teamId: string, file: File) => {
     try {
@@ -683,6 +782,30 @@ export default function TeamsPage() {
     } catch (error) {
       console.error('Error uploading image:', error);
       alert('Failed to upload image');
+    }
+  };
+
+  const removeTeamImage = async (teamId: string) => {
+    if (!confirm('Remove team image?')) return;
+
+    try {
+      const response = await fetch(`/api/teams/${teamId}/upload-image`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setTeams(prev => prev.map(team =>
+          team.id === teamId
+            ? { ...team, image_url: null }
+            : team
+        ));
+      } else {
+        const errorData = await response.json();
+        alert(`Failed to remove image: ${errorData.error}`);
+      }
+    } catch (error) {
+      console.error('Error removing image:', error);
+      alert('Failed to remove image');
     }
   };
 
@@ -773,19 +896,30 @@ export default function TeamsPage() {
             <CardContent>
               {/* Create New Team */}
               <div className="mb-4 p-3 border border-meta-border rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Input
-                    placeholder="Enter team name"
-                    value={newTeamName}
-                    onChange={(e) => setNewTeamName(e.target.value)}
-                    className="flex-1 bg-meta-dark border-meta-border text-meta-light"
-                    onKeyPress={(e) => e.key === 'Enter' && createTeam()}
-                  />
-                  <Button
-                    onClick={createTeam}
-                    disabled={!newTeamName.trim() || isCreatingTeam || disableAdminAll}
-                    size="sm"
-                    className="bg-meta-accent hover:bg-blue-600"
+              <div className="flex items-center space-x-2">
+                <Input
+                  placeholder="Enter team name"
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  className="flex-1 bg-meta-dark border-meta-border text-meta-light"
+                  onKeyPress={(e) => e.key === 'Enter' && createTeam()}
+                />
+                <select
+                  value={newTeamDivision}
+                  onChange={(e) => setNewTeamDivision(e.target.value as DivisionValue)}
+                  className="bg-meta-dark border border-meta-border text-meta-light text-sm rounded px-2 py-2"
+                  aria-label="Team division"
+                  disabled={isCreatingTeam || disableAdminAll}
+                >
+                  <option value="middle_school">Middle School</option>
+                  <option value="high_school">High School</option>
+                  <option value="college">College</option>
+                </select>
+                <Button
+                  onClick={createTeam}
+                  disabled={!newTeamName.trim() || isCreatingTeam || disableAdminAll}
+                  size="sm"
+                  className="bg-meta-accent hover:bg-blue-600"
                     title={disableAdminAll ? 'Select a coach to edit' : 'Create new team'}
                   >
                     {isCreatingTeam ? 'Creating...' : <Plus className="h-4 w-4" />}
@@ -810,6 +944,7 @@ export default function TeamsPage() {
                       onDeleteTeam={deleteTeam}
                       onRemoveMember={removeMemberFromTeam}
                       onImageUpload={uploadTeamImage}
+                      onRemoveImage={removeTeamImage}
                       disableActions={disableAdminAll}
                       tooltip="Select a coach to edit"
                     />

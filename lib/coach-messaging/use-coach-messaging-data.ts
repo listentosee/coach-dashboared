@@ -61,46 +61,40 @@ async function fetchSnapshotFromApi(): Promise<MessagingSnapshot> {
     return map
   }
 
+  // KISS: Fetch ALL messages for each conversation directly (no threading complexity)
   await Promise.all(
     conversations.map(async (conversation) => {
       try {
-        const threadsRes = await fetch(`/api/messaging/conversations/${conversation.id}/threads?limit=200`)
-        if (!threadsRes.ok) {
+        const res = await fetch(`/api/messaging/conversations/${conversation.id}/messages?limit=500`)
+        if (!res.ok) {
           messagesByConversation[conversation.id] = []
           return
         }
-        const { threads = [] } = await threadsRes.json()
-        const threadMessages = await Promise.all(
-          (threads as any[]).map(async (thread) => {
-            try {
-              const res = await fetch(`/api/messaging/threads/${thread.root_id}`)
-              if (!res.ok) return []
-              const { messages = [] } = await res.json()
-              return (messages as any[]).map((row) => ({
-                id: `${row.id}`,
-                conversation_id: conversation.id,
-                sender_id: row.sender_id,
-                body: row.body,
-                created_at: row.created_at,
-                parent_message_id: row.parent_message_id != null ? `${row.parent_message_id}` : null,
-                sender_name: row.sender_name ?? null,
-                sender_email: row.sender_email ?? null,
-                read_at: row.read_at ?? null,
-              })) as CoachMessage[]
-            } catch {
-              return []
-            }
-          }),
-        )
-        const flattened = threadMessages.flat().sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-        const receiptLookup = await fetchReceiptsFor(flattened.map((message) => message.id))
+        const { messages = [] } = await res.json()
+        const normalized = (messages as any[]).map((row) => ({
+          id: `${row.id}`,
+          conversation_id: conversation.id,
+          sender_id: row.sender_id,
+          body: row.body,
+          created_at: row.created_at,
+          parent_message_id: row.parent_message_id != null ? `${row.parent_message_id}` : null,
+          sender_name: row.sender_name ?? null,
+          sender_email: row.sender_email ?? null,
+          read_at: row.read_at ?? null,
+          flagged: row.flagged ?? false,
+          archived_at: row.archived_at ?? null,
+        })) as CoachMessage[]
+
+        // Fetch read receipts
+        const receiptLookup = await fetchReceiptsFor(normalized.map((m) => m.id))
         const annotated = receiptLookup.size === 0
-          ? flattened
-          : flattened.map((message) => (
+          ? normalized
+          : normalized.map((message) => (
             receiptLookup.has(message.id)
               ? { ...message, read_at: receiptLookup.get(message.id) ?? message.read_at ?? null }
               : message
           ))
+
         messagesByConversation[conversation.id] = annotated
       } catch {
         messagesByConversation[conversation.id] = []
@@ -152,6 +146,39 @@ export function useCoachMessagingData(options: UseCoachMessagingDataOptions = {}
     if (!autoLoad) return
     void refresh()
   }, [autoLoad, refresh])
+
+  // Subscribe to all new messages for the current user
+  useEffect(() => {
+    if (!snapshot) return
+
+    let refreshTimer: NodeJS.Timeout | null = null
+
+    // Subscribe to any new message in conversations the user is a member of
+    // This catches DMs, groups, and announcement replies that create new conversations
+    const channel = supabase
+      .channel('coach-all-messages')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+        },
+        () => {
+          // Debounce refresh to avoid race conditions with send operations
+          if (refreshTimer) clearTimeout(refreshTimer)
+          refreshTimer = setTimeout(() => {
+            void refresh()
+          }, 300)
+        },
+      )
+      .subscribe()
+
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer)
+      supabase.removeChannel(channel)
+    }
+  }, [refresh, snapshot])
 
   const conversations = useMemo(() => snapshot?.conversations ?? [], [snapshot])
   const messagesByConversation = useMemo(() => snapshot?.messagesByConversation ?? {}, [snapshot])

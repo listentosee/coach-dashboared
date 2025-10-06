@@ -3,6 +3,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 
 // List conversations visible to the current user (RLS enforced)
+// Supports ?archived=true to get archived conversations
 export async function GET(req: NextRequest) {
   try {
     const cookieStore = await cookies()
@@ -10,7 +11,10 @@ export async function GET(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Prefer enriched RPC with display_title; fallback to original
+    const url = new URL(req.url)
+    const showArchived = url.searchParams.get('archived') === 'true'
+
+    // Use original function for backward compatibility
     let conversations: any[] | null = null
     let error: any = null
 
@@ -25,7 +29,13 @@ export async function GET(req: NextRequest) {
 
     if (error && !conversations) return NextResponse.json({ error: error.message }, { status: 400 })
 
-    const normalized = (conversations || []).map((c: any) => ({
+    // Filter archived vs non-archived (conversations don't have archiving anymore)
+    const filtered = (conversations || []).filter((c: any) => {
+      const isArchived = false // c.archived_at != null - conversations don't have archiving
+      return showArchived ? isArchived : !isArchived
+    })
+
+    const normalized = filtered.map((c: any) => ({
       ...c,
       unread_count: c.last_message_at ? Math.max(0, Number(c.unread_count ?? 0)) : 0,
     }))

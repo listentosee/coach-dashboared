@@ -3,8 +3,19 @@
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Edit, UserCheck, Gamepad2, Ban, Link as LinkIcon, ChevronDown, ChevronUp, ChevronsUpDown, Send } from "lucide-react"
+import { Edit, UserCheck, Gamepad2, Ban, Link as LinkIcon, ChevronDown, ChevronUp, ChevronsUpDown, Send, FileText } from "lucide-react"
 import { emailTemplates } from "@/components/ui/email-composer"
+
+const DIVISION_LABELS: Record<string, string> = {
+  middle_school: 'Middle School',
+  high_school: 'High School',
+  college: 'College',
+};
+
+const formatDivisionLabel = (division?: string | null) => {
+  if (!division) return null;
+  return DIVISION_LABELS[division] ?? division.replace(/_/g, ' ');
+};
 
 export interface Competitor {
   id: string;
@@ -15,6 +26,7 @@ export interface Competitor {
   parent_email?: string;
   is_18_or_over?: boolean;
   grade?: string;
+  division?: string | null;
   status: string;
   media_release_signed: boolean;
   media_release_date?: string;
@@ -75,7 +87,8 @@ export const createCompetitorColumns = (
   coachDirectory?: Record<string, { name?: string | null; email?: string | null }>,
   showCoachContextHint?: boolean,
   disableEdits?: boolean,
-  disableTooltip?: string
+  disableTooltip?: string,
+  onViewReportCard?: (id: string) => void
 ): ColumnDef<Competitor>[] => [
   {
     accessorKey: "first_name",
@@ -106,11 +119,16 @@ export const createCompetitorColumns = (
           <div className="font-medium text-meta-light">
             {competitor.first_name} {competitor.last_name}
           </div>
-          {competitor.grade && (
-            <div className="text-sm text-meta-muted">
-              Grade: {competitor.grade}
-            </div>
-          )}
+          {(() => {
+            const divisionLabel = formatDivisionLabel(competitor.division);
+            const gradeLabel = competitor.grade ? `G ${competitor.grade}` : null;
+            const badge = [divisionLabel, gradeLabel].filter(Boolean).join(' • ');
+            return badge ? (
+              <div className="text-sm text-meta-muted">
+                {badge}
+              </div>
+            ) : null;
+          })()}
           {showCoachHint && (
             <div className="text-xs text-meta-muted mt-1">
               Coach: {coachLabel}
@@ -320,6 +338,17 @@ export const createCompetitorColumns = (
 
       return (
         <div className="flex items-center justify-end space-x-1 w-full">
+          {competitor.game_platform_synced_at && onViewReportCard && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onViewReportCard(competitor.id)}
+              title="View Report Card"
+              className="p-1 text-meta-light hover:text-meta-accent"
+            >
+              <FileText className="h-4 w-4" />
+            </Button>
+          )}
           {canSend && (
             <Button
               variant="ghost"
@@ -350,11 +379,13 @@ export const createCompetitorColumns = (
               const newProfileUrl = await onRegenerateLink(competitor.id);
               if (newProfileUrl) {
                 const emailRegex = /.+@.+\..+/;
-                const recipients = competitor.is_18_or_over
-                  ? [competitor.email_school, competitor.email_personal].filter((value): value is string => !!value && emailRegex.test(value))
-                  : [competitor.parent_email].filter((value): value is string => !!value && emailRegex.test(value))
+                // Always use competitor's own email (school or personal), never parent
+                const recipients = [competitor.email_school, competitor.email_personal].filter((value): value is string => !!value && emailRegex.test(value))
 
-                if (!recipients.length) return;
+                if (!recipients.length) {
+                  alert(`No valid email found for ${competitor.first_name} ${competitor.last_name}. Please add a school or personal email before sharing the profile link.`);
+                  return;
+                }
 
                 const template = emailTemplates.profileUpdate(
                   competitor.first_name,

@@ -28,3 +28,60 @@ next-env.d.ts
 
 # local-only admin setup notes (contains plaintext hints; do not track)
 docs/Admin\ Setup.md
+
+# testing outputs (not the test files themselves)
+/test-results/
+/playwright-report/
+/playwright/.cache/
+*.spec.ts-snapshots/
+/coverage/
+/.nyc_output/
+trace.zip
+
+# mock environment and test infrastructure
+/mocks/
+/docker/
+scripts/metactf-mock-server.ts
+scripts/metactf-mock-seed.ts
+scripts/metactf-mock/
+scripts/preview-mock-data.ts
+scripts/verify-mock-data.ts
+scripts/test-odl-endpoint.ts
+scripts/testenv.sh
+scripts/check-sync-results.sql
+/docs/mock-environment/
+/tests/
+vitest.config.ts
+lib/**/*.test.ts
+lib/**/*.spec.ts
+
+# temporary test documentation
+SECURITY_TESTING.md
+TEST_RUN_FIXES.md
+/docs/testing/
+
+# garbage collection for refactors
+/.deleted/
+
+# sandbox server package (local testing only)
+/sandbox-server-package/
+
+# scratch/debug scripts and files
+debug_*.sql
+scripts/check-*.ts
+scripts/test-*.ts
+scripts/add-*.ts
+scripts/reset-*.ts
+scripts/force-*.ts
+scripts/get-*.ts
+scripts/check-*.sql
+scripts/sync-and-refresh.sh
+scripts/wave4-test-data.ts
+scripts/refresh-totals.ts
+scripts/cleanup-stuck-jobs.ts
+
+# project instructions for AI (local only)
+CLAUDE.md
+
+# print styles (development only)
+app/print.css

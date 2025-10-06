@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { isUserAdmin } from '@/lib/utils/admin-check';
-import { syncTeamWithGamePlatform } from '@/lib/integrations/game-platform/service';
+import { onboardCompetitorToGamePlatform, syncTeamWithGamePlatform } from '@/lib/integrations/game-platform/service';
 
 export async function DELETE(
   request: NextRequest,
@@ -22,6 +22,7 @@ export async function DELETE(
     const isAdmin = await isUserAdmin(supabase, user.id);
     const actingCoachId = isAdmin ? (cookieStore.get('admin_coach_id')?.value || null) : null
     const { id: teamId, competitor_id } = await context.params
+    const competitorId = competitor_id
     if (isAdmin && !actingCoachId) {
       return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
     }
@@ -86,6 +87,22 @@ export async function DELETE(
 
     let gamePlatformSync: any = null;
     try {
+      // If competitor still belongs to another team, ensure they're onboarded (covers mock reseed cases)
+      const { data: remainingMemberships } = await supabase
+        .from('team_members')
+        .select('team_id')
+        .eq('competitor_id', competitorId)
+        .limit(1);
+
+      if ((remainingMemberships?.length ?? 0) > 0) {
+        await onboardCompetitorToGamePlatform({
+          supabase,
+          competitorId,
+          coachContextId: team.coach_id,
+          logger: console,
+        });
+      }
+
       gamePlatformSync = await syncTeamWithGamePlatform({
         supabase,
         teamId,

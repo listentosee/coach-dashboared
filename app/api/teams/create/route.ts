@@ -8,7 +8,7 @@ import { syncTeamWithGamePlatform } from '@/lib/integrations/game-platform/servi
 const CreateTeamSchema = z.object({
   name: z.string().min(2, 'Team name must be at least 2 characters'),
   description: z.string().optional(),
-  division: z.string().optional(),
+  division: z.enum(['middle_school', 'high_school', 'college']).optional(),
   coach_id: z.string().uuid().optional(), // Optional for admins to specify coach
 });
 

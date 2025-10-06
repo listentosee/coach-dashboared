@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
 
     const ids = messageIds
       .map((id) => (typeof id === 'number' ? id.toString() : String(id ?? '').trim()))
-      .filter((id) => /^\d+$/.test(id))
+      .filter((id) => id.length > 0)
 
     if (ids.length === 0) {
       return NextResponse.json({ error: 'No valid message IDs' }, { status: 400 })
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     const ids = messageIdsParam
       .split(',')
       .map((s) => s.trim())
-      .filter((s) => /^\d+$/.test(s))
+      .filter((s) => s.length > 0)
 
     if (ids.length === 0) {
       return NextResponse.json({ error: 'No valid message IDs' }, { status: 400 })

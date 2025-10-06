@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { isUserAdmin } from '@/lib/utils/admin-check';
-import { calculateCompetitorStatus } from '@/lib/utils/competitor-status'
 
 export async function GET(request: NextRequest) {
   try {
@@ -117,7 +116,6 @@ export async function GET(request: NextRequest) {
     // Transform the data to include team information
     const transformedCompetitors = competitors?.map(competitor => {
       const teamMember = teamMembersData.find(tm => tm.competitor_id === competitor.id);
-      const computedStatus = calculateCompetitorStatus(competitor as any)
       const latestAgreement = agreementsData.find(a => a.competitor_id === competitor.id) || null
       const coachProfile = competitor.coach_id ? coachLookup.get(competitor.coach_id) : null
       const joinedName = coachProfile ? [coachProfile.first_name, coachProfile.last_name].filter(Boolean).join(' ').trim() : ''
@@ -133,7 +131,7 @@ export async function GET(request: NextRequest) {
         parent_email: (competitor as any).parent_email || null,
         is_18_or_over: competitor.is_18_or_over,
         grade: competitor.grade,
-        status: computedStatus,
+        status: competitor.status,
         division: (competitor as any).division || null,
         media_release_date: competitor.media_release_date,
         participation_agreement_date: competitor.participation_agreement_date,

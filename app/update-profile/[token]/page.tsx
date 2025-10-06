@@ -24,7 +24,7 @@ const createProfileUpdateSchema = (is18OrOver: boolean) => {
     gender: z.string().min(1, 'Gender is required'),
     race: z.string().min(1, 'Race is required'),
     ethnicity: z.string().min(1, 'Ethnicity is required'),
-    years_competing: z.number().min(0).max(20).optional(),
+    years_competing: z.string().default('0'),
     level_of_technology: z.string().min(1, 'Level of technology is required'),
     competition_type: z.enum(['trove', 'gymnasium', 'mayors_cup']),
     email_personal: z.string().email('Valid email is required').optional(),
@@ -79,7 +79,7 @@ export default function UpdateProfilePage() {
       gender: '',
       race: '',
       ethnicity: '',
-      years_competing: undefined as number | undefined,
+      years_competing: '0',
       level_of_technology: '',
       email_personal: '',
       parent_name: '',
@@ -115,8 +115,8 @@ export default function UpdateProfilePage() {
           race: data.profile.race || '',
           ethnicity: data.profile.ethnicity || '',
           years_competing: (data.profile.years_competing !== null && data.profile.years_competing !== undefined)
-            ? parseInt(data.profile.years_competing.toString(), 10)
-            : undefined,
+            ? data.profile.years_competing.toString()
+            : '0',
           level_of_technology: data.profile.level_of_technology || '',
           email_personal: data.profile.email_personal || '',
           parent_name: data.profile.parent_name || '',
@@ -137,14 +137,19 @@ export default function UpdateProfilePage() {
 
   const onSubmit = async (values: any) => {
     console.log('Form submitted with values:', values);
-    
+
     // Only send fields that are in the current schema
     const submissionData = { ...values };
     if (profile?.is_18_or_over) {
       delete submissionData.parent_name;
       delete submissionData.parent_email;
     }
-    
+
+    // Convert years_competing from string to number for API
+    if (submissionData.years_competing) {
+      submissionData.years_competing = parseInt(submissionData.years_competing, 10);
+    }
+
     try {
       const response = await fetch(`/api/competitors/profile/${params.token}/update`, {
         method: 'PUT',
@@ -365,17 +370,20 @@ export default function UpdateProfilePage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-meta-light">Years Competing</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              onChange={(e) => field.onChange(e.target.value === '' ? undefined : parseInt(e.target.value, 10) || 0)}
-                              type="number"
-                              min="0"
-                              max="20"
-                              placeholder="0"
-                              className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
-                            />
-                          </FormControl>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">
+                                <SelectValue placeholder="Select years" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent className="bg-meta-card border-meta-border text-meta-light">
+                              {Array.from({ length: 21 }, (_, i) => (
+                                <SelectItem key={i} value={i.toString()}>
+                                  {i} {i === 1 ? 'year' : 'years'}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}

@@ -83,6 +83,11 @@ export default function AdminToolsLink() {
               Assist Coach
             </Button>
           </Link>
+          <Link href="/dashboard/admin-tools/cron-jobs">
+            <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
+              Cron Jobs
+            </Button>
+          </Link>
         </div>
       )}
     </div>

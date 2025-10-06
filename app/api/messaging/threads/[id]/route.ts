@@ -15,7 +15,7 @@ export async function GET(
 
     const { id } = await context.params
     const threadRootId = id.trim()
-    if (!/^\d+$/.test(threadRootId)) {
+    if (threadRootId.length === 0) {
       return NextResponse.json({ error: 'Invalid thread ID' }, { status: 400 })
     }
 

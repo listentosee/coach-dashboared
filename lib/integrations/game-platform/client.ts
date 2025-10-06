@@ -41,12 +41,17 @@ export interface AssignMemberPayload {
   syned_user_id: string;
 }
 
+export interface DeleteTeamPayload {
+  syned_team_id: string;
+}
+
 export interface GetTeamAssignmentsPayload {
   syned_team_id?: string | null;
 }
 
 export interface GetScoresPayload {
   syned_user_id?: string | null;
+  after_time_unix?: number | null;
 }
 
 export interface GetFlashCtfProgressPayload {
@@ -86,6 +91,17 @@ const TeamAssignmentsResponseSchema = z.object({
   total_count: z.number(),
 });
 
+const ChallengeSolveSchema = z.object({
+  challenge_solve_id: z.number(),
+  challenge_id: z.number(),
+  challenge_title: z.string(),
+  challenge_points: z.number(),
+  challenge_category: z.string(),
+  timestamp_unix: z.number(),
+  challenge_retired: z.boolean(),
+  nist_nice_work_roles: z.array(z.string()),
+});
+
 const ScoresResponseSchema = z.object({
   syned_user_id: z.string().nullable().optional(),
   metactf_user_id: z.number(),
@@ -93,14 +109,17 @@ const ScoresResponseSchema = z.object({
   total_points: z.number(),
   last_accessed_unix_timestamp: z.number(),
   category_points: z.record(z.number()),
+  challenge_solves: z.array(ChallengeSolveSchema).optional(),
 });
 
 const FlashCtfEntrySchema = z.object({
   flash_ctf_name: z.string(),
   flash_ctf_time_start_unix: z.number(),
+  flash_ctf_time_end_unix: z.number().optional(), // Not in spec but included for forward compatibility
   challenges_solved: z.number(),
   points_earned: z.number(),
   rank: z.number(),
+  challenge_solves: z.array(ChallengeSolveSchema), // Required per API spec
 });
 
 const FlashCtfProgressResponseSchema = z.object({
@@ -135,7 +154,7 @@ export class GamePlatformClient {
 
   constructor(options: GamePlatformClientOptions = {}) {
     const envToken = process.env.GAME_PLATFORM_API_TOKEN;
-    const envBaseUrl = process.env.GAME_PLATFORM_API_BASE_URL;
+    const envBaseUrl = process.env.GAME_PLATFORM_API_BASE_URL ?? process.env.META_CTF_BASE_URL;
 
     this.token = options.token ?? envToken ?? '';
     this.baseUrl = options.baseUrl ?? envBaseUrl ?? 'https://api.metactf.com/integrations/syned/v1';
@@ -168,6 +187,10 @@ export class GamePlatformClient {
     return this.request(TeamAssignmentResponseSchema, '/users/assign_team', { method: 'POST', body: payload, signal });
   }
 
+  async deleteTeam(payload: DeleteTeamPayload, signal?: AbortSignal) {
+    return this.request(GenericSuccessSchema, '/teams/delete', { method: 'POST', body: payload, signal });
+  }
+
   async getTeamAssignments(payload: GetTeamAssignmentsPayload, signal?: AbortSignal) {
     return this.request(TeamAssignmentsResponseSchema, '/users/get_team_assignments', {
       method: 'GET',
@@ -179,7 +202,10 @@ export class GamePlatformClient {
   async getScores(payload: GetScoresPayload = {}, signal?: AbortSignal) {
     return this.request(ScoresResponseSchema, '/scores/get_odl_scores', {
       method: 'GET',
-      query: { syned_user_id: payload.syned_user_id ?? undefined },
+      query: {
+        syned_user_id: payload.syned_user_id ?? undefined,
+        after_time_unix: payload.after_time_unix ?? undefined,
+      },
       signal,
     });
   }
@@ -299,4 +325,4 @@ export class GamePlatformClient {
   }
 }
 
-export type GamePlatformClientMock = Pick<GamePlatformClient, 'createUser' | 'createTeam' | 'assignMemberToTeam' | 'getTeamAssignments' | 'getScores' | 'sendPasswordReset'>;
+export type GamePlatformClientMock = Pick<GamePlatformClient, 'createUser' | 'createTeam' | 'assignMemberToTeam' | 'deleteTeam' | 'getTeamAssignments' | 'getScores' | 'sendPasswordReset'>;

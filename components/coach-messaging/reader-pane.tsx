@@ -9,12 +9,13 @@ import { Badge } from '@/components/ui/badge'
 export type CoachReaderPaneProps = {
   selection: CoachInboxSelection | null
   currentUserId?: string
+  userRole?: string
   onReply?: (selection: CoachInboxSelection) => void
   onForward?: (selection: CoachInboxSelection) => void
   subscribeToThread?: (conversationId: string, threadId: string) => (() => void) | void
 }
 
-export function CoachReaderPane({ selection, currentUserId = '', onReply, onForward, subscribeToThread }: CoachReaderPaneProps) {
+export function CoachReaderPane({ selection, currentUserId = '', userRole = 'coach', onReply, onForward, subscribeToThread }: CoachReaderPaneProps) {
   const [showNotSeen, setShowNotSeen] = useState(true)
 
   useEffect(() => {
@@ -69,7 +70,7 @@ export function CoachReaderPane({ selection, currentUserId = '', onReply, onForw
           <div className="text-sm text-meta-muted">Select a conversation, thread, or message to view.</div>
         )}
       </div>
-      {selection ? (
+      {selection && userRole === 'admin' ? (
         <div className="flex items-center gap-2 border-b border-meta-border bg-meta-card/40 px-4 py-2 text-[11px] text-meta-muted">
           <span className="uppercase tracking-wide">{label}:</span>
           <span className="whitespace-pre-wrap break-words">

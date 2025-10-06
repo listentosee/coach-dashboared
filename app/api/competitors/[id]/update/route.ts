@@ -101,7 +101,7 @@ export async function PUT(
     const { error: statusError } = await supabase
       .from('competitors')
       .update({ status: newStatus })
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (statusError) {
       console.error('Status update error:', statusError);

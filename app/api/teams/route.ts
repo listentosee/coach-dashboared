@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('teams')
-      .select('id, name, coach_id, image_url')
+      .select('id, name, coach_id, image_url, division, status, affiliation')
       .order('name', { ascending: true });
 
     if (!isAdmin) {
@@ -38,6 +38,9 @@ export async function GET(request: NextRequest) {
       id: team.id,
       name: team.name,
       image_url: team.image_url,
+      division: team.division,
+      status: team.status ?? 'forming',
+      affiliation: team.affiliation ?? null,
       ...(isAdmin && { coach_id: team.coach_id })
     })) || [];
 

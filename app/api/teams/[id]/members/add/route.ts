@@ -3,7 +3,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { z } from 'zod';
-import { syncTeamWithGamePlatform } from '@/lib/integrations/game-platform/service';
+import { onboardCompetitorToGamePlatform, syncTeamWithGamePlatform } from '@/lib/integrations/game-platform/service';
 
 const AddMemberSchema = z.object({
   competitor_id: z.string().uuid('Invalid competitor ID'),
@@ -39,7 +39,7 @@ export async function POST(
     // Verify the team exists and user has access
     let teamQuery = supabase
       .from('teams')
-      .select('id, name, status, coach_id')
+      .select('id, name, status, coach_id, division')
       .eq('id', id);
 
     if (!isAdmin) {
@@ -57,7 +57,7 @@ export async function POST(
     // Verify the competitor exists and user has access
     let competitorQuery = supabase
       .from('competitors')
-      .select('id, first_name, last_name, coach_id')
+      .select('id, first_name, last_name, coach_id, division')
       .eq('id', validatedData.competitor_id);
 
     if (!isAdmin) {
@@ -70,6 +70,13 @@ export async function POST(
 
     if (competitorError || !competitor) {
       return NextResponse.json({ error: 'Competitor not found or access denied' }, { status: 404 });
+    }
+
+    // Check if competitor division matches team division if one is set
+    if (team.division && competitor.division && team.division !== competitor.division) {
+      return NextResponse.json({
+        error: `${competitor.first_name} ${competitor.last_name} is designated as ${competitor.division.replace('_', ' ')} and cannot join a ${team.division.replace('_', ' ')} team`,
+      }, { status: 400 });
     }
 
     // Check if competitor is already on a team
@@ -144,6 +151,24 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to add member: ' + addError.message }, { status: 400 });
     }
 
+    // Attempt to onboard competitor if they are not yet on the Game Platform
+    let competitorOnboarding: any = null;
+    if (!competitor.game_platform_id) {
+      try {
+        competitorOnboarding = await onboardCompetitorToGamePlatform({
+          supabase,
+          competitorId: validatedData.competitor_id,
+          coachContextId: team.coach_id,
+          logger: console,
+        });
+      } catch (onboardError: any) {
+        console.error('Failed to onboard competitor during team assignment', onboardError);
+        return NextResponse.json({
+          error: onboardError?.message ?? 'Failed to register competitor on Game Platform',
+        }, { status: 400 });
+      }
+    }
+
     // Log the activity
     await supabase
       .from('activity_logs')
@@ -174,6 +199,7 @@ export async function POST(
 
     return NextResponse.json({
       teamMember,
+      competitorOnboarding,
       message: 'Member added successfully',
       gamePlatformSync,
     });

@@ -1,15 +1,22 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type JobStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
-export type JobTaskType = 'game_platform_sync';
+export type JobTaskType = 'game_platform_sync' | 'game_platform_totals_sweep';
 
 export interface GamePlatformSyncPayload {
   dryRun?: boolean;
   coachId?: string | null;
 }
 
+export interface GamePlatformTotalsSweepPayload {
+  dryRun?: boolean;
+  coachId?: string | null;
+  batchSize?: number;
+}
+
 export interface JobPayloadMap {
   game_platform_sync: GamePlatformSyncPayload;
+  game_platform_totals_sweep: GamePlatformTotalsSweepPayload;
 }
 
 export type JobPayload<T extends JobTaskType = JobTaskType> = JobPayloadMap[T];

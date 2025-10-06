@@ -16,11 +16,64 @@ export async function GET(
     const { id } = await context.params
 
     const url = new URL(req.url)
-    const limit = parseInt(url.searchParams.get('limit') || '50', 10)
+    const limit = parseInt(url.searchParams.get('limit') || '500', 10)
+    const includeArchived = url.searchParams.get('includeArchived') === 'true'
 
-    // Use V2 RPC that hides private replies from other users
-    const { data: messages, error } = await supabase
-      .rpc('list_messages_with_sender_v2', { p_conversation_id: id, p_limit: Math.min(Math.max(limit, 1), 200) })
+    // Use FERPA-compliant function that includes per-user state (flagged, archived_at)
+    // If includeArchived=true, fetch directly with LEFT JOIN to get archived_at field
+    let messages: any[] | null = null
+    let error: any = null
+
+    if (includeArchived) {
+      // Fetch all messages including archived ones with per-user state
+      // Use a manual query since we need to filter message_user_state by current user
+      const { data: allMessages, error: fetchError } = await supabase
+        .from('messages')
+        .select('id, conversation_id, sender_id, body, created_at, parent_message_id')
+        .eq('conversation_id', id)
+        .order('created_at', { ascending: false })
+        .limit(Math.min(Math.max(limit, 1), 1000))
+
+      if (fetchError) {
+        error = fetchError
+        messages = []
+      } else {
+        // Fetch profiles and user state separately
+        const messageIds = (allMessages || []).map(m => m.id)
+        const senderIds = [...new Set((allMessages || []).map(m => m.sender_id))]
+
+        const [profilesRes, stateRes] = await Promise.all([
+          supabase.from('profiles').select('id, first_name, last_name, email').in('id', senderIds),
+          supabase.from('message_user_state').select('message_id, flagged, archived_at').in('message_id', messageIds).eq('user_id', user.id)
+        ])
+
+        const profileMap = new Map((profilesRes.data || []).map(p => [p.id, p]))
+        const stateMap = new Map((stateRes.data || []).map(s => [s.message_id, s]))
+
+        messages = (allMessages || []).map((row: any) => {
+          const profile = profileMap.get(row.sender_id)
+          const state = stateMap.get(row.id)
+          return {
+            id: row.id,
+            conversation_id: row.conversation_id,
+            sender_id: row.sender_id,
+            body: row.body,
+            created_at: row.created_at,
+            parent_message_id: row.parent_message_id,
+            sender_name: profile ? `${profile.first_name} ${profile.last_name}` : null,
+            sender_email: profile?.email || null,
+            flagged: state?.flagged || false,
+            archived_at: state?.archived_at || null,
+          }
+        })
+      }
+    } else {
+      // Use function that filters out archived messages
+      const result = await supabase
+        .rpc('get_conversation_messages_with_state', { p_conversation_id: id, p_user_id: user.id })
+      messages = result.data
+      error = result.error
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     const normalized = (messages || []).map((row: any) => ({
@@ -48,7 +101,7 @@ export async function POST(
 
     const { id } = await context.params
 
-    const { body, parentMessageId, privateTo } = await req.json() as { body?: string; parentMessageId?: string | number | null; privateTo?: string }
+    const { body, parentMessageId } = await req.json() as { body?: string; parentMessageId?: string | number | null }
     if (!body || body.trim().length === 0) {
       return NextResponse.json({ error: 'Message body required' }, { status: 400 })
     }
@@ -56,30 +109,9 @@ export async function POST(
     let normalizedParentId: string | null = null
     if (parentMessageId != null) {
       const asString = typeof parentMessageId === 'number' ? parentMessageId.toString() : String(parentMessageId).trim()
-      if (/^\d+$/.test(asString)) {
+      if (asString.length > 0) {
         normalizedParentId = asString
       }
-    }
-
-    // Private reply path (e.g., announcements): use RPC to bypass RLS safely
-    if (privateTo) {
-      // Confirm conversation type is announcement; otherwise fall back to normal insert
-      const { data: conv, error: convErr } = await supabase
-        .from('conversations')
-        .select('type')
-        .eq('id', id)
-        .single()
-      if (!convErr && conv?.type === 'announcement') {
-        const { data, error } = await supabase.rpc('post_private_reply', {
-          p_conversation_id: id,
-          p_body: body,
-          p_recipient: privateTo,
-          p_parent_message_id: normalizedParentId ? (normalizedParentId as any) : null
-        })
-        if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-        return NextResponse.json({ ok: true, id: data })
-      }
-      // Not an announcement; proceed to normal insert below
     }
 
     const payload: Record<string, any> = { conversation_id: id, sender_id: user.id, body }

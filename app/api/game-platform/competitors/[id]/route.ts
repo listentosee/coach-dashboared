@@ -55,9 +55,12 @@ export async function POST(
       ? dryRunOverride === 'true'
       : !FEATURE_ENABLED;
 
+    const coachContextId = isAdmin ? actingCoachId : user.id;
+
     const result = await onboardCompetitorToGamePlatform({
       supabase,
       competitorId: id,
+      coachContextId,
       dryRun,
       logger: console,
     });

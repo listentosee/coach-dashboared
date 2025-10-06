@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { createClient } from '@supabase/supabase-js';
-import { syncAllCompetitorGameStats } from '@/lib/integrations/game-platform/service';
+import { syncAllCompetitorGameStats, syncAllTeamsWithGamePlatform } from '@/lib/integrations/game-platform/service';
 
 const INTERNAL_SYNC_SECRET = process.env.INTERNAL_SYNC_SECRET;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -39,14 +39,27 @@ async function handleSync({
   coachId: string | null;
   dryRun: boolean;
 }) {
-  const summary = await syncAllCompetitorGameStats({
+  const competitorSummary = await syncAllCompetitorGameStats({
     supabase,
     dryRun,
     logger: console,
     coachId,
   });
 
-  return NextResponse.json({ summary, dryRun });
+  const teamSummary = await syncAllTeamsWithGamePlatform({
+    supabase,
+    dryRun,
+    logger: console,
+    coachId,
+  });
+
+  return NextResponse.json({
+    dryRun,
+    summary: {
+      competitors: competitorSummary,
+      teams: teamSummary,
+    },
+  });
 }
 
 export async function POST(request: NextRequest) {

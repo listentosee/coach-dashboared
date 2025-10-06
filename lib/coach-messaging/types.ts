@@ -7,6 +7,9 @@ export type CoachConversation = {
   unread_count?: number | null
   last_message_at?: string | null
   display_title?: string | null
+  pinned?: boolean
+  pinned_at?: string | null
+  archived_at?: string | null
 }
 
 export type CoachMessage = {
@@ -19,6 +22,8 @@ export type CoachMessage = {
   sender_name?: string | null
   sender_email?: string | null
   read_at?: string | null
+  flagged?: boolean
+  archived_at?: string | null
 }
 
 export type CoachDirectoryUser = {

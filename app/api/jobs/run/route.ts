@@ -7,6 +7,7 @@ import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase';
 
 interface RunRequestBody {
   limit?: number;
+  force?: boolean;
 }
 
 function getSharedSecret(): string {
@@ -82,6 +83,7 @@ export async function POST(req: NextRequest) {
 
     const body = (await req.json().catch(() => ({}))) as RunRequestBody;
     const limit = body.limit && body.limit > 0 ? Math.min(body.limit, 10) : 5;
+    const force = body.force === true;
 
     const supabase = getServiceRoleSupabaseClient();
     const { data: settings } = await supabase
@@ -90,7 +92,8 @@ export async function POST(req: NextRequest) {
       .eq('id', 1)
       .maybeSingle();
 
-    if (settings && settings.processing_enabled === false) {
+    // Check processing enabled unless force flag is set
+    if (!force && settings && settings.processing_enabled === false) {
       return NextResponse.json({
         status: 'paused',
         processed: 0,

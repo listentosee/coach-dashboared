@@ -8,6 +8,8 @@ import { JobProcessingToggle } from '@/components/dashboard/admin/job-processing
 import { JobHealthDialog } from '@/components/dashboard/admin/job-health-dialog';
 import { QuickSyncActions } from '@/components/dashboard/admin/quick-sync-actions';
 import { RunWorkerButton } from '@/components/dashboard/admin/run-worker-button';
+import { RefreshQueueButton } from '@/components/dashboard/admin/refresh-queue-button';
+import { RecurringJobsManager } from '@/components/dashboard/admin/recurring-jobs-manager';
 
 interface SearchParams {
   status?: string;
@@ -74,6 +76,10 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
     .select('processing_enabled, paused_reason, updated_at')
     .eq('id', 1)
     .single();
+  const { data: recurringJobs } = await supabase
+    .from('recurring_jobs')
+    .select('*')
+    .order('name');
   const quickStartContent = loadQuickStart();
 
   return (
@@ -95,6 +101,12 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
       {/* Quick Sync Actions */}
       <QuickSyncActions className="mb-4" />
 
+      {/* Recurring Jobs Schedule */}
+      {recurringJobs && recurringJobs.length > 0 && (
+        <RecurringJobsManager jobs={recurringJobs} />
+      )}
+      <div className="mb-4" />
+
       {/* Processing Toggle - Right above status boxes */}
       <div className="mb-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -103,6 +115,7 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
             pausedReason={settings?.paused_reason ?? undefined}
           />
           <RunWorkerButton />
+          <RefreshQueueButton />
         </div>
         <p className="text-xs text-muted-foreground flex-shrink-0">Total jobs: {totalJobs ?? 0}</p>
       </div>

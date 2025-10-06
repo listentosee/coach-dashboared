@@ -75,11 +75,54 @@ async function processJob(job: JobRecord) {
   }
 }
 
+async function checkRecurringJobs(supabase: ReturnType<typeof getServiceRoleSupabaseClient>) {
+  // Get recurring jobs that need to be enqueued
+  const { data: recurringJobs, error } = await supabase.rpc('get_recurring_jobs_to_enqueue');
+
+  if (error) {
+    console.error('[recurring-jobs] Failed to get recurring jobs:', error);
+    return;
+  }
+
+  if (!recurringJobs || recurringJobs.length === 0) {
+    return;
+  }
+
+  console.log(`[recurring-jobs] Found ${recurringJobs.length} recurring jobs to enqueue`);
+
+  for (const rj of recurringJobs) {
+    try {
+      // Enqueue the job
+      const { data: job, error: enqueueError } = await supabase.rpc('job_queue_enqueue', {
+        p_task_type: rj.task_type,
+        p_payload: rj.payload,
+        p_run_at: new Date().toISOString(),
+      });
+
+      if (enqueueError) {
+        console.error(`[recurring-jobs] Failed to enqueue ${rj.name}:`, enqueueError);
+        continue;
+      }
+
+      // Mark as enqueued
+      await supabase.rpc('mark_recurring_job_enqueued', { job_id: rj.id });
+
+      console.log(`[recurring-jobs] Enqueued ${rj.name} (${rj.task_type}) - next run in ${rj.schedule_interval_minutes} minutes`);
+    } catch (error) {
+      console.error(`[recurring-jobs] Error processing ${rj.name}:`, error);
+    }
+  }
+}
+
 export async function runJobs(options: RunJobsOptions = {}): Promise<RunJobsResult> {
   const limit = options.limit && options.limit > 0 ? Math.min(options.limit, 10) : 5;
   const force = options.force === true;
 
   const supabase = getServiceRoleSupabaseClient();
+
+  // Check for recurring jobs that need to be scheduled
+  await checkRecurringJobs(supabase);
+
   const { data: settings } = await supabase
     .from('job_queue_settings')
     .select('processing_enabled, paused_reason')

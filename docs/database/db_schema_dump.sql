@@ -772,6 +772,30 @@ COMMENT ON FUNCTION "public"."get_message_user_state"("p_message_id" "uuid") IS 
 
 
 
+CREATE OR REPLACE FUNCTION "public"."get_recurring_jobs_to_enqueue"() RETURNS TABLE("id" "uuid", "name" "text", "task_type" "text", "payload" "jsonb", "schedule_interval_minutes" integer)
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    rj.id,
+    rj.name,
+    rj.task_type,
+    rj.payload,
+    rj.schedule_interval_minutes
+  FROM recurring_jobs rj
+  WHERE rj.enabled = true
+    AND (
+      rj.last_enqueued_at IS NULL
+      OR rj.last_enqueued_at < now() - (rj.schedule_interval_minutes || ' minutes')::interval
+    );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_recurring_jobs_to_enqueue"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."get_thread_messages"("p_thread_root_id" "uuid") RETURNS TABLE("id" "uuid", "sender_id" "uuid", "body" "text", "created_at" timestamp with time zone, "parent_message_id" "uuid", "sender_name" "text", "sender_email" "text", "flagged" boolean)
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1497,6 +1521,21 @@ $$;
 
 
 ALTER FUNCTION "public"."mark_messages_read"("p_message_ids" "uuid"[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."mark_recurring_job_enqueued"("job_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  UPDATE recurring_jobs
+  SET last_enqueued_at = now(),
+      updated_at = now()
+  WHERE id = job_id;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."mark_recurring_job_enqueued"("job_id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."post_private_reply"("p_conversation_id" "uuid", "p_body" "text", "p_recipient" "uuid") RETURNS bigint
@@ -2246,6 +2285,37 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
 ALTER TABLE "public"."profiles" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."recurring_jobs" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "name" "text" NOT NULL,
+    "task_type" "text" NOT NULL,
+    "payload" "jsonb" DEFAULT '{}'::"jsonb",
+    "schedule_interval_minutes" integer NOT NULL,
+    "enabled" boolean DEFAULT true NOT NULL,
+    "last_enqueued_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "created_by" "uuid",
+    CONSTRAINT "valid_interval" CHECK (("schedule_interval_minutes" > 0)),
+    CONSTRAINT "valid_task_type" CHECK (("task_type" = ANY (ARRAY['game_platform_sync'::"text", 'game_platform_totals_sweep'::"text"])))
+);
+
+
+ALTER TABLE "public"."recurring_jobs" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."recurring_jobs" IS 'Recurring background jobs scheduled by admins. The cron worker checks this table and enqueues jobs as needed.';
+
+
+
+COMMENT ON COLUMN "public"."recurring_jobs"."schedule_interval_minutes" IS 'How often to run this job (e.g., 60 = hourly, 1440 = daily)';
+
+
+
+COMMENT ON COLUMN "public"."recurring_jobs"."last_enqueued_at" IS 'Last time we created a job_queue entry for this recurring job';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."system_config" (
     "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
     "key" "text" NOT NULL,
@@ -2425,6 +2495,16 @@ ALTER TABLE ONLY "public"."profiles"
 
 
 
+ALTER TABLE ONLY "public"."recurring_jobs"
+    ADD CONSTRAINT "recurring_jobs_name_key" UNIQUE ("name");
+
+
+
+ALTER TABLE ONLY "public"."recurring_jobs"
+    ADD CONSTRAINT "recurring_jobs_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."system_config"
     ADD CONSTRAINT "system_config_key_key" UNIQUE ("key");
 
@@ -2576,6 +2656,10 @@ CREATE UNIQUE INDEX "idx_profiles_game_platform_user_id" ON "public"."profiles" 
 
 
 
+CREATE INDEX "idx_recurring_jobs_enabled_next_run" ON "public"."recurring_jobs" USING "btree" ("enabled", "last_enqueued_at") WHERE ("enabled" = true);
+
+
+
 CREATE INDEX "idx_sync_runs_completed" ON "public"."game_platform_sync_runs" USING "btree" ("completed_at" DESC) WHERE ("status" = 'completed'::"text");
 
 
@@ -2722,6 +2806,11 @@ ALTER TABLE ONLY "public"."messages"
 
 ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_id_fkey" FOREIGN KEY ("id") REFERENCES "auth"."users"("id");
+
+
+
+ALTER TABLE ONLY "public"."recurring_jobs"
+    ADD CONSTRAINT "recurring_jobs_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."profiles"("id");
 
 
 
@@ -3116,6 +3205,19 @@ CREATE POLICY "messages_update_admin" ON "public"."messages" FOR UPDATE USING ("
 
 
 ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."recurring_jobs" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "recurring_jobs_admin_all" ON "public"."recurring_jobs" TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."profiles"
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"public"."user_role")))));
+
+
+
+CREATE POLICY "recurring_jobs_service_role" ON "public"."recurring_jobs" TO "service_role" USING (true);
+
 
 
 CREATE POLICY "service_role_full_access" ON "public"."agreements" USING (("auth"."role"() = 'service_role'::"text"));
@@ -3576,6 +3678,12 @@ GRANT ALL ON FUNCTION "public"."get_message_user_state"("p_message_id" "uuid") T
 
 
 
+GRANT ALL ON FUNCTION "public"."get_recurring_jobs_to_enqueue"() TO "anon";
+GRANT ALL ON FUNCTION "public"."get_recurring_jobs_to_enqueue"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_recurring_jobs_to_enqueue"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."get_thread_messages"("p_thread_root_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."get_thread_messages"("p_thread_root_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_thread_messages"("p_thread_root_id" "uuid") TO "service_role";
@@ -3723,6 +3831,12 @@ GRANT ALL ON FUNCTION "public"."mark_conversation_read_v2"("p_conversation_id" "
 GRANT ALL ON FUNCTION "public"."mark_messages_read"("p_message_ids" "uuid"[]) TO "anon";
 GRANT ALL ON FUNCTION "public"."mark_messages_read"("p_message_ids" "uuid"[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."mark_messages_read"("p_message_ids" "uuid"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."mark_recurring_job_enqueued"("job_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."mark_recurring_job_enqueued"("job_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."mark_recurring_job_enqueued"("job_id" "uuid") TO "service_role";
 
 
 
@@ -3954,6 +4068,12 @@ GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public".
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."profiles" TO "anon";
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."profiles" TO "authenticated";
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."profiles" TO "service_role";
+
+
+
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."recurring_jobs" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."recurring_jobs" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."recurring_jobs" TO "service_role";
 
 
 

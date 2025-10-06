@@ -9,11 +9,20 @@ interface RunRequestBody {
 
 async function handleRequest(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
+  const userAgent = req.headers.get('user-agent');
 
-  // Only accept Vercel cron authorization
-  const isVercelCron = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  // Accept Vercel cron in two ways:
+  // 1. CRON_SECRET if configured (recommended)
+  // 2. vercel-cron user agent as fallback
+  const hasValidCronSecret = process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  const isVercelCronUserAgent = userAgent?.includes('vercel-cron/1.0');
 
-  if (!isVercelCron) {
+  if (!hasValidCronSecret && !isVercelCronUserAgent) {
+    console.error('[job-runner] Unauthorized request', {
+      hasAuthHeader: !!authHeader,
+      hasCronSecret: !!process.env.CRON_SECRET,
+      userAgent,
+    });
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

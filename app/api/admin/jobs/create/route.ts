@@ -24,16 +24,28 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { jobId, enabled } = body;
+    const { task_type, payload, is_recurring, recurrence_interval_minutes, expires_at, run_at } = body;
 
-    if (!jobId || typeof enabled !== 'boolean') {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    if (!task_type) {
+      return NextResponse.json({ error: 'Missing task_type' }, { status: 400 });
+    }
+
+    // Validate recurring job has interval
+    if (is_recurring && !recurrence_interval_minutes) {
+      return NextResponse.json({ error: 'Recurring jobs must have recurrence_interval_minutes' }, { status: 400 });
     }
 
     const { data, error } = await supabase
-      .from('recurring_jobs')
-      .update({ enabled, updated_at: new Date().toISOString() })
-      .eq('id', jobId)
+      .from('job_queue')
+      .insert({
+        task_type,
+        payload: payload || {},
+        is_recurring: is_recurring || false,
+        recurrence_interval_minutes: is_recurring ? recurrence_interval_minutes : null,
+        expires_at: expires_at || null,
+        run_at: run_at || new Date().toISOString(),
+        status: 'pending',
+      })
       .select()
       .single();
 
@@ -46,9 +58,9 @@ export async function POST(request: Request) {
       job: data,
     });
   } catch (error) {
-    console.error('[recurring-jobs] Failed to toggle:', error);
+    console.error('[create-job] Failed:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to update recurring job' },
+      { error: error instanceof Error ? error.message : 'Failed to create job' },
       { status: 500 }
     );
   }

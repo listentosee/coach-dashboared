@@ -9,7 +9,7 @@ import { JobHealthDialog } from '@/components/dashboard/admin/job-health-dialog'
 import { QuickSyncActions } from '@/components/dashboard/admin/quick-sync-actions';
 import { RunWorkerButton } from '@/components/dashboard/admin/run-worker-button';
 import { RefreshQueueButton } from '@/components/dashboard/admin/refresh-queue-button';
-import { RecurringJobsManager } from '@/components/dashboard/admin/recurring-jobs-manager';
+import { CreateJobDialog } from '@/components/dashboard/admin/create-job-dialog';
 
 interface SearchParams {
   status?: string;
@@ -76,10 +76,6 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
     .select('processing_enabled, paused_reason, updated_at')
     .eq('id', 1)
     .single();
-  const { data: recurringJobs } = await supabase
-    .from('recurring_jobs')
-    .select('*')
-    .order('name');
   const quickStartContent = loadQuickStart();
 
   return (
@@ -101,12 +97,6 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
       {/* Quick Sync Actions */}
       <QuickSyncActions className="mb-4" />
 
-      {/* Recurring Jobs Schedule */}
-      {recurringJobs && recurringJobs.length > 0 && (
-        <RecurringJobsManager jobs={recurringJobs} />
-      )}
-      <div className="mb-4" />
-
       {/* Processing Toggle - Right above status boxes */}
       <div className="mb-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -115,6 +105,7 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
             pausedReason={settings?.paused_reason ?? undefined}
           />
           <RunWorkerButton />
+          <CreateJobDialog />
           <RefreshQueueButton />
         </div>
         <p className="text-xs text-muted-foreground flex-shrink-0">Total jobs: {totalJobs ?? 0}</p>
@@ -161,7 +152,16 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
               return (
               <tr key={job.id} className={`align-top ${isPastDue ? 'bg-red-50' : ''}`}>
                 <td className="px-4 py-3 font-mono text-xs text-gray-600 break-all">{job.id.slice(0, 8)}...</td>
-                <td className="px-4 py-3 text-gray-900">{job.task_type}</td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-900">{job.task_type}</span>
+                    {job.is_recurring && (
+                      <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded font-medium">
+                        ↻ {job.recurrence_interval_minutes}m
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td className="px-4 py-3">
                   <span className={isPastDue ? 'text-red-600 font-semibold' : 'text-gray-900'}>
                     {STATUS_LABELS[job.status] ?? job.status}

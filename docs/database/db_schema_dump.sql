@@ -988,35 +988,96 @@ CREATE TABLE IF NOT EXISTS "public"."job_queue" (
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "completed_at" timestamp with time zone,
+    "is_recurring" boolean DEFAULT false NOT NULL,
+    "recurrence_interval_minutes" integer,
+    "expires_at" timestamp with time zone,
+    "last_run_at" timestamp with time zone,
     CONSTRAINT "job_queue_attempts_check" CHECK ((("attempts" >= 0) AND ("max_attempts" >= 1))),
-    CONSTRAINT "job_queue_status_check" CHECK (("status" = ANY (ARRAY['pending'::"text", 'running'::"text", 'succeeded'::"text", 'failed'::"text", 'cancelled'::"text"])))
+    CONSTRAINT "job_queue_status_check" CHECK (("status" = ANY (ARRAY['pending'::"text", 'running'::"text", 'succeeded'::"text", 'failed'::"text", 'cancelled'::"text"]))),
+    CONSTRAINT "recurring_jobs_must_have_interval" CHECK (((("is_recurring" = false) AND ("recurrence_interval_minutes" IS NULL)) OR (("is_recurring" = true) AND ("recurrence_interval_minutes" > 0))))
 );
 
 
 ALTER TABLE "public"."job_queue" OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."job_queue_claim"("p_limit" integer DEFAULT 1) RETURNS SETOF "public"."job_queue"
-    LANGUAGE "plpgsql"
+COMMENT ON COLUMN "public"."job_queue"."is_recurring" IS 'If true, this job runs repeatedly on a schedule';
+
+
+
+COMMENT ON COLUMN "public"."job_queue"."recurrence_interval_minutes" IS 'How often recurring jobs should run (required if is_recurring = true)';
+
+
+
+COMMENT ON COLUMN "public"."job_queue"."expires_at" IS 'When a recurring job should stop running (NULL = forever)';
+
+
+
+COMMENT ON COLUMN "public"."job_queue"."last_run_at" IS 'When a recurring job last completed (used to calculate next run time)';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."job_queue_claim"("p_limit" integer DEFAULT 5) RETURNS SETOF "public"."job_queue"
+    LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
-begin
-  return query
-  with next_jobs as (
-    select id
-    from public.job_queue
-    where status = 'pending'
-      and run_at <= now()
-    order by run_at asc
-    for update skip locked
-    limit greatest(p_limit, 1)
+DECLARE
+  v_claimed_ids uuid[];
+BEGIN
+  -- First, check for recurring jobs that need to run
+  -- A recurring job needs to run if:
+  -- 1. It's enabled (status = 'pending')
+  -- 2. It hasn't expired (expires_at is NULL or in the future)
+  -- 3. It's time to run (run_at <= now OR last_run_at + interval <= now)
+  UPDATE job_queue
+  SET
+    run_at = CASE
+      WHEN last_run_at IS NULL THEN run_at
+      ELSE last_run_at + (recurrence_interval_minutes || ' minutes')::interval
+    END,
+    status = 'running',
+    attempts = attempts + 1,
+    updated_at = now()
+  WHERE id IN (
+    SELECT id
+    FROM job_queue
+    WHERE is_recurring = true
+      AND status = 'pending'
+      AND (expires_at IS NULL OR expires_at > now())
+      AND (
+        (last_run_at IS NULL AND run_at <= now())
+        OR (last_run_at IS NOT NULL AND last_run_at + (recurrence_interval_minutes || ' minutes')::interval <= now())
+      )
+    ORDER BY run_at
+    LIMIT p_limit
   )
-  update public.job_queue
-     set status = 'running',
-         attempts = attempts + 1,
-         updated_at = now()
-   where id in (select id from next_jobs)
-   returning *;
-end;
+  RETURNING id INTO v_claimed_ids;
+
+  -- If we didn't fill the limit with recurring jobs, claim regular jobs
+  IF array_length(v_claimed_ids, 1) IS NULL OR array_length(v_claimed_ids, 1) < p_limit THEN
+    UPDATE job_queue
+    SET
+      status = 'running',
+      attempts = attempts + 1,
+      updated_at = now()
+    WHERE id IN (
+      SELECT id
+      FROM job_queue
+      WHERE is_recurring = false
+        AND status = 'pending'
+        AND run_at <= now()
+        AND id != ALL(COALESCE(v_claimed_ids, ARRAY[]::uuid[]))
+      ORDER BY run_at
+      LIMIT p_limit - COALESCE(array_length(v_claimed_ids, 1), 0)
+    )
+    RETURNING id INTO v_claimed_ids;
+  END IF;
+
+  -- Return all claimed jobs
+  RETURN QUERY
+  SELECT *
+  FROM job_queue
+  WHERE id = ANY(v_claimed_ids);
+END;
 $$;
 
 
@@ -1117,6 +1178,47 @@ $$;
 ALTER FUNCTION "public"."job_queue_health"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."job_queue_mark_failed"("p_job_id" "uuid", "p_error" "text", "p_retry_in_ms" integer DEFAULT NULL::integer) RETURNS "public"."job_queue"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+  v_job job_queue;
+  v_should_retry boolean;
+BEGIN
+  SELECT * INTO v_job FROM job_queue WHERE id = p_job_id;
+
+  -- Recurring jobs always retry (go back to pending)
+  -- Regular jobs retry if they haven't hit max attempts and have a retry interval
+  v_should_retry := v_job.is_recurring OR (v_job.attempts < v_job.max_attempts AND p_retry_in_ms IS NOT NULL);
+
+  UPDATE job_queue
+  SET
+    status = CASE
+      WHEN v_should_retry THEN 'pending'
+      ELSE 'failed'
+    END,
+    run_at = CASE
+      WHEN v_should_retry AND p_retry_in_ms IS NOT NULL THEN now() + (p_retry_in_ms || ' milliseconds')::interval
+      WHEN v_should_retry AND v_job.is_recurring THEN last_run_at + (recurrence_interval_minutes || ' minutes')::interval
+      ELSE run_at
+    END,
+    last_run_at = CASE
+      WHEN v_job.is_recurring THEN now()
+      ELSE NULL
+    END,
+    last_error = p_error,
+    updated_at = now()
+  WHERE id = p_job_id
+  RETURNING * INTO v_job;
+
+  RETURN v_job;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."job_queue_mark_failed"("p_job_id" "uuid", "p_error" "text", "p_retry_in_ms" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."job_queue_mark_failed"("p_id" "uuid", "p_error" "text", "p_retry_in" interval DEFAULT '00:05:00'::interval) RETURNS "public"."job_queue"
     LANGUAGE "plpgsql"
     AS $$
@@ -1142,26 +1244,34 @@ $$;
 ALTER FUNCTION "public"."job_queue_mark_failed"("p_id" "uuid", "p_error" "text", "p_retry_in" interval) OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."job_queue_mark_succeeded"("p_id" "uuid", "p_output" "jsonb" DEFAULT NULL::"jsonb") RETURNS "public"."job_queue"
-    LANGUAGE "plpgsql"
+CREATE OR REPLACE FUNCTION "public"."job_queue_mark_succeeded"("p_job_id" "uuid", "p_output" "jsonb" DEFAULT NULL::"jsonb") RETURNS "public"."job_queue"
+    LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
-declare
-  updated job_queue;
-begin
-  update public.job_queue
-     set status = 'succeeded',
-         output = coalesce(p_output, output),
-         last_error = null,
-         completed_at = now(),
-         updated_at = now()
-   where id = p_id
-   returning * into updated;
-  return updated;
-end;
+DECLARE
+  v_job job_queue;
+BEGIN
+  UPDATE job_queue
+  SET
+    status = CASE
+      WHEN is_recurring = true THEN 'pending'  -- Recurring jobs go back to pending
+      ELSE 'succeeded'                          -- One-time jobs are done
+    END,
+    last_run_at = CASE
+      WHEN is_recurring = true THEN now()      -- Track when recurring job last ran
+      ELSE NULL
+    END,
+    output = p_output,
+    last_error = NULL,
+    updated_at = now()
+  WHERE id = p_job_id
+  RETURNING * INTO v_job;
+
+  RETURN v_job;
+END;
 $$;
 
 
-ALTER FUNCTION "public"."job_queue_mark_succeeded"("p_id" "uuid", "p_output" "jsonb") OWNER TO "postgres";
+ALTER FUNCTION "public"."job_queue_mark_succeeded"("p_job_id" "uuid", "p_output" "jsonb") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."list_admins_minimal"() RETURNS TABLE("id" "uuid", "first_name" "text", "last_name" "text", "email" "text")
@@ -2285,37 +2395,6 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
 ALTER TABLE "public"."profiles" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."recurring_jobs" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "name" "text" NOT NULL,
-    "task_type" "text" NOT NULL,
-    "payload" "jsonb" DEFAULT '{}'::"jsonb",
-    "schedule_interval_minutes" integer NOT NULL,
-    "enabled" boolean DEFAULT true NOT NULL,
-    "last_enqueued_at" timestamp with time zone,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "created_by" "uuid",
-    CONSTRAINT "valid_interval" CHECK (("schedule_interval_minutes" > 0)),
-    CONSTRAINT "valid_task_type" CHECK (("task_type" = ANY (ARRAY['game_platform_sync'::"text", 'game_platform_totals_sweep'::"text"])))
-);
-
-
-ALTER TABLE "public"."recurring_jobs" OWNER TO "postgres";
-
-
-COMMENT ON TABLE "public"."recurring_jobs" IS 'Recurring background jobs scheduled by admins. The cron worker checks this table and enqueues jobs as needed.';
-
-
-
-COMMENT ON COLUMN "public"."recurring_jobs"."schedule_interval_minutes" IS 'How often to run this job (e.g., 60 = hourly, 1440 = daily)';
-
-
-
-COMMENT ON COLUMN "public"."recurring_jobs"."last_enqueued_at" IS 'Last time we created a job_queue entry for this recurring job';
-
-
-
 CREATE TABLE IF NOT EXISTS "public"."system_config" (
     "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
     "key" "text" NOT NULL,
@@ -2495,16 +2574,6 @@ ALTER TABLE ONLY "public"."profiles"
 
 
 
-ALTER TABLE ONLY "public"."recurring_jobs"
-    ADD CONSTRAINT "recurring_jobs_name_key" UNIQUE ("name");
-
-
-
-ALTER TABLE ONLY "public"."recurring_jobs"
-    ADD CONSTRAINT "recurring_jobs_pkey" PRIMARY KEY ("id");
-
-
-
 ALTER TABLE ONLY "public"."system_config"
     ADD CONSTRAINT "system_config_key_key" UNIQUE ("key");
 
@@ -2608,6 +2677,10 @@ CREATE INDEX "idx_game_platform_sync_state_needs_refresh" ON "public"."game_plat
 
 
 
+CREATE INDEX "idx_job_queue_recurring_next_run" ON "public"."job_queue" USING "btree" ("is_recurring", "last_run_at", "run_at") WHERE (("is_recurring" = true) AND ("status" = 'pending'::"text"));
+
+
+
 CREATE INDEX "idx_job_queue_status_run_at" ON "public"."job_queue" USING "btree" ("status", "run_at");
 
 
@@ -2653,10 +2726,6 @@ CREATE INDEX "idx_messages_thread_root" ON "public"."messages" USING "btree" ("t
 
 
 CREATE UNIQUE INDEX "idx_profiles_game_platform_user_id" ON "public"."profiles" USING "btree" ("game_platform_user_id") WHERE ("game_platform_user_id" IS NOT NULL);
-
-
-
-CREATE INDEX "idx_recurring_jobs_enabled_next_run" ON "public"."recurring_jobs" USING "btree" ("enabled", "last_enqueued_at") WHERE ("enabled" = true);
 
 
 
@@ -2806,11 +2875,6 @@ ALTER TABLE ONLY "public"."messages"
 
 ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_id_fkey" FOREIGN KEY ("id") REFERENCES "auth"."users"("id");
-
-
-
-ALTER TABLE ONLY "public"."recurring_jobs"
-    ADD CONSTRAINT "recurring_jobs_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."profiles"("id");
 
 
 
@@ -3205,19 +3269,6 @@ CREATE POLICY "messages_update_admin" ON "public"."messages" FOR UPDATE USING ("
 
 
 ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
-
-
-ALTER TABLE "public"."recurring_jobs" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "recurring_jobs_admin_all" ON "public"."recurring_jobs" TO "authenticated" USING ((EXISTS ( SELECT 1
-   FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = 'admin'::"public"."user_role")))));
-
-
-
-CREATE POLICY "recurring_jobs_service_role" ON "public"."recurring_jobs" TO "service_role" USING (true);
-
 
 
 CREATE POLICY "service_role_full_access" ON "public"."agreements" USING (("auth"."role"() = 'service_role'::"text"));
@@ -3744,15 +3795,21 @@ GRANT ALL ON FUNCTION "public"."job_queue_health"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."job_queue_mark_failed"("p_job_id" "uuid", "p_error" "text", "p_retry_in_ms" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."job_queue_mark_failed"("p_job_id" "uuid", "p_error" "text", "p_retry_in_ms" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."job_queue_mark_failed"("p_job_id" "uuid", "p_error" "text", "p_retry_in_ms" integer) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."job_queue_mark_failed"("p_id" "uuid", "p_error" "text", "p_retry_in" interval) TO "anon";
 GRANT ALL ON FUNCTION "public"."job_queue_mark_failed"("p_id" "uuid", "p_error" "text", "p_retry_in" interval) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."job_queue_mark_failed"("p_id" "uuid", "p_error" "text", "p_retry_in" interval) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."job_queue_mark_succeeded"("p_id" "uuid", "p_output" "jsonb") TO "anon";
-GRANT ALL ON FUNCTION "public"."job_queue_mark_succeeded"("p_id" "uuid", "p_output" "jsonb") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."job_queue_mark_succeeded"("p_id" "uuid", "p_output" "jsonb") TO "service_role";
+GRANT ALL ON FUNCTION "public"."job_queue_mark_succeeded"("p_job_id" "uuid", "p_output" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."job_queue_mark_succeeded"("p_job_id" "uuid", "p_output" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."job_queue_mark_succeeded"("p_job_id" "uuid", "p_output" "jsonb") TO "service_role";
 
 
 
@@ -4068,12 +4125,6 @@ GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public".
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."profiles" TO "anon";
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."profiles" TO "authenticated";
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."profiles" TO "service_role";
-
-
-
-GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."recurring_jobs" TO "anon";
-GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."recurring_jobs" TO "authenticated";
-GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."recurring_jobs" TO "service_role";
 
 
 

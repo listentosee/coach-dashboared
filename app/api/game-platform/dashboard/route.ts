@@ -58,7 +58,13 @@ export async function GET(request: NextRequest) {
     }
 
     const competitorIds = (competitors || []).map((c) => c.id);
+    const gamePlatformIds = (competitors || [])
+      .filter(c => c.game_platform_id)
+      .map(c => c.game_platform_id);
+
     let stats: any[] = [];
+    let challengeSolves: any[] = [];
+
     if (competitorIds.length) {
       const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
       const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -77,11 +83,35 @@ export async function GET(request: NextRequest) {
       } else {
         stats = statsData || [];
       }
+
+      // Query challenge solves from the normalized table
+      if (gamePlatformIds.length > 0) {
+        const { data: solvesData, error: solvesError } = await statsClient
+          .from('game_platform_challenge_solves')
+          .select('syned_user_id, challenge_title, challenge_category, challenge_points, source, solved_at')
+          .in('syned_user_id', gamePlatformIds);
+
+        if (solvesError) {
+          console.error('Dashboard challenge solves query failed', solvesError);
+          challengeSolves = [];
+        } else {
+          challengeSolves = solvesData || [];
+        }
+      }
     }
 
     const statsMap = new Map<string, any>();
     for (const stat of stats) {
       statsMap.set(stat.competitor_id, stat);
+    }
+
+    // Group challenge solves by competitor
+    const solvesByCompetitor = new Map<string, any[]>();
+    for (const solve of challengeSolves) {
+      if (!solvesByCompetitor.has(solve.syned_user_id)) {
+        solvesByCompetitor.set(solve.syned_user_id, []);
+      }
+      solvesByCompetitor.get(solve.syned_user_id)!.push(solve);
     }
 
     const competitorMap = new Map<string, any>();
@@ -105,16 +135,21 @@ export async function GET(request: NextRequest) {
       const stat = statsMap.get(competitor.id);
       const challengesCompleted = stat?.challenges_completed ?? 0;
       const monthlyCtf = stat?.monthly_ctf_challenges ?? 0;
-      const scoreEnvelope = stat?.raw_data?.scores ?? {};
-      const categoryPoints = scoreEnvelope?.category_points ?? {};
-      const challengeSolves = Array.isArray(scoreEnvelope?.challenge_solves)
-        ? scoreEnvelope.challenge_solves
+
+      // Get challenge solves from the normalized table instead of raw_data
+      const competitorSolves = competitor.game_platform_id
+        ? (solvesByCompetitor.get(competitor.game_platform_id) || [])
         : [];
-      const categoryCounts = challengeSolves.reduce((acc: Record<string, number>, solve: any) => {
-        const category = (solve?.challenge_category || 'Uncategorized') as string;
-        acc[category] = (acc[category] ?? 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
+
+      // Calculate category counts AND points from actual challenge solves
+      const categoryCounts: Record<string, number> = {};
+      const categoryPoints: Record<string, number> = {};
+
+      competitorSolves.forEach((solve: any) => {
+        const category = solve?.challenge_category || 'Uncategorized';
+        categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
+        categoryPoints[category] = (categoryPoints[category] ?? 0) + (solve?.challenge_points ?? 0);
+      });
 
       competitorMap.set(competitor.id, {
         id: competitor.id,
@@ -244,16 +279,10 @@ export async function GET(request: NextRequest) {
       const points = stat.total_score ?? 0;
       const lastActivity = stat.last_activity ? new Date(stat.last_activity) : null;
       const raw = stat.raw_data || {};
-      const scoreEnvelope = raw?.scores ?? {};
-      const categoryPoints = scoreEnvelope?.category_points ?? {};
-      const challengeSolves = Array.isArray(scoreEnvelope?.challenge_solves)
-        ? scoreEnvelope.challenge_solves
-        : [];
-      const categoryCounts = challengeSolves.reduce((acc: Record<string, number>, solve: any) => {
-        const category = (solve?.challenge_category || 'Uncategorized') as string;
-        acc[category] = (acc[category] ?? 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
+
+      // Use category data already calculated from the database query
+      const categoryCounts = competitor.category_counts || {};
+      const categoryPoints = competitor.category_points || {};
       const flashEntries = raw?.flash_ctfs ?? [];
       const flashChallenges = flashEntries.reduce((sum: number, entry: any) => sum + (entry?.challenges_solved ?? 0), 0);
 

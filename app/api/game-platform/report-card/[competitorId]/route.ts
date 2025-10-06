@@ -59,8 +59,8 @@ export async function GET(
         game_platform_id,
         game_platform_synced_at,
         coach_id,
-        team_members!inner(
-          teams!inner(
+        team_members(
+          teams(
             id,
             name,
             division

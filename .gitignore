@@ -79,6 +79,8 @@ scripts/sync-and-refresh.sh
 scripts/wave4-test-data.ts
 scripts/refresh-totals.ts
 scripts/cleanup-stuck-jobs.ts
+scripts/dev-diagnostics/
+scripts/diagnose-*.ts
 
 # project instructions for AI (local only)
 CLAUDE.md

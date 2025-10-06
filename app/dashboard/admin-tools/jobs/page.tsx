@@ -7,6 +7,7 @@ import { JobPlaybookDialog } from '@/components/dashboard/admin/job-playbook-dia
 import { JobProcessingToggle } from '@/components/dashboard/admin/job-processing-toggle';
 import { JobHealthDialog } from '@/components/dashboard/admin/job-health-dialog';
 import { QuickSyncActions } from '@/components/dashboard/admin/quick-sync-actions';
+import { RunWorkerButton } from '@/components/dashboard/admin/run-worker-button';
 
 interface SearchParams {
   status?: string;
@@ -101,14 +102,7 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
             enabled={settings?.processing_enabled ?? true}
             pausedReason={settings?.paused_reason ?? undefined}
           />
-          <form method="post" action="/api/jobs/run" className="inline">
-            <button
-              type="submit"
-              className="rounded px-4 py-2 text-sm bg-green-600 text-white hover:bg-green-700 transition-colors font-medium"
-            >
-              Run Worker Now
-            </button>
-          </form>
+          <RunWorkerButton />
         </div>
         <p className="text-xs text-muted-foreground flex-shrink-0">Total jobs: {totalJobs ?? 0}</p>
       </div>

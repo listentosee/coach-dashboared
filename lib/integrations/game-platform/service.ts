@@ -543,12 +543,27 @@ export async function deleteTeamFromGamePlatform({
 
 function buildPreferredUsername(competitor: any): string {
   if (competitor.preferred_username) return competitor.preferred_username;
-  const source = competitor.email_personal || competitor.email_school || `${competitor.first_name}.${competitor.last_name}`;
-  const cleaned = String(source)
-    .split('@')[0]
-    .replace(/[^a-zA-Z0-9._-]/g, '')
-    .slice(0, 32);
-  if (cleaned.length >= 3) return cleaned;
+
+  // Prioritize constructing from first.last name (matches fixture behavior)
+  if (competitor.first_name && competitor.last_name) {
+    const nameBased = `${competitor.first_name}.${competitor.last_name}`
+      .toLowerCase()
+      .replace(/[^a-zA-Z0-9._-]/g, '')
+      .slice(0, 32);
+    if (nameBased.length >= 3) return nameBased;
+  }
+
+  // Fallback to email prefix (for cases where names are missing/invalid)
+  const source = competitor.email_personal || competitor.email_school;
+  if (source) {
+    const cleaned = String(source)
+      .split('@')[0]
+      .replace(/[^a-zA-Z0-9._-]/g, '')
+      .slice(0, 32);
+    if (cleaned.length >= 3) return cleaned;
+  }
+
+  // Final fallback
   const fallback = `competitor-${String(competitor.id || Date.now()).replace(/[^a-zA-Z0-9]/g, '')}`;
   return fallback.slice(0, 32);
 }

@@ -24,9 +24,9 @@ export async function POST() {
 
   try {
     // Get the shared secret for authenticating with the worker endpoint
-    const sharedSecret = process.env.JOB_RUNNER_SECRET || process.env.CRON_SECRET;
+    const sharedSecret = process.env.JOB_RUNNER_SECRET;
     if (!sharedSecret) {
-      throw new Error('JOB_RUNNER_SECRET or CRON_SECRET not configured');
+      throw new Error('JOB_RUNNER_SECRET not configured');
     }
 
     // Call the worker endpoint with authentication

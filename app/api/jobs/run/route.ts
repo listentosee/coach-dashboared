@@ -71,13 +71,23 @@ async function processJob(job: JobRecord) {
 }
 
 async function handleRequest(req: NextRequest) {
-  const sharedSecret = getSharedSecret();
   const headerSecret = req.headers.get('x-job-runner-secret') ?? req.headers.get('x-job-runner-key');
   const authHeader = req.headers.get('authorization');
 
   // Accept either custom secret header or Vercel cron authorization
   const isVercelCron = authHeader === `Bearer ${process.env.CRON_SECRET}`;
-  const hasValidSecret = headerSecret && headerSecret === sharedSecret;
+
+  // Check custom secret header if provided
+  let hasValidSecret = false;
+  if (headerSecret) {
+    try {
+      const sharedSecret = getSharedSecret();
+      hasValidSecret = headerSecret === sharedSecret;
+    } catch (error) {
+      // JOB_QUEUE_RUNNER_SECRET not configured, only allow Vercel cron
+      hasValidSecret = false;
+    }
+  }
 
   if (!isVercelCron && !hasValidSecret) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

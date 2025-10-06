@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { runJobs } from '@/lib/jobs/runner';
 
 export async function POST() {
   const cookieStore = await cookies();
@@ -23,38 +24,15 @@ export async function POST() {
   }
 
   try {
-    // Get the shared secret for authenticating with the worker endpoint
-    const sharedSecret = process.env.JOB_QUEUE_RUNNER_SECRET;
-    if (!sharedSecret) {
-      throw new Error('JOB_QUEUE_RUNNER_SECRET not configured');
-    }
-
-    // Call the worker endpoint with authentication
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000';
-
-    const workerUrl = `${baseUrl}/api/jobs/run`;
-
-    const response = await fetch(workerUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-job-runner-secret': sharedSecret,
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Worker returned ${response.status}: ${errorText}`);
-    }
-
-    const result = await response.json();
+    // Call the worker function directly
+    const result = await runJobs({ limit: 5, force: false });
 
     return NextResponse.json({
       success: true,
       message: result.message || 'Worker executed successfully',
-      processedCount: result.processedCount || 0,
+      processed: result.processed,
+      succeeded: result.succeeded,
+      failed: result.failed,
     });
   } catch (error) {
     console.error('[run-worker] Failed to execute worker:', error);

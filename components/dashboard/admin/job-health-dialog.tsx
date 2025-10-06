@@ -16,12 +16,33 @@ const MarkdownPreview = dynamic(() => import('@uiw/react-markdown-preview'), { s
 
 interface HealthResponse {
   queueCounts: Array<{ status: string; count: number }>;
-  pendingQueueCount: number;
-  latestResponses: Array<{ created: string; status_code: number; error: string | null; content: string | null }>;
-  latestRuns: Array<{ jobname: string; start_time: string; end_time: string | null; status: string; message: string | null }>;
+  recentJobs: Array<{
+    id: string;
+    task_type: string;
+    status: string;
+    created_at: string;
+    completed_at: string | null;
+    last_error: string | null;
+  }>;
+  vercelCron: {
+    configured: boolean;
+    schedule: string;
+    endpoint: string;
+  };
+  worker: {
+    healthy: boolean;
+    processingEnabled: boolean;
+    pausedReason: string | null;
+    oldestPendingAge: number | null;
+  };
+  error: string | null;
 }
 
-export function JobHealthDialog() {
+interface JobHealthDialogProps {
+  variant?: 'default' | 'outline';
+}
+
+export function JobHealthDialog({ variant = 'outline' }: JobHealthDialogProps) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,41 +65,55 @@ export function JobHealthDialog() {
 
   const markdown = data
     ? [
+        '### Vercel Cron Configuration',
+        '',
+        `- **Status**: ${data.vercelCron.configured ? '✅ Configured' : '❌ Not configured'}`,
+        `- **Schedule**: \`${data.vercelCron.schedule}\` (every 5 minutes)`,
+        `- **Endpoint**: \`${data.vercelCron.endpoint}\``,
+        '',
+        '### Worker Status',
+        '',
+        `- **Health**: ${data.worker.healthy ? '✅ Healthy' : '⚠️ May be stalled'}`,
+        `- **Processing**: ${data.worker.processingEnabled ? '✅ Enabled' : '⏸️ Paused'}`,
+        data.worker.pausedReason ? `- **Reason**: ${data.worker.pausedReason}` : '',
+        data.worker.oldestPendingAge !== null
+          ? `- **Oldest Pending Job**: ${data.worker.oldestPendingAge} minutes ago`
+          : '',
+        '',
         '### Queue Counts',
         '',
-        ...data.queueCounts.map((row) => `- ${row.status}: **${row.count}**`),
+        ...data.queueCounts.map((row) => `- **${row.status}**: ${row.count}`),
         '',
-        '### Pending HTTP Requests',
+        '### Recent Jobs (Last 10)',
         '',
-        `- net.http_request_queue: **${data.pendingQueueCount}**`,
-        '',
-        '### Latest Cron Runs',
-        '',
-        ...data.latestRuns.map((run) => {
-          const lines = [`- ${run.start_time} — ${run.jobname} (${run.status})`];
-          if (run.message) {
-            lines.push(`  - ${run.message}`);
+        ...data.recentJobs.map((job) => {
+          const age = Math.floor(
+            (new Date().getTime() - new Date(job.created_at).getTime()) / 1000 / 60
+          );
+          const lines = [
+            `- **${job.task_type}** (${job.status}) — ${age}m ago`,
+          ];
+          if (job.last_error) {
+            lines.push(`  - Error: ${job.last_error.substring(0, 100)}${job.last_error.length > 100 ? '...' : ''}`);
           }
           return lines.join('\n');
         }),
-        '',
-        '### HTTP Responses',
-        '',
-        ...data.latestResponses.map((resp) => `- ${resp.created}: status ${resp.status_code}${resp.error ? ` — ${resp.error}` : ''}`),
-      ].join('\n')
+      ]
+        .filter(Boolean)
+        .join('\n')
     : '';
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">View cron health</Button>
+        <Button variant={variant} size="sm">View cron health</Button>
       </DialogTrigger>
       <DialogContent className="max-h-[80vh] w-full max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Cron & Worker Health</DialogTitle>
+          <DialogTitle className="text-gray-900">Vercel Cron & Worker Health</DialogTitle>
         </DialogHeader>
-        {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
-        {!error && !data && <div className="text-sm text-gray-500">Loading...</div>}
+        {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-600">{error}</div>}
+        {!error && !data && <div className="text-sm text-gray-600">Loading...</div>}
         {!error && data && (
           <MarkdownPreview source={markdown} style={{ backgroundColor: 'transparent' }} />
         )}

@@ -74,10 +74,13 @@ export async function POST(req: NextRequest) {
   try {
     const sharedSecret = getSharedSecret();
     const headerSecret = req.headers.get('x-job-runner-secret') ?? req.headers.get('x-job-runner-key');
-    if (!headerSecret) {
-      return NextResponse.json({ error: 'Missing job runner secret header' }, { status: 401 });
-    }
-    if (headerSecret !== sharedSecret) {
+    const authHeader = req.headers.get('authorization');
+
+    // Accept either custom secret header or Vercel cron authorization
+    const isVercelCron = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+    const hasValidSecret = headerSecret && headerSecret === sharedSecret;
+
+    if (!isVercelCron && !hasValidSecret) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

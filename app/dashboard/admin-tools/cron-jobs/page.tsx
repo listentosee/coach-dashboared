@@ -4,6 +4,7 @@ import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase';
 import { CronJobsTable } from '@/components/dashboard/admin/cron-jobs-table';
 import { CronExecutionHistory } from '@/components/dashboard/admin/cron-execution-history';
+import { CronScheduleTemplates } from '@/components/dashboard/admin/cron-schedule-templates';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,10 +76,15 @@ export default async function CronJobsPage() {
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Cron Jobs</h1>
-        <p className="text-gray-600 mt-2">
-          Manage recurring background tasks scheduled via Supabase pg_cron.
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Cron Jobs</h1>
+            <p className="text-gray-600 mt-2">
+              Manage recurring background tasks scheduled via Supabase pg_cron.
+            </p>
+          </div>
+          <CronScheduleTemplates />
+        </div>
       </div>
 
       {/* Summary Cards */}

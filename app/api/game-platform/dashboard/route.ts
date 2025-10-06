@@ -64,6 +64,7 @@ export async function GET(request: NextRequest) {
 
     let stats: any[] = [];
     let challengeSolves: any[] = [];
+    let flashCtfEvents: any[] = [];
 
     if (competitorIds.length) {
       const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -97,6 +98,19 @@ export async function GET(request: NextRequest) {
         } else {
           challengeSolves = solvesData || [];
         }
+
+        // Query Flash CTF events from the normalized table
+        const { data: flashData, error: flashError } = await statsClient
+          .from('game_platform_flash_ctf_events')
+          .select('syned_user_id, event_id, flash_ctf_name, challenges_solved, points_earned, started_at')
+          .in('syned_user_id', gamePlatformIds);
+
+        if (flashError) {
+          console.error('Dashboard Flash CTF events query failed', flashError);
+          flashCtfEvents = [];
+        } else {
+          flashCtfEvents = flashData || [];
+        }
       }
     }
 
@@ -112,6 +126,15 @@ export async function GET(request: NextRequest) {
         solvesByCompetitor.set(solve.syned_user_id, []);
       }
       solvesByCompetitor.get(solve.syned_user_id)!.push(solve);
+    }
+
+    // Group Flash CTF events by competitor
+    const flashEventsByCompetitor = new Map<string, any[]>();
+    for (const event of flashCtfEvents) {
+      if (!flashEventsByCompetitor.has(event.syned_user_id)) {
+        flashEventsByCompetitor.set(event.syned_user_id, []);
+      }
+      flashEventsByCompetitor.get(event.syned_user_id)!.push(event);
     }
 
     const competitorMap = new Map<string, any>();
@@ -278,13 +301,17 @@ export async function GET(request: NextRequest) {
       const challenges = stat.challenges_completed ?? 0;
       const points = stat.total_score ?? 0;
       const lastActivity = stat.last_activity ? new Date(stat.last_activity) : null;
-      const raw = stat.raw_data || {};
 
       // Use category data already calculated from the database query
       const categoryCounts = competitor.category_counts || {};
       const categoryPoints = competitor.category_points || {};
-      const flashEntries = raw?.flash_ctfs ?? [];
-      const flashChallenges = flashEntries.reduce((sum: number, entry: any) => sum + (entry?.challenges_solved ?? 0), 0);
+
+      // Get Flash CTF events from the normalized table instead of raw_data
+      const competitorFlashEvents = competitor.game_platform_id
+        ? (flashEventsByCompetitor.get(competitor.game_platform_id) || [])
+        : [];
+      const flashChallenges = competitorFlashEvents.reduce((sum: number, entry: any) =>
+        sum + (entry?.challenges_solved ?? 0), 0);
 
       totalChallenges += challenges;
       if (lastActivity && lastActivity.getTime() >= fourteenDaysAgo) activeRecently += 1;

@@ -163,10 +163,12 @@ TOTAL                   2       1179
 4. [docs/game-platform/MIGRATION-remove-raw-data-field.md](docs/game-platform/MIGRATION-remove-raw-data-field.md) - Future cleanup plan
 5. [FIXES-SUMMARY-2025-10-06.md](FIXES-SUMMARY-2025-10-06.md) - This file
 
-### Diagnostic Tools (Created)
-6. [scripts/diagnose-game-platform-data.ts](scripts/diagnose-game-platform-data.ts) - Database diagnostic tool
-7. [scripts/check-stats-raw-data.ts](scripts/check-stats-raw-data.ts) - Check raw_data structure
-8. [scripts/test-dashboard-api.ts](scripts/test-dashboard-api.ts) - API endpoint tester
+### Diagnostic Tools (Created - gitignored)
+6. `scripts/dev-diagnostics/diagnose-game-platform-data.ts` - Database diagnostic tool
+7. `scripts/dev-diagnostics/check-stats-raw-data.ts` - Check raw_data structure
+8. `scripts/dev-diagnostics/test-dashboard-api.ts` - API endpoint tester
+
+**Note:** These scripts are in `scripts/dev-diagnostics/` which is gitignored for local development only.
 
 ---
 

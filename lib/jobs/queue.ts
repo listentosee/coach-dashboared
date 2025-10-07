@@ -82,7 +82,8 @@ export async function claimJobs(options: ClaimOptions = {}): Promise<JobRecord[]
   const { limit = 1, client } = options;
   const supabase = client ?? getServiceRoleSupabaseClient();
 
-  const { data, error } = await supabase.rpc<JobRow>('job_queue_claim', {
+  // job_queue_claim returns SETOF (array), not a single row - don't use type param
+  const { data, error } = await supabase.rpc('job_queue_claim', {
     p_limit: limit,
   });
 

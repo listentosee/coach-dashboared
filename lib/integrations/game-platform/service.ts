@@ -227,11 +227,11 @@ export async function onboardCompetitorToGamePlatform({
     }
 
     const remoteResult = await resolvedClient.createUser(userPayload);
-    const remoteUserId = (remoteResult as any)?.syned_user_id ?? (remoteResult as any)?.id ?? null;
+    const remoteUserId = String((remoteResult as any)?.metactf_user_id ?? (remoteResult as any)?.id ?? null);
 
     if (!remoteUserId) {
-      await updateCompetitorSyncError(supabase, competitorId, 'Game Platform did not return a syned_user_id');
-      throw new Error('Game Platform did not return a syned_user_id');
+      await updateCompetitorSyncError(supabase, competitorId, 'Game Platform did not return a metactf_user_id');
+      throw new Error('Game Platform did not return a metactf_user_id');
     }
 
     const updatedCompetitor = await persistCompetitorSyncSuccess(supabase, competitorId, competitor, remoteUserId);

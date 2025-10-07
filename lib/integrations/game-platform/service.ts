@@ -1033,6 +1033,15 @@ export async function refreshCompetitorTotals({
   try {
     freshScores = await resolvedClient.getScores({ syned_user_id: synedUserId });
   } catch (err: any) {
+    // If user doesn't exist in game platform (404), clear the refresh flag and skip
+    if (err?.status === 404) {
+      logger?.warn?.(`User ${synedUserId} not found in game platform, clearing refresh flag`);
+      await statsClient
+        .from('game_platform_sync_state')
+        .update({ needs_totals_refresh: false })
+        .eq('syned_user_id', synedUserId);
+      return; // Skip this user gracefully
+    }
     logger?.error?.(`Failed to fetch fresh totals for ${synedUserId}`, { error: err });
     throw err;
   }

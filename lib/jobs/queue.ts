@@ -101,7 +101,7 @@ export async function markJobSucceeded(options: MarkSuccessOptions): Promise<Job
   const supabase = client ?? getServiceRoleSupabaseClient();
 
   const { data, error } = await supabase.rpc<JobRow>('job_queue_mark_succeeded', {
-    p_id: jobId,
+    p_job_id: jobId,
     p_output: output ?? null,
   });
 
@@ -116,12 +116,10 @@ export async function markJobFailed(options: MarkFailureOptions): Promise<JobRec
   const { jobId, error: message, retryInMs, client } = options;
   const supabase = client ?? getServiceRoleSupabaseClient();
 
-  const retryInterval = retryInMs ? `${Math.max(retryInMs, 0)} milliseconds` : undefined;
-
   const { data, error } = await supabase.rpc<JobRow>('job_queue_mark_failed', {
-    p_id: jobId,
+    p_job_id: jobId,
     p_error: message,
-    p_retry_in: retryInterval,
+    p_retry_in_ms: retryInMs ?? null,
   });
 
   if (error || !data) {

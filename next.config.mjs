@@ -34,6 +34,7 @@ const nextConfig = {
     webpackBuildWorker: true,
     parallelServerBuildTraces: true,
     parallelServerCompiles: true,
+    serverComponentsExternalPackages: ['playwright-core', '@sparticuz/chromium'],
   },
 }
 

@@ -1,8 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { chromium } from 'playwright';
+import { chromium as playwrightChromium } from 'playwright-core';
+import chromium from '@sparticuz/chromium';
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Increase timeout for PDF generation
+
+async function getBrowser() {
+  if (process.env.VERCEL_ENV === 'production') {
+    const executablePath = await chromium.executablePath();
+
+    return await playwrightChromium.launch({
+      args: chromium.args,
+      executablePath,
+      headless: true,
+    });
+  }
+
+  // Local development - use full playwright
+  const { chromium: localChromium } = await import('playwright');
+  return await localChromium.launch({ headless: true });
+}
 
 export async function GET(
   request: NextRequest,
@@ -49,7 +69,7 @@ export async function GET(
     const coachName = coachProfile
       ? `${coachProfile.first_name} ${coachProfile.last_name}`
       : 'Coach';
-    const schoolName = coachProfile?.school_name || competitorData?.team_members?.[0]?.teams?.name || 'School';
+    const schoolName = coachProfile?.school_name || (competitorData?.team_members?.[0] as any)?.teams?.name || 'School';
 
     // Get optional section filters from query params
     const searchParams = request.nextUrl.searchParams;
@@ -66,11 +86,8 @@ export async function GET(
       // 'challenges' - excluded by default from PDF
     ];
 
-    // Launch browser
-    browser = await chromium.launch({
-      headless: true,
-    });
-
+    // Launch browser (uses serverless chromium on Vercel, local playwright in dev)
+    browser = await getBrowser();
     const page = await browser.newPage();
 
     // Navigate to the report card page with section filters

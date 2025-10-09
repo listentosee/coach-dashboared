@@ -142,6 +142,13 @@ function DashboardLayoutInner({
                 </Button>
               </Link>
 
+              <Link href="/dashboard/releases">
+                <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
+                  <FileSignature className="h-5 w-5 mr-3" />
+                  Release Management
+                </Button>
+              </Link>
+
               <Link href="/dashboard/teams">
                 <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
                   <Users className="h-5 w-5 mr-3" />
@@ -153,13 +160,6 @@ function DashboardLayoutInner({
                 <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
                   <Trophy className="h-5 w-5 mr-3" />
                   Game Platform
-                </Button>
-              </Link>
-
-              <Link href="/dashboard/releases">
-                <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
-                  <FileSignature className="h-5 w-5 mr-3" />
-                  Release Management
                 </Button>
               </Link>
 

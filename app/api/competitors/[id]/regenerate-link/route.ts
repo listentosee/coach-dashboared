@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { randomBytes } from 'crypto';
+import { logger } from '@/lib/logging/safe-logger';
 
 export async function POST(
   request: NextRequest,
@@ -44,7 +45,7 @@ export async function POST(
       .rpc('generate_profile_update_token');
 
     if (tokenError) {
-      console.error('Error generating token:', tokenError);
+      logger.error('Error generating token:', { error: tokenError instanceof Error ? tokenError.message : String(tokenError) });
       return NextResponse.json({ error: 'Failed to generate token' }, { status: 500 });
     }
 
@@ -63,7 +64,7 @@ export async function POST(
       .eq('id', id);
 
     if (updateError) {
-      console.error('Database error:', updateError);
+      logger.error('Database error:', { error: updateError instanceof Error ? updateError.message : String(updateError) });
       return NextResponse.json({ error: 'Failed to regenerate token: ' + updateError.message }, { status: 400 });
     }
 
@@ -96,7 +97,7 @@ export async function POST(
     });
 
   } catch (error) {
-    console.error('Error regenerating profile link:', error);
+    logger.error('Error regenerating profile link:', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

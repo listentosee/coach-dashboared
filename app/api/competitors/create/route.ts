@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
+import { logger } from '@/lib/logging/safe-logger';
 
 const CompetitorSchema = z.object({
   first_name: z.string().min(1),
@@ -40,7 +41,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = CompetitorSchema.parse(body);
 
-    console.log('Validated data:', validatedData);
+    logger.info('Competitor validation successful', {
+      game_platform_id: validatedData.game_platform_id,
+      division: validatedData.division
+    });
 
     // Check if student ID already exists for this coach (only if provided)
     if (validatedData.game_platform_id) {
@@ -70,8 +74,12 @@ export async function POST(request: NextRequest) {
       division: validatedData.division || null,
       status: 'pending'
     } as any;
-    
-    console.log('Inserting competitor with data:', insertData);
+
+    logger.info('Creating competitor record', {
+      coach_id: insertData.coach_id,
+      game_platform_id: insertData.game_platform_id,
+      division: insertData.division
+    });
 
     const { data: competitor, error } = await supabase
       .from('competitors')
@@ -80,11 +88,11 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error('Database error:', error);
+      logger.error('Failed to create competitor', { error: error.message, code: error.code });
       return NextResponse.json({ error: 'Failed to create competitor: ' + error.message }, { status: 400 });
     }
 
-    console.log('Competitor created successfully:', competitor);
+    logger.info('Competitor created successfully', { competitor_id: competitor.id });
 
     // Generate profile update link using current request origin (production-safe)
     const forwardedProto = request.headers.get('x-forwarded-proto') || 'https'
@@ -117,8 +125,8 @@ export async function POST(request: NextRequest) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.errors }, { status: 400 });
     }
-    
-    console.error('Error creating competitor:', error);
+
+    logger.error('Error creating competitor', { error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

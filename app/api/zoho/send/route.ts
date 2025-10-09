@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { getZohoAccessToken } from '../_lib/token';
+import { logger } from '@/lib/logging/safe-logger';
 
 type Body = {
   competitorId: string;
@@ -10,13 +11,9 @@ type Body = {
 };
 
 export async function POST(req: NextRequest) {
-  console.log('Zoho send API called with:', { competitorId: req.body });
-  
   const { competitorId, mode = 'email' } = (await req.json()) as Body;
-  console.log('Parsed request:', { competitorId, mode });
-  
+
   const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-  console.log('Supabase client created');
 
   // Enforce caller authorization (admin coach context or coach ownership)
   const cookieStore = await cookies()
@@ -46,11 +43,9 @@ export async function POST(req: NextRequest) {
     `)
     .eq('id', competitorId)
     .single();
-    
-  console.log('Raw competitor data from Supabase:', c);
 
   if (error || !c) {
-    console.error('Competitor fetch error:', error);
+    logger.error('Competitor fetch failed', { error: error?.message, competitorId });
     return NextResponse.json({ error: 'Competitor not found' }, { status: 404 });
   }
   // Ownership check
@@ -60,13 +55,8 @@ export async function POST(req: NextRequest) {
   if (isAdmin && actingCoachId && c.coach_id !== actingCoachId) {
     return NextResponse.json({ error: 'Target not owned by selected coach' }, { status: 403 })
   }
-  
-  console.log('Competitor data fetched:', { 
-    id: c.id, 
-    name: `${c.first_name} ${c.last_name}`,
-    isAdult: c.is_18_or_over,
-    email: c.is_18_or_over ? c.email_school : c.parent_email
-  });
+
+  logger.info('Processing Zoho request', { competitor_id: c.id, isAdult: !!c.is_18_or_over, mode });
 
   const isAdult = !!c.is_18_or_over;
   // Resolve coach profile explicitly based on acting context/ownership
@@ -88,12 +78,10 @@ export async function POST(req: NextRequest) {
   }
   const templateId = isAdult ? process.env.ZOHO_SIGN_TEMPLATE_ID_ADULT! : process.env.ZOHO_SIGN_TEMPLATE_ID_MINOR!;
   const templateKind = isAdult ? 'adult' : 'minor';
-  
-  console.log('Template selection:', { isAdult, templateId, templateKind });
 
-  console.log('Getting Zoho access token...');
+  logger.info('Template selected', { templateKind });
+
   const accessToken = await getZohoAccessToken();
-  console.log('Access token retrieved:', accessToken ? 'Success' : 'Failed');
 
   // Prevent duplicate active agreements (non-terminal) per competitor
   const { data: existingAgreements } = await supabase
@@ -124,28 +112,23 @@ export async function POST(req: NextRequest) {
   }
 
   // Get template details to read its single action_id
-  console.log('Fetching template details from Zoho...');
   const tRes = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/templates/${templateId}`, {
     headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
   });
-  console.log('Template fetch response:', { status: tRes.status, ok: tRes.ok });
-  
+
   if (!tRes.ok) {
     const errorText = await tRes.text();
-    console.error('Template fetch failed:', { status: tRes.status, error: errorText });
+    logger.error('Template fetch failed', { status: tRes.status, templateId });
     return NextResponse.json({ error: 'Failed to load template', detail: errorText }, { status: 502 });
   }
-  
+
   const tJson = await tRes.json();
-  console.log('Template data received:', { hasTemplates: !!tJson.templates, actionsCount: tJson.templates?.actions?.length });
-  
+
   const action = tJson.templates?.actions?.[0];
   if (!action) {
-    console.error('No actions found in template');
+    logger.error('No actions in template', { templateId });
     return NextResponse.json({ error: 'Template has no signer action' }, { status: 400 });
   }
-  
-  console.log('Action found:', { actionId: action.action_id, actionType: action.action_type });
 
 
 
@@ -199,17 +182,16 @@ export async function POST(req: NextRequest) {
     field_radio_data: {},
     field_checkboxgroup_data: {}
   };
-  
-  console.log('Field data being sent:', field_data);
+
+  logger.debug('Field data prepared', { hasParticipantName: !!field_data.field_text_data.participant_name });
 
   // For print mode, we'll add a note indicating manual upload is expected
-  const notes = mode === 'print' 
+  const notes = mode === 'print'
     ? 'Please print, sign, and return to your coach for manual upload.'
     : 'Please review and sign the Mayors Cup release.';
 
   // For print mode, create a Zoho request but don't send emails
   if (mode === 'print') {
-    console.log('Print mode detected - creating Zoho request for PDF generation');
     
     // Create a Zoho request with internal recipient (coach) to avoid sending emails
     const printActionPayload = {
@@ -246,13 +228,12 @@ export async function POST(req: NextRequest) {
 
     if (!printCreateRes.ok) {
       const errorText = await printCreateRes.text();
-      console.error('Print request creation failed:', { status: printCreateRes.status, error: errorText });
+      logger.error('Print request failed', { status: printCreateRes.status });
       return NextResponse.json({ error: 'Failed to create print request', detail: errorText }, { status: 502 });
     }
 
     const printCreateJson = await printCreateRes.json();
     const printRequestId = printCreateJson.requests?.request_id as string;
-    console.log('Print Zoho request ID:', printRequestId);
 
     // Create agreement record in database with 'print_ready' status
     const { data: agreementData, error: agreementError } = await supabase.from('agreements').insert({
@@ -266,11 +247,9 @@ export async function POST(req: NextRequest) {
     }).select();
 
     if (agreementError) {
-      console.error('Failed to create print agreement record:', agreementError);
+      logger.error('Agreement creation failed', { error: agreementError.message });
       return NextResponse.json({ error: 'Failed to create agreement record', detail: agreementError }, { status: 500 });
     }
-
-    console.log('Print agreement record created successfully:', agreementData);
     
     // Generate pre-filled PDF from the Zoho request
     try {
@@ -296,16 +275,14 @@ export async function POST(req: NextRequest) {
             .from('agreements')
             .update({ signed_pdf_path: pdfPath })
             .eq('id', agreementData[0].id);
-          
-          console.log('Pre-filled PDF generated and stored:', pdfPath);
         } else {
-          console.warn('Failed to store pre-filled PDF:', storageError);
+          logger.warn('PDF storage failed', { error: storageError.message });
         }
       } else {
-        console.warn('Failed to generate pre-filled PDF:', pdfResponse.status);
+        logger.warn('PDF generation failed', { status: pdfResponse.status });
       }
     } catch (pdfError) {
-      console.warn('PDF generation failed:', pdfError);
+      logger.warn('PDF generation error', { error: pdfError instanceof Error ? pdfError.message : 'Unknown error' });
       // Continue even if PDF generation fails
     }
     
@@ -325,7 +302,6 @@ export async function POST(req: NextRequest) {
     is_quicksend: 'true',
   });
 
-  console.log('Creating document in Zoho...');
   const createRes = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/templates/${templateId}/createdocument`, {
     method: 'POST',
     headers: {
@@ -334,23 +310,18 @@ export async function POST(req: NextRequest) {
     },
     body: formBody.toString(),
   });
-  
-  console.log('Document creation response:', { status: createRes.status, ok: createRes.ok });
-  
+
   const createJson = await createRes.json().catch(() => ({}));
-  console.log('Document creation result:', createJson);
-  
+
   if (!createRes.ok || createJson.status !== 'success') {
-    console.error('Document creation failed:', { status: createRes.status, response: createJson });
+    logger.error('Document creation failed', { status: createRes.status });
     return NextResponse.json({ error: 'Zoho Sign create failed', detail: createJson }, { status: 502 });
   }
 
   const requestId = createJson.requests?.request_id as string;
-  console.log('Zoho request ID:', requestId);
 
   // Create agreement record in database
-  console.log('Creating agreement record in database...');
-          const { data: agreementData, error: agreementError } = await supabase.from('agreements').insert({
+  const { data: agreementData, error: agreementError } = await supabase.from('agreements').insert({
           competitor_id: c.id,
           provider: 'zoho',
           template_kind: templateKind,
@@ -361,11 +332,9 @@ export async function POST(req: NextRequest) {
         }).select();
 
   if (agreementError) {
-    console.error('Failed to create agreement record:', agreementError);
+    logger.error('Agreement record creation failed', { error: agreementError.message });
     return NextResponse.json({ error: 'Failed to create agreement record', detail: agreementError }, { status: 500 });
   }
-
-  console.log('Agreement record created successfully:', agreementData);
 
   return NextResponse.json({ ok: true, requestId, templateKind });
 }

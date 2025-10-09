@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
+import { logger } from '@/lib/logging/safe-logger';
 
 export async function POST(req: NextRequest) {
   try {
@@ -65,22 +66,22 @@ export async function POST(req: NextRequest) {
       });
 
     if (uploadError) {
-      console.error('Storage upload failed:', uploadError);
+      logger.error('Storage upload failed', { error: uploadError.message });
       return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 });
     }
 
     // Step 2: Recall Zoho request
     let recallSuccess = false;
     let deleteSuccess = false;
-    
+
     try {
       const { getZohoAccessToken } = await import('../_lib/token');
       const accessToken = await getZohoAccessToken();
-      
+
       // Recall the document (cancel signing process)
       const recallResponse = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/requests/${agreement.request_id}/recall`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Authorization': `Zoho-oauthtoken ${accessToken}`,
           'Content-Type': 'application/json'
         },
@@ -89,10 +90,8 @@ export async function POST(req: NextRequest) {
 
       if (recallResponse.ok) {
         recallSuccess = true;
-        console.log('Zoho request recalled successfully');
       } else {
-        const errorText = await recallResponse.text();
-        console.warn('Failed to recall Zoho request:', recallResponse.status, errorText);
+        logger.warn('Zoho recall failed', { status: recallResponse.status });
       }
 
       // Step 3: Delete Zoho request (move to trash)
@@ -111,15 +110,13 @@ export async function POST(req: NextRequest) {
 
         if (deleteResponse.ok) {
           deleteSuccess = true;
-          console.log('Zoho request deleted successfully');
         } else {
-          const errorText = await deleteResponse.text();
-          console.warn('Failed to delete Zoho request:', deleteResponse.status, errorText);
+          logger.warn('Zoho deletion failed', { status: deleteResponse.status });
         }
       }
 
     } catch (zohoError) {
-      console.warn('Zoho API operations failed:', zohoError);
+      logger.warn('Zoho API error', { error: zohoError instanceof Error ? zohoError.message : 'Unknown error' });
       // Continue with local updates even if Zoho operations fail
     }
 
@@ -147,7 +144,7 @@ export async function POST(req: NextRequest) {
       .eq('id', agreementId);
 
     if (updateError) {
-      console.error('Agreement update failed:', updateError);
+      logger.error('Agreement update failed', { error: updateError.message });
       return NextResponse.json({ error: 'Failed to update agreement' }, { status: 500 });
     }
 
@@ -159,7 +156,7 @@ export async function POST(req: NextRequest) {
       .eq('id', agreement.competitor_id);
 
     if (competitorError) {
-      console.error('Competitor update failed:', competitorError);
+      logger.error('Competitor update failed', { error: competitorError.message });
       return NextResponse.json({ error: 'Failed to update competitor' }, { status: 500 });
     }
 
@@ -188,7 +185,7 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Manual upload failed:', error);
+    logger.error('Manual upload failed', { error: error instanceof Error ? error.message : 'Unknown error' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

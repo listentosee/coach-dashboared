@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
+import { logger } from '@/lib/logging/safe-logger';
 
 const DuplicateCheckSchema = z.object({
   first_name: z.string().min(1),
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
       .limit(5);
 
     if (error) {
-      console.error('Database error:', error);
+      logger.error('Database error:', { error: error instanceof Error ? error.message : String(error) });
       return NextResponse.json({ error: 'Failed to check duplicates' }, { status: 400 });
     }
 
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.errors }, { status: 400 });
     }
     
-    console.error('Error checking duplicates:', error);
+    logger.error('Error checking duplicates:', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

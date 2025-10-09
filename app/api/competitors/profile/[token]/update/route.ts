@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
+import { logger } from '@/lib/logging/safe-logger';
 
 const ProfileUpdateSchema = z.object({
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
@@ -70,7 +71,7 @@ export async function PUT(
       .single();
 
     if (updateError) {
-      console.error('Database error:', updateError);
+      logger.error('Database error:', { error: updateError instanceof Error ? updateError.message : String(updateError) });
       return NextResponse.json({ error: 'Failed to update profile: ' + updateError.message }, { status: 400 });
     }
 
@@ -82,7 +83,7 @@ export async function PUT(
       .eq('id', existingCompetitor.id);
 
     if (statusError) {
-      console.error('Status update error:', statusError);
+      logger.error('Status update error:', { error: statusError instanceof Error ? statusError.message : String(statusError) });
       // Don't fail the entire request, just log the error
     }
 
@@ -96,7 +97,7 @@ export async function PUT(
       return NextResponse.json({ error: error.errors }, { status: 400 });
     }
     
-    console.error('Error updating competitor profile:', error);
+    logger.error('Error updating competitor profile:', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

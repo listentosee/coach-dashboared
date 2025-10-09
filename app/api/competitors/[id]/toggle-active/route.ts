@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
+import { logger } from '@/lib/logging/safe-logger';
 
 const ToggleActiveSchema = z.object({
   is_active: z.boolean(),
@@ -60,7 +61,7 @@ export async function PUT(
       .single();
 
     if (error) {
-      console.error('Database error:', error);
+      logger.error('Database error:', { error: error instanceof Error ? error.message : String(error) });
       return NextResponse.json({ error: 'Failed to update competitor status: ' + error.message }, { status: 400 });
     }
 
@@ -74,7 +75,7 @@ export async function PUT(
       return NextResponse.json({ error: error.errors }, { status: 400 });
     }
     
-    console.error('Error updating competitor status:', error);
+    logger.error('Error updating competitor status:', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

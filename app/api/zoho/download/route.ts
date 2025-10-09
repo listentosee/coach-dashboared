@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logging/safe-logger';
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
       .download(filePath);
 
     if (error) {
-      console.error('Storage download failed:', error);
+      logger.error('Storage download failed', { error: error.message });
       return NextResponse.json({ error: 'Failed to download file' }, { status: 500 });
     }
 
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Download failed:', error);
+    logger.error('Download failed', { error: error instanceof Error ? error.message : 'Unknown error' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

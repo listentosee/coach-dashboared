@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 import { isUserAdmin } from '@/lib/utils/admin-check';
+import { logger } from '@/lib/logging/safe-logger';
 export const dynamic = 'force-dynamic';
 
 const UpdateCompetitorSchema = z.object({
@@ -80,7 +81,7 @@ export async function PUT(
       .eq('id', id);
 
     if (upErr) {
-      console.error('Competitor update error:', upErr, 'payload:', updatePayload);
+      logger.error('Competitor update failed', { error: upErr.message, code: upErr.code, competitor_id: id });
       return NextResponse.json({ error: 'Failed to update competitor: ' + upErr.message }, { status: 400 });
     }
 
@@ -92,7 +93,7 @@ export async function PUT(
       .maybeSingle();
 
     if (fetchErr || !competitor) {
-      console.error('Competitor fetch after update error:', fetchErr);
+      logger.error('Competitor fetch after update failed', { error: fetchErr?.message, competitor_id: id });
       return NextResponse.json({ error: 'Updated competitor not found' }, { status: 400 });
     }
 
@@ -104,7 +105,7 @@ export async function PUT(
       .eq('id', id);
 
     if (statusError) {
-      console.error('Status update error:', statusError);
+      logger.error('Status update failed', { error: statusError.message, competitor_id: id });
       // Don't fail the entire request, just log the error
     }
 
@@ -132,8 +133,8 @@ export async function PUT(
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.errors }, { status: 400 });
     }
-    
-    console.error('Error updating competitor:', error);
+
+    logger.error('Error updating competitor', { error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

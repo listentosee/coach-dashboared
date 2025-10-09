@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { getZohoAccessToken } from '../_lib/token';
+import { logger } from '@/lib/logging/safe-logger';
 
 function verifyZohoHmac(rawBody: string, headerSig: string | null) {
   if (!headerSig) return false;
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
           .update({ signed_pdf_path: pdfPath })
           .eq('request_id', requestId);
       } catch (e) {
-        console.error('PDF store failed', e);
+        logger.error('PDF storage failed', { error: e instanceof Error ? e.message : 'Unknown error' });
       }
     }
   }

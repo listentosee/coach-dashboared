@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { isUserAdmin } from '@/lib/utils/admin-check';
+import { logger } from '@/lib/logging/safe-logger';
 
 export async function GET(request: NextRequest) {
   try {
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
       .order('last_name', { ascending: true });
 
     if (competitorsError) {
-      console.error('Database error:', competitorsError);
+      logger.error('Database error:', { error: competitorsError instanceof Error ? competitorsError.message : String(competitorsError) });
       return NextResponse.json({ error: 'Failed to fetch competitors' }, { status: 400 });
     }
 
@@ -159,7 +160,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error fetching competitors:', error);
+    logger.error('Error fetching competitors:', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

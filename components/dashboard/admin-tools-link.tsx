@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Settings, ChevronDown, ChevronRight } from 'lucide-react';
+import { Settings, ChevronDown, ChevronRight, Shield } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 
 export default function AdminToolsLink() {
@@ -81,6 +81,12 @@ export default function AdminToolsLink() {
           <Link href="/dashboard/admin-tools/assist-coach">
             <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
               Assist Coach
+            </Button>
+          </Link>
+          <Link href="/dashboard/disclosures">
+            <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
+              <Shield className="h-4 w-4 mr-2" />
+              Disclosure Logs
             </Button>
           </Link>
         </div>

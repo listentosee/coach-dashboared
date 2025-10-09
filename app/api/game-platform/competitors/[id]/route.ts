@@ -3,6 +3,8 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { onboardCompetitorToGamePlatform } from '@/lib/integrations/game-platform/service';
+import { AuditLogger } from '@/lib/audit/audit-logger';
+import { logger } from '@/lib/logging/safe-logger';
 
 const FEATURE_ENABLED = process.env.GAME_PLATFORM_INTEGRATION_ENABLED === 'true';
 
@@ -65,13 +67,24 @@ export async function POST(
       logger: console,
     });
 
+    // Log third-party data disclosure if onboarding was successful and not a dry run
+    if (!dryRun && result.status === 'synced') {
+      await AuditLogger.logDisclosure(supabase, {
+        competitorId: id,
+        disclosedTo: 'MetaCTF Game Platform',
+        purpose: 'Competitor onboarding for cybersecurity competition participation',
+        userId: user.id,
+        dataFields: ['first_name', 'last_name', 'email_school', 'grade', 'division'],
+      });
+    }
+
     return NextResponse.json({
       ...result,
       featureEnabled: FEATURE_ENABLED,
       dryRun,
     });
   } catch (error: any) {
-    console.error('Error syncing competitor to Game Platform', error);
+    logger.error('Competitor onboarding to Game Platform failed', { error: error?.message, competitorId: id });
     const message = error?.message ?? 'Internal server error';
     const status = error?.status ?? 500;
     return NextResponse.json({ error: message }, { status });

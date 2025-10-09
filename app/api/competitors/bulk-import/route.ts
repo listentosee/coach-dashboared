@@ -3,6 +3,8 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { ALLOWED_DIVISIONS, ALLOWED_ETHNICITIES, ALLOWED_GENDERS, ALLOWED_GRADES, ALLOWED_LEVELS_OF_TECHNOLOGY, ALLOWED_RACES } from '@/lib/constants/enums'
 import { normalizeEnumValue, normalizeGrade } from '@/lib/utils/import-normalize'
+import { AuditLogger } from '@/lib/audit/audit-logger';
+import { logger } from '@/lib/logging/safe-logger';
 
 type IncomingRow = {
   first_name?: string
@@ -165,9 +167,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Log the bulk import operation for audit trail
+    await AuditLogger.logBulkImport(supabase, {
+      userId: user.id,
+      coachId: user.id,
+      stats: { inserted, updated, skipped, errors }
+    });
+
     return NextResponse.json({ inserted, updated, skipped, errors })
   } catch (e) {
-    console.error('Bulk import error', e)
+    logger.error('Bulk import failed', { error: e instanceof Error ? e.message : 'Unknown error' })
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

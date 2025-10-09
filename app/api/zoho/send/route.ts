@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { getZohoAccessToken } from '../_lib/token';
 import { logger } from '@/lib/logging/safe-logger';
+import { AuditLogger } from '@/lib/audit/audit-logger';
 
 type Body = {
   competitorId: string;
@@ -250,7 +251,17 @@ export async function POST(req: NextRequest) {
       logger.error('Agreement creation failed', { error: agreementError.message });
       return NextResponse.json({ error: 'Failed to create agreement record', detail: agreementError }, { status: 500 });
     }
-    
+
+    // Log third-party data disclosure (FERPA requirement)
+    await AuditLogger.logDisclosure(supabase, {
+      competitorId: c.id,
+      disclosedTo: 'Zoho Sign',
+      purpose: 'Electronic signature collection for consent forms (print mode)',
+      userId: user.id,
+      dataFields: ['first_name', 'last_name', 'grade', isAdult ? 'email_school' : 'parent_email', isAdult ? null : 'parent_name'].filter(Boolean) as string[],
+      requestId: printRequestId
+    });
+
     // Generate pre-filled PDF from the Zoho request
     try {
       const pdfResponse = await fetch(`${process.env.ZOHO_SIGN_BASE_URL}/api/v1/requests/${printRequestId}/pdf`, {
@@ -335,6 +346,16 @@ export async function POST(req: NextRequest) {
     logger.error('Agreement record creation failed', { error: agreementError.message });
     return NextResponse.json({ error: 'Failed to create agreement record', detail: agreementError }, { status: 500 });
   }
+
+  // Log third-party data disclosure (FERPA requirement)
+  await AuditLogger.logDisclosure(supabase, {
+    competitorId: c.id,
+    disclosedTo: 'Zoho Sign',
+    purpose: 'Electronic signature collection for consent forms (email mode)',
+    userId: user.id,
+    dataFields: ['first_name', 'last_name', 'grade', isAdult ? 'email_school' : 'parent_email', isAdult ? null : 'parent_name'].filter(Boolean) as string[],
+    requestId
+  });
 
   return NextResponse.json({ ok: true, requestId, templateKind });
 }

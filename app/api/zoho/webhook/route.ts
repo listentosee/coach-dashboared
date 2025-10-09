@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { getZohoAccessToken } from '../_lib/token';
 import { logger } from '@/lib/logging/safe-logger';
+import { AuditLogger } from '@/lib/audit/audit-logger';
 
 function verifyZohoHmac(rawBody: string, headerSig: string | null) {
   if (!headerSig) return false;
@@ -114,6 +115,21 @@ export async function POST(req: NextRequest) {
         await supabase.from('agreements')
           .update({ signed_pdf_path: pdfPath })
           .eq('request_id', requestId);
+
+        // Log agreement signed action for audit trail
+        await AuditLogger.logAgreement(supabase, {
+          agreementId: existing.id,
+          competitorId: existing.competitor_id,
+          action: 'agreement_signed',
+          userId: existing.competitor_id, // System action, but track to competitor
+          metadata: {
+            provider: 'zoho',
+            template_kind: existing.template_kind,
+            request_id: requestId,
+            signed_via: 'zoho_webhook',
+            signed_at: new Date().toISOString()
+          }
+        });
       } catch (e) {
         logger.error('PDF storage failed', { error: e instanceof Error ? e.message : 'Unknown error' });
       }

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ActingAsBanner from '@/components/admin/ActingAsBanner'
 import { supabase } from '@/lib/supabase/client';
 import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext';
+import { useSearch } from '@/lib/contexts/SearchContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -65,12 +66,12 @@ interface ReleaseData {
 
 export default function ReleaseManagementPage() {
   const { coachId, loading: ctxLoading } = useAdminCoachContext()
+  const { searchTerm } = useSearch()
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [agreements, setAgreements] = useState<Agreement[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [hideCompleted, setHideCompleted] = useState(true);
+  const [hideCompleted, setHideCompleted] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [selectedAgreement, setSelectedAgreement] = useState<Agreement | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -653,20 +654,14 @@ export default function ReleaseManagementPage() {
           <CardTitle className="text-meta-light">Competitors & Release Status</CardTitle>
           <div className="mt-4 flex items-center justify-between gap-4">
             <div className="flex items-center space-x-4">
-              <Input
-                placeholder="Search competitors by name, school, or grade..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="max-w-md bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
-              />
               <label className="flex items-center space-x-2 text-sm text-meta-light">
                 <input
                   type="checkbox"
-                  checked={!hideCompleted}
-                  onChange={(e) => setHideCompleted(!e.target.checked)}
+                  checked={hideCompleted}
+                  onChange={(e) => setHideCompleted(e.target.checked)}
                   className="rounded border-meta-border bg-meta-card text-meta-accent focus:ring-meta-accent"
                 />
-                <span>Show Completed Releases</span>
+                <span>Show Only Uncompleted Releases</span>
               </label>
             </div>
             <div className="text-sm text-meta-muted whitespace-nowrap">

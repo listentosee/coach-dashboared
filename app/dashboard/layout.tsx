@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase/client';
-import { 
+import {
   LayoutDashboard,
   Users,
   Trophy,
@@ -22,8 +22,9 @@ import {
 import AdminToolsLink from '@/components/dashboard/admin-tools-link';
 import SingleSessionGuard from '@/components/SingleSessionGuard';
 import AdminContextSwitcher from '@/components/admin/AdminContextSwitcher';
+import { SearchProvider, useSearch } from '@/lib/contexts/SearchContext';
 
-export default function DashboardLayout({
+function DashboardLayoutInner({
   children,
 }: {
   children: React.ReactNode;
@@ -34,6 +35,7 @@ export default function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [coachToolsExpanded, setCoachToolsExpanded] = useState(false);
   const [unread, setUnread] = useState<number>(0);
+  const { searchTerm, setSearchTerm } = useSearch();
 
   useEffect(() => {
     const getUser = async () => {
@@ -124,6 +126,8 @@ export default function DashboardLayout({
             placeholder="Search for competitor..."
             className="w-full bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
             id="sidebar-search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
 
@@ -261,11 +265,23 @@ export default function DashboardLayout({
 
       {/* Mobile overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
     </div>
+  );
+}
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <SearchProvider>
+      <DashboardLayoutInner>{children}</DashboardLayoutInner>
+    </SearchProvider>
   );
 }

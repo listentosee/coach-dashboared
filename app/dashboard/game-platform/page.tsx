@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { getStatusColor } from '@/components/dashboard/competitor-columns';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -85,6 +84,27 @@ interface DashboardData {
     coachId: string | null;
   };
   competitors?: Array<{ id: string; coach_id?: string | null; team?: { id?: string | null; name?: string | null; division?: string | null; affiliation?: string | null } | null }>;
+  flashCtfMomentum?: {
+    students: Array<{
+      competitorId: string;
+      name: string;
+      thisMonthEvents: number;
+      last3MonthsAvg: number;
+      totalEvents12mo: number;
+      challengesSolved: number;
+      lastParticipated: string | null;
+      status: 'none' | 'declining' | 'active';
+    }>;
+    alerts: {
+      noParticipation: number;
+      declining: number;
+    };
+    monthlyTotals: Array<{
+      month: string;
+      participants: number;
+    }>;
+    eventsByCompetitor?: Record<string, Array<{ eventName: string; date: string; challenges: number; points: number; challengeDetails?: Array<{ name: string; category: string; points: number; solvedAt: string }> }>>;
+  };
 }
 
 interface StatCard {
@@ -250,6 +270,16 @@ export default function GamePlatformDashboard() {
       }
     }
 
+    // Apply division filter
+    if (division !== 'all' && dashboard.competitors) {
+      const competitorsInDivision = new Set(
+        (dashboard.competitors as any[])
+          .filter((c) => c.team?.division === division)
+          .map((c) => c.id)
+      );
+      filteredLeaderboard = filteredLeaderboard.filter((entry) => competitorsInDivision.has(entry.competitorId));
+    }
+
     // Apply sorting
     return [...filteredLeaderboard].sort((a, b) => {
       const multiplier = leaderboardSort.direction === 'asc' ? 1 : -1;
@@ -259,27 +289,108 @@ export default function GamePlatformDashboard() {
         return multiplier * (a.challenges - b.challenges);
       }
     });
-  }, [dashboard, coachScope, leaderboardSort]);
+  }, [dashboard, coachScope, division, leaderboardSort]);
 
   const teams = useMemo(() => {
     if (!dashboard) return [] as TeamSummary[];
+    let filteredTeams: TeamSummary[];
+
     if (dashboard.controller?.isAdmin && coachScope === 'all') {
-      return dashboard.teams;
+      filteredTeams = dashboard.teams;
+    } else {
+      const currentCoachId = dashboard.controller?.coachId || null;
+      if (!currentCoachId || !dashboard.competitors) {
+        filteredTeams = dashboard.teams;
+      } else {
+        const allowedTeamIds = new Set(
+          (dashboard.competitors as any[])
+            .filter((c) => c.coach_id === currentCoachId && c.team?.id)
+            .map((c) => c.team.id as string)
+        );
+        if (!allowedTeamIds.size) {
+          filteredTeams = dashboard.teams.filter((team) => team.totalMembers > 0);
+        } else {
+          filteredTeams = dashboard.teams.filter((team) => allowedTeamIds.has(team.teamId));
+        }
+      }
     }
-    const currentCoachId = dashboard.controller?.coachId || null;
-    if (!currentCoachId || !dashboard.competitors) {
-      return dashboard.teams;
+
+    // Apply division filter
+    if (division !== 'all') {
+      filteredTeams = filteredTeams.filter((team) => team.division === division);
     }
-    const allowedTeamIds = new Set(
-      (dashboard.competitors as any[])
-        .filter((c) => c.coach_id === currentCoachId && c.team?.id)
-        .map((c) => c.team.id as string)
+
+    return filteredTeams;
+  }, [dashboard, coachScope, division]);
+
+  const filteredFlashCtfMomentum = useMemo(() => {
+    if (!dashboard?.flashCtfMomentum) return undefined;
+
+    let allowedCompetitorIds: Set<string> | null = null;
+
+    // Apply coach scope filter
+    if (!(dashboard.controller?.isAdmin && coachScope === 'all')) {
+      const currentCoachId = dashboard.controller?.coachId || null;
+      if (currentCoachId && dashboard.competitors) {
+        allowedCompetitorIds = new Set(
+          (dashboard.competitors as any[])
+            .filter((c) => c.coach_id === currentCoachId)
+            .map((c) => c.id)
+        );
+      }
+    }
+
+    // Apply division filter
+    if (division !== 'all' && dashboard.competitors) {
+      const competitorsInDivision = new Set(
+        (dashboard.competitors as any[])
+          .filter((c) => c.team?.division === division)
+          .map((c) => c.id)
+      );
+
+      if (allowedCompetitorIds) {
+        // Intersect with existing filter
+        allowedCompetitorIds = new Set(
+          [...allowedCompetitorIds].filter(id => competitorsInDivision.has(id))
+        );
+      } else {
+        allowedCompetitorIds = competitorsInDivision;
+      }
+    }
+
+    // If no filters applied, return original data
+    if (!allowedCompetitorIds) {
+      return dashboard.flashCtfMomentum;
+    }
+
+    // Filter students
+    const filteredStudents = dashboard.flashCtfMomentum.students.filter(
+      student => allowedCompetitorIds!.has(student.competitorId)
     );
-    if (!allowedTeamIds.size) {
-      return dashboard.teams.filter((team) => team.totalMembers > 0);
-    }
-    return dashboard.teams.filter((team) => allowedTeamIds.has(team.teamId));
-  }, [dashboard, coachScope]);
+
+    // Recalculate alerts based on filtered students
+    const noParticipation = filteredStudents.filter(s => s.status === 'none').length;
+    const declining = filteredStudents.filter(s => s.status === 'declining').length;
+
+    // Filter eventsByCompetitor
+    const filteredEventsByCompetitor = dashboard.flashCtfMomentum.eventsByCompetitor
+      ? Object.fromEntries(
+          Object.entries(dashboard.flashCtfMomentum.eventsByCompetitor).filter(
+            ([competitorId]) => allowedCompetitorIds!.has(competitorId)
+          )
+        )
+      : undefined;
+
+    return {
+      students: filteredStudents,
+      alerts: {
+        noParticipation,
+        declining,
+      },
+      monthlyTotals: dashboard.flashCtfMomentum.monthlyTotals, // Keep monthly totals as-is (global stats)
+      eventsByCompetitor: filteredEventsByCompetitor,
+    };
+  }, [dashboard, coachScope, division]);
 
   const handleCompetitorChallengeDrilldown = useCallback(
     (source: {
@@ -519,8 +630,8 @@ export default function GamePlatformDashboard() {
   const alerts = useMemo(() => {
     if (!dashboard) {
       return {
-        unsyncedCompetitors: [] as typeof dashboard.alerts.unsyncedCompetitors,
-        syncErrors: [] as typeof dashboard.alerts.syncErrors,
+        unsyncedCompetitors: [] as Array<{ competitorId: string; name: string }>,
+        syncErrors: [] as Array<{ competitorId: string; name: string; error: string }>,
         staleCompetitors: [] as LeaderboardEntry[],
       };
     }
@@ -798,11 +909,11 @@ export default function GamePlatformDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-meta-border/80">
-                    {(loading ? Array.from({ length: 5 }) : leaderboard).map((entry, idx) => {
-                      const hasChallengeData = !!entry && Number(entry.challenges) > 0;
+                    {(loading ? Array.from<LeaderboardEntry>({ length: 5 }) : leaderboard).map((entry, idx) => {
+                      const hasChallengeData = !!entry && Number(entry?.challenges) > 0;
                       return (
                         <tr
-                          key={entry ? entry.competitorId : idx}
+                          key={entry?.competitorId ?? idx}
                           className="hover:bg-meta-dark/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-meta-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-meta-card"
                         >
                           <td className="py-2 pr-3 text-meta-muted">#{idx + 1}</td>
@@ -810,15 +921,15 @@ export default function GamePlatformDashboard() {
                             className={cn("py-2 pr-3", hasChallengeData ? "cursor-pointer" : "")}
                             role={hasChallengeData ? 'button' : undefined}
                             tabIndex={hasChallengeData ? 0 : undefined}
-                            onClick={hasChallengeData ? () => handleCompetitorChallengeDrilldown(entry!) : undefined}
-                            onKeyDown={hasChallengeData ? (event) => {
+                            onClick={hasChallengeData && entry ? () => handleCompetitorChallengeDrilldown(entry) : undefined}
+                            onKeyDown={hasChallengeData && entry ? (event) => {
                               if (event.key === 'Enter' || event.key === ' ') {
                                 event.preventDefault();
-                                handleCompetitorChallengeDrilldown(entry!);
+                                handleCompetitorChallengeDrilldown(entry);
                               }
                             } : undefined}
                           >
-                            {entry ? entry.name : '—'}
+                            {entry?.name ?? '—'}
                           </td>
                           <td className="py-2 pr-3 font-medium">{entry ? formatNumber(entry.challenges) : '—'}</td>
                           <td className="py-2 pr-3 text-meta-muted">
@@ -829,7 +940,7 @@ export default function GamePlatformDashboard() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={(e) => {
+                                onClick={(e: React.MouseEvent) => {
                                   e.stopPropagation();
                                   router.push(`/dashboard/game-platform/report-card/${entry.competitorId}`);
                                 }}
@@ -866,12 +977,12 @@ export default function GamePlatformDashboard() {
             </CardHeader>
             <CardContent>
               <div className="h-96">
-                {dashboard?.flashCtfMomentum ? (
+                {filteredFlashCtfMomentum ? (
                   <MonthlyCtfMomentum
                     view={ctfView}
-                    data={dashboard.flashCtfMomentum}
+                    data={filteredFlashCtfMomentum}
                     onStudentClick={(competitorId, name, eventName) => {
-                      const allEvents = dashboard.flashCtfMomentum.eventsByCompetitor?.[competitorId] || [];
+                      const allEvents = filteredFlashCtfMomentum.eventsByCompetitor?.[competitorId] || [];
                       // Filter to specific event if eventName is provided
                       const events = eventName
                         ? allEvents.filter(e => e.eventName === eventName)
@@ -910,8 +1021,8 @@ export default function GamePlatformDashboard() {
             </div>
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {(loading ? Array.from({ length: 3 }) : teams).map((team, idx) => (
-              <Card key={team ? team.teamId : idx} className="border-meta-border bg-meta-card/90 hover:border-meta-accent/60 transition">
+            {(loading ? Array.from<TeamSummary>({ length: 3 }) : teams).map((team, idx) => (
+              <Card key={team?.teamId ?? idx} className="border-meta-border bg-meta-card/90 hover:border-meta-accent/60 transition">
                 <CardHeader>
                   <CardTitle className="text-meta-light">{team ? team.name : '—'}</CardTitle>
                   <CardDescription>
@@ -994,7 +1105,7 @@ export default function GamePlatformDashboard() {
                 <CardContent className="space-y-3 text-sm">
                   {alerts.unsyncedCompetitors.length ? (
                     <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                      {alerts.unsyncedCompetitors.map((item) => (
+                      {alerts.unsyncedCompetitors.map((item: { competitorId: string; name: string }) => (
                         <div
                           key={item.competitorId}
                           className="rounded border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-amber-100"
@@ -1020,7 +1131,7 @@ export default function GamePlatformDashboard() {
                 <CardContent className="space-y-3 text-sm">
                   {alerts.syncErrors.length ? (
                     <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                      {alerts.syncErrors.map((item) => (
+                      {alerts.syncErrors.map((item: { competitorId: string; name: string; error: string }) => (
                         <div
                           key={item.competitorId}
                           className="rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-red-100"

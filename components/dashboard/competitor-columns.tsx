@@ -3,7 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Edit, UserCheck, Gamepad2, Ban, Link as LinkIcon, ChevronDown, ChevronUp, ChevronsUpDown, Send, FileText } from "lucide-react"
+import { Edit, UserCheck, Gamepad2, Ban, Link as LinkIcon, ChevronDown, ChevronUp, ChevronsUpDown, Send, FileText, Trophy } from "lucide-react"
 import { emailTemplates } from "@/components/ui/email-composer"
 
 const DIVISION_LABELS: Record<string, string> = {
@@ -419,7 +419,11 @@ export const createCompetitorColumns = (
             disabled={registerDisabled}
             aria-disabled={registerDisabled}
           >
-            <Gamepad2 className="h-4 w-4" />
+            {competitor.status === 'complete' && competitor.game_platform_id ? (
+              <Trophy className="h-4 w-4" />
+            ) : (
+              <Gamepad2 className="h-4 w-4" />
+            )}
           </Button>
           <Button
             variant="ghost"

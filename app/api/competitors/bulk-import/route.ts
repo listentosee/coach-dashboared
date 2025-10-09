@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
     const coachId = user.id
 
     let inserted = 0, updated = 0, skipped = 0, errors = 0
+    const errorDetails: Array<{ row: number; name: string; error: string }> = []
 
     // Enumerations (strict)
     const allowedDivisions = ALLOWED_DIVISIONS as readonly string[]
@@ -68,7 +69,8 @@ export async function POST(req: NextRequest) {
     const allowedLevels = ALLOWED_LEVELS_OF_TECHNOLOGY as readonly string[]
     const allowedGrades = ALLOWED_GRADES as readonly string[]
 
-    for (const raw of inputRows) {
+    for (let rowIndex = 0; rowIndex < inputRows.length; rowIndex++) {
+      const raw = inputRows[rowIndex]
       try {
         const first_name = (raw.first_name || '').trim()
         const last_name = (raw.last_name || '').trim()
@@ -164,6 +166,9 @@ export async function POST(req: NextRequest) {
         inserted++
       } catch (e) {
         errors++
+        const name = `${(raw.first_name || '').trim()} ${(raw.last_name || '').trim()}`.trim() || 'Unknown'
+        const errorMsg = e instanceof Error ? e.message : 'Unknown error'
+        errorDetails.push({ row: rowIndex + 1, name, error: errorMsg })
       }
     }
 
@@ -174,7 +179,14 @@ export async function POST(req: NextRequest) {
       stats: { inserted, updated, skipped, errors }
     });
 
-    return NextResponse.json({ inserted, updated, skipped, errors })
+    return NextResponse.json({
+      inserted,
+      updated,
+      skipped,
+      errors,
+      total: inputRows.length,
+      errorDetails: errorDetails.slice(0, 10) // Limit to first 10 errors to avoid large responses
+    })
   } catch (e) {
     logger.error('Bulk import failed', { error: e instanceof Error ? e.message : 'Unknown error' })
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

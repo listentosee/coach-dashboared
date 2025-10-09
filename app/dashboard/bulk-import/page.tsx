@@ -77,6 +77,13 @@ function isValidEmail(email?: string | null) {
   return /.+@.+\..+/.test(e)
 }
 
+function isValidName(name?: string | null) {
+  if (!name) return false
+  const n = name.trim()
+  // Must be at least 2 characters and contain only letters, spaces, hyphens, apostrophes, and periods
+  return n.length >= 2 && /^[a-zA-Z\s\-'.]+$/.test(n)
+}
+
 // Minimal CSV parser with basic quote handling
 function parseCSV(text: string): string[][] {
   const rows: string[][] = []
@@ -221,7 +228,9 @@ export default function BulkImportPage() {
     currentRows.forEach((row, i) => {
       const rowErr: string[] = []
       if (!row.first_name) { rowErr.push('First name required'); mark(i, 'first_name') }
+      else if (!isValidName(row.first_name)) { rowErr.push('First name must be at least 2 letters and contain only letters, spaces, hyphens, apostrophes, or periods'); mark(i, 'first_name') }
       if (!row.last_name) { rowErr.push('Last name required'); mark(i, 'last_name') }
+      else if (!isValidName(row.last_name)) { rowErr.push('Last name must be at least 2 letters and contain only letters, spaces, hyphens, apostrophes, or periods'); mark(i, 'last_name') }
       const isAdult = parseBoolean(row.is_18_or_over)
       if (isAdult === null) { rowErr.push('Is Adult must be Y/N or True/False'); mark(i, 'is_18_or_over') }
       if (!row.grade) { rowErr.push('Grade required'); mark(i, 'grade') }
@@ -229,7 +238,11 @@ export default function BulkImportPage() {
       if (row.grade && !allowedGrades.includes(gradeToken as any)) { rowErr.push('Invalid grade'); mark(i, 'grade') }
       // School email is required for all participants
       if (!isValidEmail(row.email_school)) { rowErr.push('School email is required and must be valid'); mark(i, 'email_school') }
+      // Personal email is optional, but if provided must be valid
+      if (row.email_personal && !isValidEmail(row.email_personal)) { rowErr.push('Personal email is invalid'); mark(i, 'email_personal') }
       if (isAdult === false) {
+        // Validate parent name if provided
+        if (row.parent_name && !isValidName(row.parent_name)) { rowErr.push('Parent name must be at least 2 letters and contain only letters, spaces, hyphens, apostrophes, or periods'); mark(i, 'parent_name') }
         // Validate parent email when parent name is provided (required if name present)
         if (row.parent_name && !isValidEmail(row.parent_email)) { rowErr.push('Parent email is required and must be valid when parent name is provided'); mark(i, 'parent_email') }
         // If no parent name, allow parent email to be empty; if present, must be valid

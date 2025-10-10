@@ -389,6 +389,7 @@ export default function TeamsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [divisionFilter, setDivisionFilter] = useState<'all' | DivisionValue>('all');
   const [isAdmin, setIsAdmin] = useState(false)
 
   const sensors = useSensors(
@@ -477,6 +478,20 @@ export default function TeamsPage() {
   useEffect(() => {
     if (!ctxLoading) fetchData();
   }, [ctxLoading, fetchData]);
+
+  // Connect sidebar search to teams page
+  useEffect(() => {
+    const sidebarSearch = document.getElementById('sidebar-search') as HTMLInputElement;
+    if (sidebarSearch) {
+      const handleSidebarSearch = (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        setSearchTerm(target.value);
+      };
+
+      sidebarSearch.addEventListener('input', handleSidebarSearch);
+      return () => sidebarSearch.removeEventListener('input', handleSidebarSearch);
+    }
+  }, []);
 
   const createTeam = async () => {
     if (!newTeamName.trim()) return;
@@ -744,16 +759,20 @@ export default function TeamsPage() {
     setActiveId(null);
   };
 
-  // Filter available competitors based on search term
+  // Filter available competitors based on division and search term
   const filteredAvailableCompetitors = availableCompetitors.filter((competitor) => {
+    // Division filter
+    const matchesDivision = divisionFilter === 'all' || competitor.division === divisionFilter;
+
+    // Search filter
     const term = searchTerm.toLowerCase();
     const divisionLabel = competitor.division ? competitor.division.replace('_', ' ') : '';
-    return (
-      competitor.first_name.toLowerCase().includes(term) ||
+    const matchesSearch = competitor.first_name.toLowerCase().includes(term) ||
       competitor.last_name.toLowerCase().includes(term) ||
       competitor.grade?.toLowerCase().includes(term) ||
-      divisionLabel.toLowerCase().includes(term)
-    );
+      divisionLabel.toLowerCase().includes(term);
+
+    return matchesDivision && matchesSearch;
   });
 
   const uploadTeamImage = async (teamId: string, file: File) => {
@@ -853,15 +872,40 @@ export default function TeamsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Search Input */}
-              <div className="mb-4">
-                <Input
-                  placeholder="Search competitors..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="bg-meta-dark border-meta-border text-meta-light"
-                />
-              </div>
+              {/* Division Filter */}
+              {(() => {
+                const counts = {
+                  all: availableCompetitors.length,
+                  middle_school: availableCompetitors.filter(c => c.division === 'middle_school').length,
+                  high_school: availableCompetitors.filter(c => c.division === 'high_school').length,
+                  college: availableCompetitors.filter(c => c.division === 'college').length,
+                };
+
+                const tabs: Array<{value: 'all' | DivisionValue; label: string}> = [
+                  { value: 'all', label: `All (${counts.all})` },
+                  ...(counts.middle_school > 0 ? [{ value: 'middle_school' as DivisionValue, label: `Middle (${counts.middle_school})` }] : []),
+                  ...(counts.high_school > 0 ? [{ value: 'high_school' as DivisionValue, label: `High (${counts.high_school})` }] : []),
+                  ...(counts.college > 0 ? [{ value: 'college' as DivisionValue, label: `College (${counts.college})` }] : []),
+                ];
+
+                return (
+                  <div className="mb-4">
+                    <div className="text-sm text-meta-light mb-2">Division:</div>
+                    <div className="flex rounded-md overflow-hidden border border-meta-border">
+                      {tabs.map(tab => (
+                        <button
+                          key={tab.value}
+                          onClick={() => setDivisionFilter(tab.value)}
+                          className={`px-3 py-1 ${divisionFilter === tab.value ? 'bg-meta-accent text-white' : 'bg-meta-card text-meta-light hover:bg-meta-dark'}`}
+                          title={`Show ${tab.label}`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
               
               <SortableContext
                 items={filteredAvailableCompetitors.map(c => c.id)}

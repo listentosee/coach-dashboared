@@ -158,10 +158,11 @@ export const createCompetitorColumns = (
     ),
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
+      const displayLabel = status === 'complete' ? 'In The Game' : status;
       return (
         <div className="text-center">
           <Badge className={getStatusColor(status)}>
-            {status}
+            {displayLabel}
           </Badge>
         </div>
       );

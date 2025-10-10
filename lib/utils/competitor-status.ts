@@ -92,8 +92,23 @@ export function getStatusDescription(status: 'pending' | 'profile' | 'compliance
     case 'compliance':
       return 'Release form is complete';
     case 'complete':
-      return 'On the game platform';
+      return 'In The Game';
     default:
       return 'Unknown status';
+  }
+}
+
+export function getStatusDisplayLabel(status: string): string {
+  switch (status) {
+    case 'complete':
+      return 'In The Game';
+    case 'pending':
+      return 'Pending';
+    case 'profile':
+      return 'Profile';
+    case 'compliance':
+      return 'Compliance';
+    default:
+      return status;
   }
 }

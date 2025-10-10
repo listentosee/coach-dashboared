@@ -792,7 +792,7 @@ export default function DashboardPage() {
               <div><span className="text-meta-light">Pending:</span> Waiting for profile update</div>
               <div><span className="text-meta-light">Profile:</span> Waiting for release completion</div>
               <div><span className="text-meta-light">Compliance:</span> Release form is complete</div>
-              <div><span className="text-meta-light">Complete:</span> On the game platform</div>
+              <div><span className="text-meta-light">In The Game:</span> On the game platform</div>
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="bg-meta-dark rounded p-3">
@@ -808,7 +808,7 @@ export default function DashboardPage() {
                 <div className="text-xl font-bold text-purple-400">{stats.complianceCompetitors}</div>
               </div>
               <div className="bg-meta-dark rounded p-3">
-                <div className="text-xs text-meta-muted">Complete</div>
+                <div className="text-xs text-meta-muted">In The Game</div>
                 <div className="text-xl font-bold text-green-400">{stats.activeCompetitors}</div>
               </div>
             </div>

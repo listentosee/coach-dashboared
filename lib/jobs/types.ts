@@ -6,6 +6,7 @@ export type JobTaskType = 'game_platform_sync' | 'game_platform_totals_sweep';
 export interface GamePlatformSyncPayload {
   dryRun?: boolean;
   coachId?: string | null;
+  forceFullSync?: boolean;
 }
 
 export interface GamePlatformTotalsSweepPayload {

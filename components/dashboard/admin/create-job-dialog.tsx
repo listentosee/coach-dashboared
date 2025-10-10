@@ -53,6 +53,7 @@ export function CreateJobDialog() {
     duration: 'forever',
     run_at: '',
     coachId: '',
+    forceFullSync: false,
   });
 
   useEffect(() => {
@@ -75,7 +76,7 @@ export function CreateJobDialog() {
 
     try {
       const payload = formData.task_type === 'game_platform_sync'
-        ? { dryRun: false, coachId: formData.coachId || null }
+        ? { dryRun: false, coachId: formData.coachId || null, forceFullSync: formData.forceFullSync }
         : { batchSize: 50, coachId: formData.coachId || null };
 
       const expiresAt = !formData.is_recurring || formData.duration === 'forever'
@@ -112,6 +113,7 @@ export function CreateJobDialog() {
         duration: 'forever',
         run_at: '',
         coachId: '',
+        forceFullSync: false,
       });
       router.refresh();
     } catch (error) {
@@ -172,6 +174,19 @@ export function CreateJobDialog() {
             </select>
             <p className="text-xs text-gray-500 mt-1">Leave empty to sync all coaches</p>
           </div>
+
+          {formData.task_type === 'game_platform_sync' && (
+            <div className="flex items-center gap-3 p-3 border rounded bg-gray-50">
+              <Switch
+                checked={formData.forceFullSync}
+                onCheckedChange={(checked) => setFormData({ ...formData, forceFullSync: checked })}
+              />
+              <div>
+                <Label className="text-gray-900">Force Full Sync</Label>
+                <p className="text-xs text-gray-600">Ignore last sync timestamp and pull all historical data</p>
+              </div>
+            </div>
+          )}
 
           <div>
             <Label htmlFor="run_at" className="text-gray-900">Run At (optional)</Label>

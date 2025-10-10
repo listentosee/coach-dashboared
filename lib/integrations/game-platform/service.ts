@@ -52,6 +52,7 @@ export interface SyncCompetitorStatsParams extends ServiceOptions {
 
 export interface SyncAllCompetitorStatsParams extends ServiceOptions {
   coachId?: string | null;
+  forceFullSync?: boolean;
 }
 
 export interface SyncCompetitorStatsResult {
@@ -1319,6 +1320,7 @@ export async function syncAllCompetitorGameStats({
   dryRun,
   logger,
   coachId,
+  forceFullSync,
 }: SyncAllCompetitorStatsParams) {
   const statsClient: AnySupabaseClient = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
@@ -1341,22 +1343,28 @@ export async function syncAllCompetitorGameStats({
   const syncRunId = syncRun.id;
 
   // Get the last successful sync timestamp to use as after_time_unix for all competitors
-  const { data: lastSync } = await statsClient
-    .from('game_platform_sync_runs')
-    .select('completed_at')
-    .eq('status', 'completed')
-    .order('completed_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  let globalAfterTime: number | null = null;
 
-  const globalAfterTime = lastSync?.completed_at
-    ? Math.floor(new Date(lastSync.completed_at).getTime() / 1000)
-    : null;
-
-  if (globalAfterTime) {
-    logger?.info?.(`Using global sync timestamp: ${new Date(globalAfterTime * 1000).toISOString()}`);
+  if (forceFullSync) {
+    logger?.info?.('forceFullSync enabled - performing full sync for all competitors (ignoring last sync timestamp)');
   } else {
-    logger?.info?.('No previous sync found - performing full sync for all competitors');
+    const { data: lastSync } = await statsClient
+      .from('game_platform_sync_runs')
+      .select('completed_at')
+      .eq('status', 'completed')
+      .order('completed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    globalAfterTime = lastSync?.completed_at
+      ? Math.floor(new Date(lastSync.completed_at).getTime() / 1000)
+      : null;
+
+    if (globalAfterTime) {
+      logger?.info?.(`Using global sync timestamp: ${new Date(globalAfterTime * 1000).toISOString()}`);
+    } else {
+      logger?.info?.('No previous sync found - performing full sync for all competitors');
+    }
   }
 
   let competitorQuery = supabase

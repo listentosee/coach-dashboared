@@ -8,6 +8,7 @@ export const handleGamePlatformSync: JobHandler<'game_platform_sync'> = async (j
     supabase,
     dryRun: payload.dryRun ?? false,
     coachId: payload.coachId ?? null,
+    forceFullSync: payload.forceFullSync ?? false,
     logger: logger ?? console,
   });
 

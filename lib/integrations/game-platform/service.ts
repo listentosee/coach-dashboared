@@ -157,7 +157,7 @@ async function ensureCoachGamePlatformId(
 }
 
 function isDryRunOverride(dryRun?: boolean): boolean {
-  if (typeof dryRun === 'boolean') return dryRun;
+  // Only check if feature is enabled - ignore dryRun mock parameter
   return !FEATURE_ENABLED;
 }
 

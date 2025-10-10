@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import {
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { createBrowserClient } from '@supabase/ssr';
 
 const TASK_TYPES = [
   { value: 'game_platform_sync', label: 'Incremental Sync (game_platform_sync)' },
@@ -44,13 +45,34 @@ export function CreateJobDialog() {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [coaches, setCoaches] = useState<Array<{ id: string; full_name: string; email: string }>>([]);
   const [formData, setFormData] = useState({
     task_type: 'game_platform_sync',
     is_recurring: false,
     recurrence_interval_minutes: 60,
     duration: 'forever',
     run_at: '',
+    coachId: '',
   });
+
+  useEffect(() => {
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    async function fetchCoaches() {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .eq('role', 'coach')
+        .order('full_name');
+
+      if (data) setCoaches(data);
+    }
+
+    fetchCoaches();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,8 +80,8 @@ export function CreateJobDialog() {
 
     try {
       const payload = formData.task_type === 'game_platform_sync'
-        ? { dryRun: false }
-        : { batchSize: 50 };
+        ? { dryRun: false, coachId: formData.coachId || null }
+        : { batchSize: 50, coachId: formData.coachId || null };
 
       const expiresAt = !formData.is_recurring || formData.duration === 'forever'
         ? null
@@ -94,6 +116,7 @@ export function CreateJobDialog() {
         recurrence_interval_minutes: 60,
         duration: 'forever',
         run_at: '',
+        coachId: '',
       });
       router.refresh();
     } catch (error) {
@@ -135,6 +158,24 @@ export function CreateJobDialog() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <Label htmlFor="coach_id" className="text-gray-900">Coach (optional)</Label>
+            <select
+              id="coach_id"
+              value={formData.coachId}
+              onChange={(e) => setFormData({ ...formData, coachId: e.target.value })}
+              className="w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900"
+            >
+              <option value="">All Coaches</option>
+              {coaches.map((coach) => (
+                <option key={coach.id} value={coach.id}>
+                  {coach.full_name || coach.email}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">Leave empty to sync all coaches</p>
           </div>
 
           <div>

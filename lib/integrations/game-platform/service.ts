@@ -96,6 +96,8 @@ async function ensureCoachGamePlatformId(
     preferred_username: `${firstName}.${lastName}`.toLowerCase().replace(/[^a-z0-9._-]/g, '') || coachProfile.id,
     role: 'coach',
     syned_user_id: coachProfile.id,
+    syned_school_id: coachProfile.school_name || 'Unknown School',
+    syned_region_id: coachProfile.division || 'high_school',
   };
 
   try {
@@ -105,19 +107,19 @@ async function ensureCoachGamePlatformId(
     let userStatus: string | undefined;
 
     try {
-      logger?.info?.(`Checking if coach ${coachProfile.id} exists on MetaCTF`);
+      logger?.info?.(`🔍 Checking if coach ${coachProfile.id} exists on MetaCTF`);
       response = await (resolvedClient as GamePlatformClient).getUser({ syned_user_id: coachProfile.id });
       synedUserId = response.syned_user_id;
       userStatus = response.metactf_user_status;
-      logger?.info?.(`Coach ${coachProfile.id} found on MetaCTF with status: ${userStatus}`);
+      logger?.info?.(`✅ Coach ${coachProfile.id} found on MetaCTF with status: ${userStatus}`, response);
     } catch (getUserError: any) {
       // If coach doesn't exist (404), create them
       if (getUserError?.status === 404) {
-        logger?.info?.(`Coach ${coachProfile.id} not found on MetaCTF, creating new coach user`);
+        logger?.info?.(`📤 Coach ${coachProfile.id} not found on MetaCTF, creating new coach with payload:`, payload);
         response = await (resolvedClient as GamePlatformClient).createUser(payload);
         synedUserId = response.syned_user_id;
         userStatus = response.metactf_user_status;
-        logger?.info?.(`Created coach ${coachProfile.id} on MetaCTF with status: ${userStatus}`);
+        logger?.info?.(`✅ Created coach ${coachProfile.id} on MetaCTF:`, response);
       } else {
         // Other errors should be thrown
         throw getUserError;
@@ -125,17 +127,19 @@ async function ensureCoachGamePlatformId(
     }
 
     // Check if coach is approved/verified
-    if (userStatus && ['denied', 'pending_approval'].includes(userStatus)) {
-      const errorMsg = `Coach user on MetaCTF has status "${userStatus}" and cannot be used until approved`;
+    // MetaCTF requires coaches to be in "approved" status before they can have competitors
+    if (userStatus && !['approved'].includes(userStatus)) {
+      const errorMsg = `Coach user on MetaCTF has status "${userStatus}" and must be "approved" before adding competitors. Please contact MetaCTF support to approve this coach.`;
       logger?.warn?.(errorMsg, { coachId: coachProfile.id, userStatus });
       throw new Error(errorMsg);
     }
 
-    // Update local database with the MetaCTF user ID
+    // Update local database with the MetaCTF syned_user_id (UUID) for linking
+    // This allows us to skip the API call next time if it's already set
     const { error: updateError } = await supabase
       .from('profiles')
       .update({
-        game_platform_user_id: synedUserId,
+        game_platform_user_id: synedUserId, // Store the UUID for linking to competitors
         game_platform_last_synced_at: new Date().toISOString(),
       })
       .eq('id', coachProfile.id);
@@ -225,11 +229,22 @@ export async function onboardCompetitorToGamePlatform({
     email: competitor.email_school || competitor.email_personal,
     preferred_username: buildPreferredUsername(competitor),
     role: 'user',
-    syned_school_id: competitor.syned_school_id ?? null,
-    syned_region_id: competitor.syned_region_id ?? null,
+    // Competitors inherit school/region from coach if not set
+    syned_school_id: competitor.syned_school_id ?? coachProfile.school_name ?? 'Unknown School',
+    syned_region_id: competitor.syned_region_id ?? coachProfile.division ?? 'high_school',
     syned_coach_user_id: synedCoachUserId,
     syned_user_id: String(competitor.game_platform_id ?? competitor.id),
   };
+
+  // Log the complete payload for debugging
+  logger?.info?.('📤 MetaCTF API - Creating competitor with payload:', {
+    competitorId,
+    payload: userPayload,
+    coachProfile: {
+      id: coachProfile.id,
+      game_platform_user_id: coachProfile.game_platform_user_id,
+    }
+  });
 
   if (!userPayload.syned_coach_user_id) {
     await updateCompetitorSyncError(
@@ -257,12 +272,15 @@ export async function onboardCompetitorToGamePlatform({
       };
     }
 
+    logger?.info?.('🚀 Sending createUser request to MetaCTF API...');
     const remoteResult = await resolvedClient.createUser(userPayload);
-    const remoteUserId = String((remoteResult as any)?.metactf_user_id ?? (remoteResult as any)?.id ?? null);
+    logger?.info?.('✅ MetaCTF API response:', remoteResult);
+    // Store the syned_user_id (UUID) for linking, not the metactf_user_id (numeric)
+    const remoteUserId = String((remoteResult as any)?.syned_user_id ?? null);
 
     if (!remoteUserId) {
-      await updateCompetitorSyncError(supabase, competitorId, 'Game Platform did not return a metactf_user_id');
-      throw new Error('Game Platform did not return a metactf_user_id');
+      await updateCompetitorSyncError(supabase, competitorId, 'Game Platform did not return a syned_user_id');
+      throw new Error('Game Platform did not return a syned_user_id');
     }
 
     const updatedCompetitor = await persistCompetitorSyncSuccess(supabase, competitorId, competitor, remoteUserId);
@@ -348,7 +366,12 @@ export async function onboardCompetitorToGamePlatform({
       remote: remoteResult,
     };
   } catch (error: any) {
-    logger?.error?.('Failed to onboard competitor to Game Platform', { competitorId, error });
+    logger?.error?.('❌ Failed to onboard competitor to Game Platform', {
+      competitorId,
+      error: error?.message,
+      errorDetails: error,
+      payload: userPayload
+    });
     await updateCompetitorSyncError(supabase, competitorId, error?.message ?? 'Unknown error');
     throw error;
   }

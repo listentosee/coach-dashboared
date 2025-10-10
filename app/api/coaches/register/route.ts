@@ -14,7 +14,7 @@ const FEATURE_ENABLED = process.env.GAME_PLATFORM_INTEGRATION_ENABLED === 'true'
  */
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
+    const cookieStore = cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
 
     const {
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       try {
         const gamePlatformClient = new GamePlatformClient({ logger });
 
-        // Build coach user payload
+        // Build coach user payload - MetaCTF requires syned_school_id and syned_region_id for coaches
         const coachPayload = {
           first_name: first_name || full_name?.split(' ')[0] || 'Coach',
           last_name: last_name || full_name?.split(' ').slice(1).join(' ') || 'User',
@@ -87,6 +87,8 @@ export async function POST(request: NextRequest) {
             `${first_name}.${last_name}`.toLowerCase().replace(/[^a-z0-9._-]/g, '') || user.id,
           role: 'coach' as const,
           syned_user_id: user.id,
+          syned_school_id: school_name || 'Unknown School',
+          syned_region_id: region || division || 'high_school',
         };
 
         // Try to get existing user first
@@ -102,7 +104,7 @@ export async function POST(request: NextRequest) {
             logger.info('Creating new coach on MetaCTF', { userId: user.id });
             metactfResponse = await gamePlatformClient.createUser(coachPayload);
             metactfUserId = metactfResponse.syned_user_id;
-            metactfStatus = metactfResponse.metactf_user_status;
+            metactfStatus = metactfResponse.metactf_user_status || null;
             logger.info('Created coach on MetaCTF', {
               userId: user.id,
               metactfUserId,

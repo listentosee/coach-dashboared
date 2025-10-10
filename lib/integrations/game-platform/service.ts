@@ -129,9 +129,10 @@ async function ensureCoachGamePlatformId(
     }
 
     // Check if coach is approved/verified
-    // MetaCTF requires coaches to be in "approved" status before they can have competitors
-    if (userStatus && !['approved'].includes(userStatus)) {
-      const errorMsg = `Coach user on MetaCTF has status "${userStatus}" and must be "approved" before adding competitors. Please contact MetaCTF support to approve this coach.`;
+    // MetaCTF requires coaches to be in "approved" or "user_created" status before they can have competitors
+    // Per MetaCTF: "user_created" and "approved" are functionally the same
+    if (userStatus && !['approved', 'user_created'].includes(userStatus)) {
+      const errorMsg = `Coach user on MetaCTF has status "${userStatus}" and must be "approved" or "user_created" before adding competitors. Please contact MetaCTF support to approve this coach.`;
       logger?.warn?.(errorMsg, { coachId: coachProfile.id, userStatus });
       throw new Error(errorMsg);
     }

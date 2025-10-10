@@ -32,6 +32,7 @@ export interface SyncTeamResult {
   team: any;
   assignedMembers?: Array<{ competitorId: string; remote?: any }>;
   skippedMembers?: Array<{ competitorId: string; reason: string }>;
+  unassignedMembers?: Array<{ synedUserId: string; remote?: any }>;
 }
 
 export interface DeleteTeamParams extends ServiceOptions {
@@ -488,6 +489,52 @@ export async function syncTeamWithGamePlatform({
   const competitorIds = (teamMembers ?? []).map((m) => m.competitor_id);
   const assignedMembers: Array<{ competitorId: string; remote?: any }> = [];
   const skippedMembers: Array<{ competitorId: string; reason: string }> = [];
+  const unassignedMembers: Array<{ synedUserId: string; remote?: any }> = [];
+
+  // Get current team assignments from MetaCTF to detect members that need to be removed
+  if (!effectiveDryRun && remoteTeamId) {
+    try {
+      const remoteAssignments = await (resolvedClientInstance as GamePlatformClient).getTeamAssignments({
+        syned_team_id: remoteTeamId,
+      });
+
+      // Get game_platform_ids of local team members
+      const { data: localCompetitors, error: localCompetitorsError } = await supabase
+        .from('competitors')
+        .select('id, game_platform_id')
+        .in('id', competitorIds.length ? competitorIds : ['00000000-0000-0000-0000-000000000000']); // Use dummy UUID if no members
+
+      if (localCompetitorsError) {
+        logger?.warn?.('Failed to fetch local competitors for unassignment check', { error: localCompetitorsError });
+      }
+
+      const localGamePlatformIds = new Set(
+        (localCompetitors ?? [])
+          .map(c => c.game_platform_id)
+          .filter(Boolean)
+      );
+
+      // Find members in MetaCTF that are not in local database
+      const membersToUnassign = (remoteAssignments.assignments || [])
+        .filter((assignment: any) => !localGamePlatformIds.has(assignment.syned_user_id))
+        .map((assignment: any) => assignment.syned_user_id);
+
+      // Unassign members who are no longer in the local team
+      for (const synedUserId of membersToUnassign) {
+        try {
+          const unassignResult = await (resolvedClientInstance as GamePlatformClient).unassignMemberFromTeam({
+            syned_user_id: synedUserId,
+          });
+          unassignedMembers.push({ synedUserId, remote: unassignResult });
+          logger?.info?.(`Unassigned member ${synedUserId} from team ${remoteTeamId}`);
+        } catch (unassignError: any) {
+          logger?.warn?.(`Failed to unassign member ${synedUserId} from team ${remoteTeamId}`, { error: unassignError });
+        }
+      }
+    } catch (assignmentsError: any) {
+      logger?.warn?.('Failed to fetch remote team assignments for unassignment check', { error: assignmentsError });
+    }
+  }
 
   if (competitorIds.length) {
     const { data: competitors, error: competitorsError } = await supabase
@@ -529,6 +576,7 @@ export async function syncTeamWithGamePlatform({
       team,
       assignedMembers,
       skippedMembers,
+      unassignedMembers,
     };
   }
 
@@ -542,6 +590,7 @@ export async function syncTeamWithGamePlatform({
     },
     assignedMembers,
     skippedMembers,
+    unassignedMembers,
   };
 }
 

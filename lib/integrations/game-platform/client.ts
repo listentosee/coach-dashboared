@@ -41,6 +41,10 @@ export interface AssignMemberPayload {
   syned_user_id: string;
 }
 
+export interface UnassignMemberPayload {
+  syned_user_id: string;
+}
+
 export interface DeleteTeamPayload {
   syned_team_id: string;
 }
@@ -205,6 +209,10 @@ export class GamePlatformClient {
 
   async assignMemberToTeam(payload: AssignMemberPayload, signal?: AbortSignal) {
     return this.request(TeamAssignmentResponseSchema, '/users/assign_team', { method: 'POST', body: payload as unknown as Record<string, unknown>, signal });
+  }
+
+  async unassignMemberFromTeam(payload: UnassignMemberPayload, signal?: AbortSignal) {
+    return this.request(GenericSuccessSchema, '/users/delete_assignment', { method: 'POST', body: payload as unknown as Record<string, unknown>, signal });
   }
 
   async deleteTeam(payload: DeleteTeamPayload, signal?: AbortSignal) {

@@ -105,24 +105,39 @@ export default function RegisterPage() {
       if (error) throw error;
 
       if (data.user && data.session) {
-        // We have both user and session, create profile with authenticated context
-        const { error: profileError } = await supabase.from('profiles').insert({
-          id: data.user.id,
-          email: email!,
-          full_name: coachProfile?.fullName || '',
-          first_name: coachProfile?.firstName || '',
-          last_name: coachProfile?.lastName || '',
-          school_name: coachProfile?.schoolName || '',
-          mobile_number: coachProfile?.mobileNumber || '',
-          division: coachProfile?.division || '',
-          region: coachProfile?.region || '',
-          monday_coach_id: coachProfile?.mondayId || '',
-          is_approved: true,
-          live_scan_completed: false,
-          mandated_reporter_completed: false
+        // Create profile and register on MetaCTF using new API endpoint
+        const registerResponse = await fetch('/api/coaches/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: email!,
+            full_name: coachProfile?.fullName || '',
+            first_name: coachProfile?.firstName || '',
+            last_name: coachProfile?.lastName || '',
+            school_name: coachProfile?.schoolName || '',
+            mobile_number: coachProfile?.mobileNumber || '',
+            division: coachProfile?.division || '',
+            region: coachProfile?.region || '',
+            monday_coach_id: coachProfile?.mondayId || '',
+            is_approved: true,
+          }),
         });
 
-        if (profileError) throw profileError;
+        if (!registerResponse.ok) {
+          const registerError = await registerResponse.json();
+          throw new Error(registerError.error || 'Failed to complete registration');
+        }
+
+        const registerResult = await registerResponse.json();
+
+        // Log MetaCTF registration status (for debugging)
+        if (registerResult.metactf?.error) {
+          console.warn('MetaCTF registration failed:', registerResult.metactf.error);
+        } else if (registerResult.metactf?.userId) {
+          console.log('Successfully registered on MetaCTF:', registerResult.metactf.status);
+        }
 
         setSuccess('Account created and signed in! Redirecting to dashboard...');
         setTimeout(() => {

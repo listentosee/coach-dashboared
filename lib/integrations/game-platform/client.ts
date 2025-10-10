@@ -58,6 +58,10 @@ export interface GetFlashCtfProgressPayload {
   syned_user_id: string;
 }
 
+export interface GetUserPayload {
+  syned_user_id: string;
+}
+
 const DefaultRetry: Required<RetryOptions> = {
   attempts: 3,
   baseDelayMs: 300,
@@ -66,10 +70,18 @@ const DefaultRetry: Required<RetryOptions> = {
 
 const GenericSuccessSchema = z.object({}).passthrough();
 
+const UserResponseSchema = z.object({
+  metactf_user_id: z.number(),
+  metactf_username: z.string(),
+  syned_user_id: z.string(),
+  metactf_user_status: z.enum(['user_created', 'pending_approval', 'approved', 'denied']),
+});
+
 const CreateUserResponseSchema = z.object({
   metactf_user_id: z.number(),
   metactf_username: z.string(),
   syned_user_id: z.string(),
+  metactf_user_status: z.enum(['user_created', 'pending_approval', 'approved', 'denied']).optional(),
 });
 
 const CreateTeamResponseSchema = z.object({
@@ -175,20 +187,28 @@ export class GamePlatformClient {
     }
   }
 
+  async getUser(payload: GetUserPayload, signal?: AbortSignal) {
+    return this.request(UserResponseSchema, '/users', {
+      method: 'GET',
+      query: { syned_user_id: payload.syned_user_id },
+      signal,
+    });
+  }
+
   async createUser(payload: CreateUserPayload, signal?: AbortSignal) {
-    return this.request(CreateUserResponseSchema, '/users', { method: 'POST', body: payload, signal });
+    return this.request(CreateUserResponseSchema, '/users', { method: 'POST', body: payload as unknown as Record<string, unknown>, signal });
   }
 
   async createTeam(payload: CreateTeamPayload, signal?: AbortSignal) {
-    return this.request(CreateTeamResponseSchema, '/teams', { method: 'POST', body: payload, signal });
+    return this.request(CreateTeamResponseSchema, '/teams', { method: 'POST', body: payload as unknown as Record<string, unknown>, signal });
   }
 
   async assignMemberToTeam(payload: AssignMemberPayload, signal?: AbortSignal) {
-    return this.request(TeamAssignmentResponseSchema, '/users/assign_team', { method: 'POST', body: payload, signal });
+    return this.request(TeamAssignmentResponseSchema, '/users/assign_team', { method: 'POST', body: payload as unknown as Record<string, unknown>, signal });
   }
 
   async deleteTeam(payload: DeleteTeamPayload, signal?: AbortSignal) {
-    return this.request(GenericSuccessSchema, '/teams/delete', { method: 'POST', body: payload, signal });
+    return this.request(GenericSuccessSchema, '/teams/delete', { method: 'POST', body: payload as unknown as Record<string, unknown>, signal });
   }
 
   async getTeamAssignments(payload: GetTeamAssignmentsPayload, signal?: AbortSignal) {

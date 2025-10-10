@@ -99,8 +99,39 @@ async function ensureCoachGamePlatformId(
   };
 
   try {
-    const response = await resolvedClient.createUser(payload);
-    const synedUserId = response.syned_user_id;
+    // First, try to get the existing coach user from MetaCTF
+    let response: any;
+    let synedUserId: string;
+    let userStatus: string | undefined;
+
+    try {
+      logger?.info?.(`Checking if coach ${coachProfile.id} exists on MetaCTF`);
+      response = await (resolvedClient as GamePlatformClient).getUser({ syned_user_id: coachProfile.id });
+      synedUserId = response.syned_user_id;
+      userStatus = response.metactf_user_status;
+      logger?.info?.(`Coach ${coachProfile.id} found on MetaCTF with status: ${userStatus}`);
+    } catch (getUserError: any) {
+      // If coach doesn't exist (404), create them
+      if (getUserError?.status === 404) {
+        logger?.info?.(`Coach ${coachProfile.id} not found on MetaCTF, creating new coach user`);
+        response = await (resolvedClient as GamePlatformClient).createUser(payload);
+        synedUserId = response.syned_user_id;
+        userStatus = response.metactf_user_status;
+        logger?.info?.(`Created coach ${coachProfile.id} on MetaCTF with status: ${userStatus}`);
+      } else {
+        // Other errors should be thrown
+        throw getUserError;
+      }
+    }
+
+    // Check if coach is approved/verified
+    if (userStatus && ['denied', 'pending_approval'].includes(userStatus)) {
+      const errorMsg = `Coach user on MetaCTF has status "${userStatus}" and cannot be used until approved`;
+      logger?.warn?.(errorMsg, { coachId: coachProfile.id, userStatus });
+      throw new Error(errorMsg);
+    }
+
+    // Update local database with the MetaCTF user ID
     const { error: updateError } = await supabase
       .from('profiles')
       .update({

@@ -1,0 +1,157 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import { GamePlatformClient } from '@/lib/integrations/game-platform/client';
+import { logger } from '@/lib/logging/safe-logger';
+
+const FEATURE_ENABLED = process.env.GAME_PLATFORM_INTEGRATION_ENABLED === 'true';
+
+/**
+ * POST /api/coaches/register
+ *
+ * Creates a coach profile in local database AND registers them on MetaCTF platform
+ * This should be called after Supabase auth.signUp succeeds
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized - no user session' }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const {
+      email,
+      full_name,
+      first_name,
+      last_name,
+      school_name,
+      mobile_number,
+      division,
+      region,
+      monday_coach_id,
+      is_approved = true,
+    } = body;
+
+    // 1. Create local profile
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .insert({
+        id: user.id,
+        email,
+        full_name,
+        first_name,
+        last_name,
+        school_name,
+        mobile_number,
+        division,
+        region,
+        monday_coach_id,
+        is_approved,
+        role: 'coach',
+        live_scan_completed: false,
+        mandated_reporter_completed: false,
+      })
+      .select()
+      .single();
+
+    if (profileError) {
+      logger.error('Failed to create coach profile', { error: profileError, userId: user.id });
+      return NextResponse.json(
+        { error: 'Failed to create profile', details: profileError.message },
+        { status: 500 }
+      );
+    }
+
+    // 2. Register coach on MetaCTF (if feature enabled)
+    let metactfUserId: string | null = null;
+    let metactfStatus: string | null = null;
+    let metactfError: string | null = null;
+
+    if (FEATURE_ENABLED) {
+      try {
+        const gamePlatformClient = new GamePlatformClient({ logger });
+
+        // Build coach user payload
+        const coachPayload = {
+          first_name: first_name || full_name?.split(' ')[0] || 'Coach',
+          last_name: last_name || full_name?.split(' ').slice(1).join(' ') || 'User',
+          email: email,
+          preferred_username:
+            `${first_name}.${last_name}`.toLowerCase().replace(/[^a-z0-9._-]/g, '') || user.id,
+          role: 'coach' as const,
+          syned_user_id: user.id,
+        };
+
+        // Try to get existing user first
+        let metactfResponse;
+        try {
+          metactfResponse = await gamePlatformClient.getUser({ syned_user_id: user.id });
+          metactfUserId = metactfResponse.syned_user_id;
+          metactfStatus = metactfResponse.metactf_user_status;
+          logger.info('Coach already exists on MetaCTF', { userId: user.id, status: metactfStatus });
+        } catch (getUserError: any) {
+          // If 404, create new user
+          if (getUserError?.status === 404) {
+            logger.info('Creating new coach on MetaCTF', { userId: user.id });
+            metactfResponse = await gamePlatformClient.createUser(coachPayload);
+            metactfUserId = metactfResponse.syned_user_id;
+            metactfStatus = metactfResponse.metactf_user_status;
+            logger.info('Created coach on MetaCTF', {
+              userId: user.id,
+              metactfUserId,
+              status: metactfStatus,
+            });
+          } else {
+            throw getUserError;
+          }
+        }
+
+        // Update local profile with MetaCTF user ID
+        if (metactfUserId) {
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({
+              game_platform_user_id: metactfUserId,
+              game_platform_last_synced_at: new Date().toISOString(),
+            })
+            .eq('id', user.id);
+
+          if (updateError) {
+            logger.warn('Failed to update profile with MetaCTF user ID', {
+              error: updateError,
+              userId: user.id,
+            });
+          }
+        }
+      } catch (error: any) {
+        // Log error but don't fail registration - coach can still use the platform
+        metactfError = error?.message || 'Unknown MetaCTF error';
+        logger.error('Failed to register coach on MetaCTF', { error, userId: user.id });
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      profile,
+      metactf: {
+        enabled: FEATURE_ENABLED,
+        userId: metactfUserId,
+        status: metactfStatus,
+        error: metactfError,
+      },
+    });
+  } catch (error: any) {
+    logger.error('Coach registration failed', { error: error?.message });
+    return NextResponse.json(
+      { error: 'Registration failed', details: error?.message },
+      { status: 500 }
+    );
+  }
+}

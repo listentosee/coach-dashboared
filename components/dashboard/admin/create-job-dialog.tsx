@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase/client';
 
 const TASK_TYPES = [
   { value: 'game_platform_sync', label: 'Incremental Sync (game_platform_sync)' },
@@ -56,11 +56,6 @@ export function CreateJobDialog() {
   });
 
   useEffect(() => {
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-
     async function fetchCoaches() {
       const { data } = await supabase
         .from('profiles')

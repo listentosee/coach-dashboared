@@ -267,7 +267,7 @@ export class MondayClient {
   // Method to verify if a coach exists and is approved
   async verifyCoach(email: string): Promise<{ exists: boolean; isApproved: boolean; coach?: MondayCoach }> {
     const coach = await this.getCoachByEmail(email);
-    
+
     if (!coach) {
       return { exists: false, isApproved: false };
     }
@@ -278,5 +278,69 @@ export class MondayClient {
       isApproved: coach.isApproved, // This checks if status = "Completed"
       coach
     };
+  }
+
+  // Method to update coach status to "Synced to Dashboard"
+  async updateCoachStatus(mondayCoachId: string, statusIndex: string): Promise<boolean> {
+    try {
+      // Get the Status column ID
+      const columnIds = await this.boardMapper.getColumnIds(this.boardId, ['Status']);
+      const statusColumnId = columnIds.get('Status');
+
+      if (!statusColumnId) {
+        console.error('Status column not found in Monday.com board');
+        return false;
+      }
+
+      // GraphQL mutation to update the status
+      // Note: For status columns, pass the index number (e.g., "9" for "Synced To Dashboard")
+      const query = `
+        mutation {
+          change_simple_column_value(
+            board_id: ${this.boardId},
+            item_id: ${mondayCoachId},
+            column_id: "${statusColumnId}",
+            value: "${statusIndex}"
+          ) {
+            id
+          }
+        }
+      `;
+
+      console.log('Updating Monday.com status:', {
+        boardId: this.boardId,
+        itemId: mondayCoachId,
+        statusIndex: statusIndex,
+        query: query
+      });
+
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': this.apiToken,
+          'Content-Type': 'application/json',
+          'API-Version': '2024-01'
+        },
+        body: JSON.stringify({ query })
+      });
+
+      if (!response.ok) {
+        console.error(`Monday.com API error: ${response.status}`);
+        return false;
+      }
+
+      const data = await response.json();
+
+      if (data.errors) {
+        console.error('Monday.com GraphQL errors:', data.errors);
+        return false;
+      }
+
+      console.log('Successfully updated Monday.com status:', data);
+      return true;
+    } catch (error) {
+      console.error('Error updating Monday.com status:', error);
+      return false;
+    }
   }
 }

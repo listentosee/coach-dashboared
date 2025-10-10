@@ -3,6 +3,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { GamePlatformClient } from '@/lib/integrations/game-platform/client';
 import { logger } from '@/lib/logging/safe-logger';
+import { MondayClient } from '@/lib/integrations/monday';
 
 const FEATURE_ENABLED = process.env.GAME_PLATFORM_INTEGRATION_ENABLED === 'true';
 
@@ -136,6 +137,34 @@ export async function POST(request: NextRequest) {
         // Log error but don't fail registration - coach can still use the platform
         metactfError = error?.message || 'Unknown MetaCTF error';
         logger.error('Failed to register coach on MetaCTF', { error, userId: user.id });
+      }
+    }
+
+    // 3. Update Monday.com status to "Synced to Dashboard" after successful registration
+    if (monday_coach_id) {
+      try {
+        const mondayClient = new MondayClient();
+        // Status index "9" corresponds to "Synced To Dashboard" in Monday.com
+        const statusUpdated = await mondayClient.updateCoachStatus(monday_coach_id, '9');
+
+        if (statusUpdated) {
+          logger.info('Updated Monday.com status to "Synced to Dashboard"', {
+            userId: user.id,
+            mondayCoachId: monday_coach_id,
+          });
+        } else {
+          logger.warn('Failed to update Monday.com status', {
+            userId: user.id,
+            mondayCoachId: monday_coach_id,
+          });
+        }
+      } catch (error: any) {
+        // Log error but don't fail registration - coach is already onboarded
+        logger.error('Error updating Monday.com status', {
+          error,
+          userId: user.id,
+          mondayCoachId: monday_coach_id,
+        });
       }
     }
 

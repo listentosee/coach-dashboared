@@ -199,12 +199,7 @@ export async function onboardCompetitorToGamePlatform({
     .eq('id', coachProfileId ?? competitor.coach_id)
     .maybeSingle();
 
-  if (
-    coachError ||
-    !coachProfile ||
-    coachProfile.role !== 'coach' ||
-    (!coachProfile.game_platform_user_id && !IS_MOCK_INTEGRATION)
-  ) {
+  if (coachError || !coachProfile || coachProfile.role !== 'coach') {
     await updateCompetitorSyncError(
       supabase,
       competitorId,
@@ -223,7 +218,20 @@ export async function onboardCompetitorToGamePlatform({
     null;
 
   if (!synedCoachUserId && !effectiveDryRun) {
-    synedCoachUserId = await ensureCoachGamePlatformId(supabase, resolvedClient, coachProfile, logger);
+    try {
+      synedCoachUserId = await ensureCoachGamePlatformId(supabase, resolvedClient, coachProfile, logger);
+    } catch (coachSyncError: any) {
+      await updateCompetitorSyncError(
+        supabase,
+        competitorId,
+        coachSyncError?.message ?? 'Failed to provision coach on Game Platform'
+      );
+      throw coachSyncError;
+    }
+  }
+
+  if (!coachProfile.game_platform_user_id && synedCoachUserId) {
+    coachProfile.game_platform_user_id = synedCoachUserId;
   }
 
   const userPayload: CreateUserPayload = {

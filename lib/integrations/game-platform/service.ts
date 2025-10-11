@@ -203,14 +203,14 @@ export async function onboardCompetitorToGamePlatform({
     coachError ||
     !coachProfile ||
     coachProfile.role !== 'coach' ||
-    coachProfile.is_approved === false
+    (!coachProfile.game_platform_user_id && !IS_MOCK_INTEGRATION)
   ) {
     await updateCompetitorSyncError(
       supabase,
       competitorId,
-      'Coach not found or not approved connection'
+      'Coach not found or missing Game Platform mapping'
     );
-    throw new Error('Coach not found or not approved connection');
+    throw new Error('Coach not found or missing Game Platform mapping');
   }
 
   const resolvedClient = resolveClient(client, logger);

@@ -53,7 +53,7 @@ export class MondayClient {
       // Get column IDs for filtering and data extraction
       const columnIds = await this.boardMapper.getColumnIds(this.boardId, [
         'Email', 'Status', 'First Name', 'Last Name', 
-        'School Name', 'Phone', 'Division', 'Region',
+        'School Name', 'Organization', 'Phone', 'Division', 'Region',
         'Live Scan', 'Mandated Reporter'
       ]);
       
@@ -243,13 +243,17 @@ export class MondayClient {
     console.log('Live Scan Completed:', liveScanCompleted);
     console.log('Mandated Reporter Completed:', mandatedReporterCompleted);
 
+    const schoolNameValue = getColumnValue('School Name');
+    const organizationValue = getColumnValue('Organization');
+    const resolvedSchoolName = schoolNameValue || organizationValue;
+
     const coachObject = {
       id: item.id,
       email: getColumnValue('Email'),
       fullName: `${getColumnValue('First Name')} ${getColumnValue('Last Name')}`.trim() || item.name,
       firstName: getColumnValue('First Name'),
       lastName: getColumnValue('Last Name'),
-      schoolName: getColumnValue('School Name'),
+      schoolName: resolvedSchoolName,
       mobileNumber: getColumnValue('Phone'),
       division: getColumnValue('Division'),
       region: getColumnValue('Region'),
@@ -257,7 +261,9 @@ export class MondayClient {
       liveScanCompleted: liveScanCompleted,
       mandatedReporterCompleted: mandatedReporterCompleted
     };
-    
+
+    console.log('School Name Column:', schoolNameValue);
+    console.log('Organization Column:', organizationValue);
     console.log('Complete coach object:', JSON.stringify(coachObject, null, 2));
     console.log('=== END FINAL PARSED COACH OBJECT ===');
     

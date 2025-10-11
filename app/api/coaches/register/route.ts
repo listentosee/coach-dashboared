@@ -4,6 +4,8 @@ import { cookies } from 'next/headers';
 import { GamePlatformClient } from '@/lib/integrations/game-platform/client';
 import { logger } from '@/lib/logging/safe-logger';
 import { MondayClient } from '@/lib/integrations/monday';
+import { AuditLogger } from '@/lib/audit/audit-logger';
+import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
 
 const FEATURE_ENABLED = process.env.GAME_PLATFORM_INTEGRATION_ENABLED === 'true';
 
@@ -40,6 +42,21 @@ export async function POST(request: NextRequest) {
       is_approved = true,
     } = body;
 
+    try {
+      await assertEmailsUnique({
+        supabase,
+        emails: [email],
+      });
+    } catch (error) {
+      if (error instanceof EmailConflictError) {
+        return NextResponse.json({
+          error: 'Email already in use',
+          details: error.details,
+        }, { status: 409 });
+      }
+      throw error;
+    }
+
     // 1. Create local profile
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
@@ -52,7 +69,7 @@ export async function POST(request: NextRequest) {
         school_name,
         mobile_number,
         division,
-        region,
+        region: 'IE',
         monday_coach_id,
         is_approved,
         role: 'coach',
@@ -89,7 +106,7 @@ export async function POST(request: NextRequest) {
           role: 'coach' as const,
           syned_user_id: user.id,
           syned_school_id: school_name || 'Unknown School',
-          syned_region_id: region || division || 'high_school',
+          syned_region_id: 'IE',
         };
 
         // Try to get existing user first
@@ -110,6 +127,18 @@ export async function POST(request: NextRequest) {
               userId: user.id,
               metactfUserId,
               status: metactfStatus,
+            });
+            await AuditLogger.logAction(supabase, {
+              user_id: user.id,
+              action: 'data_disclosed_game_platform',
+              entity_type: 'coach',
+              entity_id: user.id,
+              metadata: {
+                disclosure_type: 'coach_registration',
+                payload: coachPayload,
+                metactf_user_id: metactfUserId,
+                metactf_status: metactfStatus,
+              },
             });
           } else {
             throw getUserError;

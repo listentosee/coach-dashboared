@@ -26,6 +26,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PlusCircle, Copy, Plus } from 'lucide-react';
+import { normalizeEmail } from '@/lib/validation/email-uniqueness';
 
 const formSchema = z.object({
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
@@ -44,6 +45,8 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [existingCompetitors, setExistingCompetitors] = useState<any[]>([]);
+  const [emailValidation, setEmailValidation] = useState<{ school?: string; personal?: string; summary?: string }>({});
+  const [isCheckingEmails, setIsCheckingEmails] = useState(false);
   
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -61,6 +64,8 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
   // Check for duplicate names when first/last change (stable deps)
   const firstNameWatch = form.watch('first_name');
   const lastNameWatch = form.watch('last_name');
+  const emailSchoolWatch = form.watch('email_school');
+  const emailPersonalWatch = form.watch('email_personal');
   useEffect(() => {
     const checkDuplicates = async () => {
       const first_name = (firstNameWatch || '').trim();
@@ -94,6 +99,74 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
     return () => clearTimeout(debounceTimer);
   }, [firstNameWatch, lastNameWatch]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const run = async () => {
+      const normalizedSchool = normalizeEmail(emailSchoolWatch);
+      const normalizedPersonal = normalizeEmail(emailPersonalWatch);
+      form.clearErrors(['email_school', 'email_personal']);
+      setEmailValidation({});
+
+      if (!normalizedSchool && !normalizedPersonal) {
+        setIsCheckingEmails(false);
+        return;
+      }
+
+      setIsCheckingEmails(true);
+
+      try {
+        const response = await fetch('/api/validation/email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            emails: [normalizedSchool, normalizedPersonal].filter(Boolean),
+          }),
+          signal: controller.signal,
+        });
+
+        if (response.status === 409) {
+          const data = await response.json().catch(() => ({}));
+          const conflicts = Array.isArray(data?.details?.conflicts) ? data.details.conflicts : [];
+          const nextErrors: { school?: string; personal?: string; summary?: string } = {};
+
+          conflicts.forEach((conflict: any) => {
+            const conflictEmail = conflict?.email;
+            if (!conflictEmail) return;
+            if (normalizedSchool && conflictEmail === normalizedSchool) {
+              nextErrors.school = 'This school email is already in use.';
+              form.setError('email_school', { type: 'manual', message: nextErrors.school });
+            }
+            if (normalizedPersonal && conflictEmail === normalizedPersonal) {
+              nextErrors.personal = 'This personal email is already in use.';
+              form.setError('email_personal', { type: 'manual', message: nextErrors.personal });
+            }
+          });
+
+          if (!nextErrors.school && !nextErrors.personal) {
+            nextErrors.summary = 'One or more emails are already in use.';
+          }
+
+          setEmailValidation(nextErrors);
+        } else if (!response.ok) {
+          console.error('Email validation request failed with status', response.status);
+        }
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          console.error('Email validation error:', error);
+        }
+      } finally {
+        setIsCheckingEmails(false);
+      }
+    };
+
+    const timeout = setTimeout(run, 300);
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [emailSchoolWatch, emailPersonalWatch, form]);
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
     try {
@@ -104,8 +177,31 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create competitor');
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 409 && Array.isArray(errorData?.details?.conflicts)) {
+          const normalizedSchool = normalizeEmail(emailSchoolWatch);
+          const normalizedPersonal = normalizeEmail(emailPersonalWatch);
+          const nextErrors: { school?: string; personal?: string; summary?: string } = {};
+          errorData.details.conflicts.forEach((conflict: any) => {
+            const conflictEmail = conflict?.email;
+            if (!conflictEmail) return;
+            if (normalizedSchool && conflictEmail === normalizedSchool) {
+              nextErrors.school = 'This school email is already in use.';
+              form.setError('email_school', { type: 'manual', message: nextErrors.school });
+            }
+            if (normalizedPersonal && conflictEmail === normalizedPersonal) {
+              nextErrors.personal = 'This personal email is already in use.';
+              form.setError('email_personal', { type: 'manual', message: nextErrors.personal });
+            }
+          });
+          if (!nextErrors.school && !nextErrors.personal) {
+            nextErrors.summary = 'One or more emails are already in use.';
+          }
+          setEmailValidation(nextErrors);
+          setIsSubmitting(false);
+          return;
+        }
+        throw new Error(errorData?.error || 'Failed to create competitor');
       }
       
       const data = await response.json();
@@ -117,9 +213,12 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
       // Reset form
       form.reset();
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating competitor:', error);
-      // You could add toast notification here
+      if (!error?.message?.includes('Email already in use')) {
+        // You could add toast notification here
+        alert(error?.message || 'Failed to create competitor');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -136,11 +235,13 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
     setOpen(false);
     setProfileLink(null);
     form.reset();
+    setEmailValidation({});
   };
 
   const handleAddAnother = () => {
     setProfileLink(null);
     form.reset();
+    setEmailValidation({});
     // Keep modal open for another entry
   };
 
@@ -337,9 +438,16 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
                   <FormItem>
                     <FormLabel className="text-gray-700">Personal Email (Optional)</FormLabel>
                     <FormControl>
-                      <Input type="email" {...field} className="bg-white border-gray-300 text-gray-900" />
+                      <Input
+                        type="email"
+                        {...field}
+                        className="bg-white border-gray-300 text-gray-900"
+                      />
                     </FormControl>
                     <FormMessage />
+                    {emailValidation.personal && (
+                      <p className="text-sm text-red-600 mt-1">{emailValidation.personal}</p>
+                    )}
                   </FormItem>
                 )}
               />
@@ -351,19 +459,40 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
                   <FormItem>
                     <FormLabel className="text-gray-700">School Email (Required)</FormLabel>
                     <FormControl>
-                      <Input type="email" {...field} className="bg-white border-gray-300 text-gray-900" />
+                      <Input
+                        type="email"
+                        {...field}
+                        className="bg-white border-gray-300 text-gray-900"
+                      />
                     </FormControl>
                     <FormMessage />
+                    {emailValidation.school && (
+                      <p className="text-sm text-red-600 mt-1">{emailValidation.school}</p>
+                    )}
                   </FormItem>
                 )}
               />
+
+              {emailValidation.summary && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                  {emailValidation.summary}
+                </div>
+              )}
 
               <div className="flex justify-end gap-3">
                 <Button type="button" variant="outline" onClick={handleClose} className="border-gray-300 text-white hover:bg-white hover:text-gray-900">
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700 text-white">
-                  {isSubmitting ? 'Adding...' : 'Add Competitor'}
+                <Button
+                  type="submit"
+                  disabled={
+                    isSubmitting ||
+                    isCheckingEmails ||
+                    Boolean(emailValidation.school || emailValidation.personal || emailValidation.summary)
+                  }
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {isSubmitting ? 'Adding...' : isCheckingEmails ? 'Validating...' : 'Add Competitor'}
                 </Button>
               </div>
             </form>

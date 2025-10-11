@@ -3,6 +3,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { logger } from '@/lib/logging/safe-logger';
+import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
 
 const CompetitorSchema = z.object({
   first_name: z.string().min(1),
@@ -45,6 +46,21 @@ export async function POST(request: NextRequest) {
       game_platform_id: validatedData.game_platform_id,
       division: validatedData.division
     });
+
+    try {
+      await assertEmailsUnique({
+        supabase,
+        emails: [validatedData.email_school, validatedData.email_personal],
+      });
+    } catch (error) {
+      if (error instanceof EmailConflictError) {
+        return NextResponse.json({
+          error: 'Email already in use',
+          details: error.details,
+        }, { status: 409 });
+      }
+      throw error;
+    }
 
     // Check if student ID already exists for this coach (only if provided)
     if (validatedData.game_platform_id) {

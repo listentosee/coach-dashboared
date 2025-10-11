@@ -14,6 +14,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { X } from 'lucide-react';
+import { normalizeEmail } from '@/lib/validation/email-uniqueness';
 
 // Dynamic schema based on user age
 const createProfileUpdateSchema = (is18OrOver: boolean) => {
@@ -160,9 +161,27 @@ export default function UpdateProfilePage() {
       console.log('Response status:', response.status);
       
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         console.error('API error:', errorData);
-        throw new Error(errorData.error || 'Failed to update profile');
+        if (response.status === 409 && Array.isArray(errorData?.details?.conflicts)) {
+          const normalizedPersonal = normalizeEmail(values.email_personal);
+          let conflictFound = false;
+          errorData.details.conflicts.forEach((conflict: any) => {
+            const conflictEmail = conflict?.email;
+            if (normalizedPersonal && conflictEmail === normalizedPersonal) {
+              conflictFound = true;
+              form.setError('email_personal', {
+                type: 'manual',
+                message: 'This email is already associated with another account.',
+              });
+            }
+          });
+          if (conflictFound) {
+            setError('This email is already associated with another account.');
+            return;
+          }
+        }
+        throw new Error(errorData?.error || 'Failed to update profile');
       }
 
       const result = await response.json();

@@ -5,6 +5,7 @@ import { ALLOWED_DIVISIONS, ALLOWED_ETHNICITIES, ALLOWED_GENDERS, ALLOWED_GRADES
 import { normalizeEnumValue, normalizeGrade } from '@/lib/utils/import-normalize'
 import { AuditLogger } from '@/lib/audit/audit-logger';
 import { logger } from '@/lib/logging/safe-logger';
+import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
 
 type IncomingRow = {
   first_name?: string
@@ -117,6 +118,19 @@ export async function POST(req: NextRequest) {
             .limit(1)
             .maybeSingle()
           existingId = existing?.id || null
+        }
+
+        try {
+          await assertEmailsUnique({
+            supabase,
+            emails: [email_school || null, email_personal || null],
+            ignoreCompetitorIds: existingId ? [existingId] : [],
+          });
+        } catch (error) {
+          if (error instanceof EmailConflictError) {
+            throw new Error(`Email already in use: ${error.details.conflicts.map(c => c.email).join(', ')}`);
+          }
+          throw error;
         }
 
         if (existingId) {

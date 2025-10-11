@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Edit } from 'lucide-react';
+import { normalizeEmail } from '@/lib/validation/email-uniqueness';
 
 const editFormSchema = z.object({
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
@@ -46,6 +47,8 @@ interface CompetitorEditFormProps {
 
 export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }: CompetitorEditFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [emailValidation, setEmailValidation] = useState<{ school?: string; personal?: string; summary?: string }>({});
+  const [isCheckingEmails, setIsCheckingEmails] = useState(false);
   
   
   const form = useForm<z.infer<typeof editFormSchema>>({
@@ -61,6 +64,78 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
     },
   });
 
+  const emailSchoolWatch = form.watch('email_school');
+  const emailPersonalWatch = form.watch('email_personal');
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const run = async () => {
+      const normalizedSchool = normalizeEmail(emailSchoolWatch);
+      const normalizedPersonal = normalizeEmail(emailPersonalWatch);
+      form.clearErrors(['email_school', 'email_personal']);
+      setEmailValidation({});
+
+      if (!normalizedSchool && !normalizedPersonal) {
+        setIsCheckingEmails(false);
+        return;
+      }
+
+      setIsCheckingEmails(true);
+
+      try {
+        const response = await fetch('/api/validation/email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            emails: [normalizedSchool, normalizedPersonal].filter(Boolean),
+            ignoreCompetitorIds: competitor?.id ? [competitor.id] : [],
+          }),
+          signal: controller.signal,
+        });
+
+        if (response.status === 409) {
+          const data = await response.json().catch(() => ({}));
+          const conflicts = Array.isArray(data?.details?.conflicts) ? data.details.conflicts : [];
+          const nextErrors: { school?: string; personal?: string; summary?: string } = {};
+
+          conflicts.forEach((conflict: any) => {
+            const conflictEmail = conflict?.email;
+            if (!conflictEmail) return;
+            if (normalizedSchool && conflictEmail === normalizedSchool) {
+              nextErrors.school = 'This school email is already in use.';
+              form.setError('email_school', { type: 'manual', message: nextErrors.school });
+            }
+            if (normalizedPersonal && conflictEmail === normalizedPersonal) {
+              nextErrors.personal = 'This personal email is already in use.';
+              form.setError('email_personal', { type: 'manual', message: nextErrors.personal });
+            }
+          });
+
+          if (!nextErrors.school && !nextErrors.personal) {
+            nextErrors.summary = 'One or more emails are already in use.';
+          }
+
+          setEmailValidation(nextErrors);
+        } else if (!response.ok) {
+          console.error('Email validation failed with status', response.status);
+        }
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          console.error('Email validation error:', error);
+        }
+      } finally {
+        setIsCheckingEmails(false);
+      }
+    };
+
+    const timeout = setTimeout(run, 300);
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [emailSchoolWatch, emailPersonalWatch, competitor?.id, form]);
+
   // Update form when competitor changes
   useEffect(() => {
     if (competitor) {
@@ -74,6 +149,7 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
         grade: competitor.grade || '',
         division: (competitor as any).division || 'high_school',
       });
+      setEmailValidation({});
     }
   }, [competitor, form]);
 
@@ -81,6 +157,9 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
   useEffect(() => {
     if (open) {
       setIsSubmitting(false);
+    } else {
+      setEmailValidation({});
+      setIsCheckingEmails(false);
     }
   }, [open]);
 
@@ -100,8 +179,31 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
       clearTimeout(t);
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update competitor');
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 409 && Array.isArray(errorData?.details?.conflicts)) {
+          const normalizedSchool = normalizeEmail(emailSchoolWatch);
+          const normalizedPersonal = normalizeEmail(emailPersonalWatch);
+          const nextErrors: { school?: string; personal?: string; summary?: string } = {};
+          errorData.details.conflicts.forEach((conflict: any) => {
+            const conflictEmail = conflict?.email;
+            if (!conflictEmail) return;
+            if (normalizedSchool && conflictEmail === normalizedSchool) {
+              nextErrors.school = 'This school email is already in use.';
+              form.setError('email_school', { type: 'manual', message: nextErrors.school });
+            }
+            if (normalizedPersonal && conflictEmail === normalizedPersonal) {
+              nextErrors.personal = 'This personal email is already in use.';
+              form.setError('email_personal', { type: 'manual', message: nextErrors.personal });
+            }
+          });
+          if (!nextErrors.school && !nextErrors.personal) {
+            nextErrors.summary = 'One or more emails are already in use.';
+          }
+          setEmailValidation(nextErrors);
+          setIsSubmitting(false);
+          return;
+        }
+        throw new Error(errorData?.error || 'Failed to update competitor');
       }
       
       onSuccess();
@@ -112,7 +214,9 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
         alert('Update timed out. Please try again.');
       } else {
         console.error('Error updating competitor:', error);
-        alert(`Failed to update competitor: ${error?.message || 'Unknown error'}`);
+        if (!error?.message?.includes('Email already in use')) {
+          alert(`Failed to update competitor: ${error?.message || 'Unknown error'}`);
+        }
       }
     } finally {
       setIsSubmitting(false);
@@ -179,6 +283,9 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
                         <Input type="email" {...field} className="bg-white border-gray-300 text-gray-900" />
                       </FormControl>
                       <FormMessage />
+                      {emailValidation.personal && (
+                        <p className="text-sm text-red-600 mt-1">{emailValidation.personal}</p>
+                      )}
                     </FormItem>
                   )}
                 />
@@ -193,12 +300,19 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
                         <Input type="email" {...field} className="bg-white border-gray-300 text-gray-900" />
                       </FormControl>
                       <FormMessage />
+                      {emailValidation.school && (
+                        <p className="text-sm text-red-600 mt-1">{emailValidation.school}</p>
+                      )}
                     </FormItem>
                   )}
                 />
               </div>
 
-              
+              {emailValidation.summary && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-3 py-2">
+                  {emailValidation.summary}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <FormField
@@ -278,11 +392,24 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
 
             {/* Form Actions */}
             <div className="flex justify-end gap-3">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="border-gray-300 text-white hover:bg-white hover:text-gray-900">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                className="border-gray-300 text-white hover:bg-white hover:text-gray-900"
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700 text-white">
-                {isSubmitting ? 'Updating...' : 'Update Competitor'}
+              <Button
+                type="submit"
+                disabled={
+                  isSubmitting ||
+                  isCheckingEmails ||
+                  Boolean(emailValidation.school || emailValidation.personal || emailValidation.summary)
+                }
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {isSubmitting ? 'Updating...' : isCheckingEmails ? 'Validating...' : 'Update Competitor'}
               </Button>
             </div>
           </form>

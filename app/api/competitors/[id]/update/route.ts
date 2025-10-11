@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { logger } from '@/lib/logging/safe-logger';
+import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
 export const dynamic = 'force-dynamic';
 
 const UpdateCompetitorSchema = z.object({
@@ -53,6 +54,22 @@ export async function PUT(
 
     if (checkError || !existingCompetitor) {
       return NextResponse.json({ error: 'Competitor not found or access denied' }, { status: 404 });
+    }
+
+    try {
+      await assertEmailsUnique({
+        supabase,
+        emails: [validatedData.email_school, validatedData.email_personal],
+        ignoreCompetitorIds: [existingCompetitor.id],
+      });
+    } catch (error) {
+      if (error instanceof EmailConflictError) {
+        return NextResponse.json({
+          error: 'Email already in use',
+          details: error.details,
+        }, { status: 409 });
+      }
+      throw error;
     }
 
     // Build update payload and only include division if provided

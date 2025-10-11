@@ -86,6 +86,27 @@ export default function RegisterPage() {
     setError('');
 
     try {
+      // Validate email uniqueness across dashboard records
+      const emailValidationResponse = await fetch('/api/validation/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails: [email.trim().toLowerCase()] }),
+      });
+
+      if (emailValidationResponse.status === 409) {
+        setError('That email is already associated with an existing account or competitor.');
+        setIsLoading(false);
+        return;
+      }
+
+      if (!emailValidationResponse.ok) {
+        const validationError = await emailValidationResponse.json().catch(() => ({}));
+        console.error('Email validation failed', validationError);
+        setError('Unable to validate email uniqueness. Please try again.');
+        setIsLoading(false);
+        return;
+      }
+
       // Use Supabase auth signUp with profile data in metadata
       const { data, error } = await supabase.auth.signUp({
         email: email!,
@@ -125,10 +146,13 @@ export default function RegisterPage() {
           }),
         });
 
-        if (!registerResponse.ok) {
-          const registerError = await registerResponse.json();
+       if (!registerResponse.ok) {
+         const registerError = await registerResponse.json();
+          if (registerResponse.status === 409) {
+            throw new Error('That email is already associated with an existing account or competitor.');
+          }
           throw new Error(registerError.error || 'Failed to complete registration');
-        }
+       }
 
         const registerResult = await registerResponse.json();
 

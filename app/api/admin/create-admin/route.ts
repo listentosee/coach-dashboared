@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'crypto';
+import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,6 +28,18 @@ export async function POST(request: NextRequest) {
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
+
+    try {
+      await assertEmailsUnique({
+        supabase,
+        emails: [email],
+      });
+    } catch (error) {
+      if (error instanceof EmailConflictError) {
+        return NextResponse.json({ error: 'Email already in use', details: error.details }, { status: 409 });
+      }
+      throw error;
+    }
 
     // Check if user already exists
     const { data: existingUser } = await supabase.auth.admin.listUsers();

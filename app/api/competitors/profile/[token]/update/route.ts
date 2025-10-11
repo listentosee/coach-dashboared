@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 import { logger } from '@/lib/logging/safe-logger';
+import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
 
 const ProfileUpdateSchema = z.object({
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
@@ -49,6 +50,22 @@ export async function PUT(
     // Check if token is expired
     if (existingCompetitor.profile_update_token_expires && new Date(existingCompetitor.profile_update_token_expires) < new Date()) {
       return NextResponse.json({ error: 'Token has expired' }, { status: 400 });
+    }
+
+    try {
+      await assertEmailsUnique({
+        supabase,
+        emails: [validatedData.email_personal],
+        ignoreCompetitorIds: [existingCompetitor.id],
+      });
+    } catch (error) {
+      if (error instanceof EmailConflictError) {
+        return NextResponse.json({
+          error: 'Email already in use',
+          details: error.details,
+        }, { status: 409 });
+      }
+      throw error;
     }
 
     // Update competitor profile

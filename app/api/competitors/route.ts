@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
       const coachFullName = coachProfile?.full_name?.trim() || joinedName
       const coachLabel = coachFullName || coachProfile?.email || null
       const mapping = mappingByCompetitorId.get(competitor.id) ?? null
-      const synedUserId = competitor.game_platform_id || mapping?.syned_user_id || null
+      const syncedUserId = competitor.game_platform_id || mapping?.synced_user_id || null
 
       return {
         id: competitor.id,
@@ -159,7 +159,7 @@ export async function GET(request: NextRequest) {
         division: (competitor as any).division || null,
         media_release_date: competitor.media_release_date,
         participation_agreement_date: competitor.participation_agreement_date,
-        game_platform_id: synedUserId,
+        game_platform_id: syncedUserId,
         game_platform_synced_at: competitor.game_platform_synced_at ?? mapping?.last_synced_at ?? null,
         game_platform_sync_error: (competitor as any).game_platform_sync_error || mapping?.sync_error || null,
         game_platform_status: mapping?.status ?? null,

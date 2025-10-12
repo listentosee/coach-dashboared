@@ -41,7 +41,7 @@ export interface SyncTeamResult {
   team: any;
   assignedMembers?: Array<{ competitorId: string; remote?: any }>;
   skippedMembers?: Array<{ competitorId: string; reason: string }>;
-  unassignedMembers?: Array<{ synedUserId: string; remote?: any }>;
+  unassignedMembers?: Array<{ syncedUserId: string; remote?: any }>;
 }
 
 export interface DeleteTeamParams extends ServiceOptions {
@@ -103,8 +103,8 @@ async function ensureCoachGamePlatformId(
   logger?: Pick<Console, 'error' | 'warn' | 'info'>
 ): Promise<string> {
   const existingMapping = await getGamePlatformProfile(supabase, { coachId: coachProfile.id }).catch(() => null);
-  if (existingMapping && existingMapping.syned_user_id && ['approved', 'user_created'].includes(existingMapping.status)) {
-    return existingMapping.syned_user_id;
+  if (existingMapping && existingMapping.synced_user_id && ['approved', 'user_created'].includes(existingMapping.status)) {
+    return existingMapping.synced_user_id;
   }
 
   const firstName = coachProfile.first_name || coachProfile.full_name?.split(' ')[0] || 'Coach';
@@ -124,14 +124,14 @@ async function ensureCoachGamePlatformId(
 
   try {
     let response: any;
-    let synedUserId: string;
+    let syncedUserId: string;
     let userStatus: string | undefined;
     let username: string | undefined;
 
     try {
       logger?.info?.(`🔍 Checking if coach ${coachProfile.id} exists on MetaCTF`);
       response = await (resolvedClient as GamePlatformClient).getUser({ syned_user_id: coachProfile.id });
-      synedUserId = response.syned_user_id;
+      syncedUserId = response.syned_user_id;
       userStatus = response.metactf_user_status;
       username = response.metactf_username;
       logger?.info?.(`✅ Coach ${coachProfile.id} found on MetaCTF with status: ${userStatus}`, response);
@@ -139,7 +139,7 @@ async function ensureCoachGamePlatformId(
       if (getUserError?.status === 404) {
         logger?.info?.(`📤 Coach ${coachProfile.id} not found on MetaCTF, creating new coach with payload:`, payload);
         response = await (resolvedClient as GamePlatformClient).createUser(payload);
-        synedUserId = response.syned_user_id;
+        syncedUserId = response.syned_user_id;
         userStatus = response.metactf_user_status;
         username = response.metactf_username;
         logger?.info?.(`✅ Created coach ${coachProfile.id} on MetaCTF:`, response);
@@ -154,7 +154,7 @@ async function ensureCoachGamePlatformId(
     await upsertGamePlatformProfile(supabase, {
       coachId: coachProfile.id,
       metactfRole: 'coach',
-      synedUserId,
+      syncedUserId,
       metactfUserId: response?.metactf_user_id ?? null,
       metactfUsername: username ?? null,
       status,
@@ -177,7 +177,7 @@ async function ensureCoachGamePlatformId(
       throw new Error(errorMsg);
     }
 
-    return synedUserId;
+    return syncedUserId;
   } catch (error) {
     logger?.error?.('Failed to ensure coach Game Platform user', { coachId: coachProfile.id, error });
     throw error;
@@ -216,7 +216,7 @@ export async function onboardCompetitorToGamePlatform({
   const competitorMapping = await getGamePlatformProfile(supabase, { competitorId }).catch(() => null);
 
   const existingCompetitorStatus = competitorMapping?.status ?? null;
-  if (competitorMapping?.syned_user_id && ['approved', 'user_created'].includes(existingCompetitorStatus ?? '')) {
+  if (competitorMapping?.synced_user_id && ['approved', 'user_created'].includes(existingCompetitorStatus ?? '')) {
     return { status: 'skipped_already_synced', competitor };
   }
 
@@ -241,15 +241,15 @@ export async function onboardCompetitorToGamePlatform({
 
   const resolvedClient = resolveClient(client, logger);
 
-  let synedCoachUserId =
+  let coachSyncedUserId =
     competitor.syned_coach_user_id ??
     (competitor as any).coach_game_platform_id ??
-    coachMapping?.syned_user_id ??
+    coachMapping?.synced_user_id ??
     null;
 
-  if (!synedCoachUserId && !effectiveDryRun) {
+  if (!coachSyncedUserId && !effectiveDryRun) {
     try {
-      synedCoachUserId = await ensureCoachGamePlatformId(supabase, resolvedClient, coachProfile, logger);
+      coachSyncedUserId = await ensureCoachGamePlatformId(supabase, resolvedClient, coachProfile, logger);
     } catch (coachSyncError: any) {
       await updateCompetitorSyncError(
         supabase,
@@ -269,8 +269,8 @@ export async function onboardCompetitorToGamePlatform({
     // Competitors inherit school/region from coach if not set
     syned_school_id: competitor.syned_school_id ?? coachProfile.school_name ?? 'Unknown School',
     syned_region_id: competitor.syned_region_id ?? coachProfile.division ?? 'high_school',
-    syned_coach_user_id: synedCoachUserId,
-    syned_user_id: String(competitorMapping?.syned_user_id ?? competitor.id),
+    syned_coach_user_id: coachSyncedUserId,
+    syned_user_id: String(competitorMapping?.synced_user_id ?? competitor.id),
   };
 
   // Log the complete payload for debugging
@@ -279,7 +279,7 @@ export async function onboardCompetitorToGamePlatform({
     payload: userPayload,
     coachProfile: {
       id: coachProfile.id,
-      syned_user_id: synedCoachUserId,
+      syned_user_id: coachSyncedUserId,
     }
   });
 
@@ -328,7 +328,7 @@ export async function onboardCompetitorToGamePlatform({
     await upsertGamePlatformProfile(supabase, {
       competitorId,
       metactfRole: 'user',
-      synedUserId: remoteUserId,
+      syncedUserId: remoteUserId,
       metactfUserId: competitorRemoteId,
       metactfUsername: competitorRemoteUsername,
       status: competitorRemoteStatus,
@@ -495,11 +495,11 @@ export async function syncTeamWithGamePlatform({
     : coachProfile.school_name ?? 'Unknown';
 
   const divisionSource = team.division ?? null;
-  const existingSynedTeamId = team.game_platform_id ?? teamMapping?.syned_team_id ?? null;
+  const existingSyncedTeamId = team.game_platform_id ?? teamMapping?.synced_team_id ?? null;
 
   const teamPayload: CreateTeamPayload = {
     syned_coach_user_id: coachMetaId,
-    syned_team_id: existingSynedTeamId ?? team.id,
+    syned_team_id: existingSyncedTeamId ?? team.id,
     team_name: team.name,
     affiliation: affiliationFallback,
     division: sanitizeDivision(divisionSource),
@@ -514,7 +514,7 @@ export async function syncTeamWithGamePlatform({
   }
 
   const resolvedClientInstance = effectiveDryRun ? undefined : resolvedClient;
-  let remoteTeamId = existingSynedTeamId;
+  let remoteTeamId = existingSyncedTeamId;
   let remoteTeamResponse: any = null;
   let createdTeam = false;
 
@@ -544,7 +544,7 @@ export async function syncTeamWithGamePlatform({
       remoteTeamId,
       coachMetaId,
       {
-        synedTeamId: remoteTeamId,
+        syncedTeamId: remoteTeamId,
         metactfTeamId:
           (remoteTeamResponse as any)?.metactf_team_id ?? teamMapping?.metactf_team_id ?? null,
         metactfTeamName:
@@ -566,7 +566,7 @@ export async function syncTeamWithGamePlatform({
   const competitorIds = (teamMembers ?? []).map((m) => m.competitor_id);
   const assignedMembers: Array<{ competitorId: string; remote?: any }> = [];
   const skippedMembers: Array<{ competitorId: string; reason: string }> = [];
-  const unassignedMembers: Array<{ synedUserId: string; remote?: any }> = [];
+  const unassignedMembers: Array<{ syncedUserId: string; remote?: any }> = [];
 
   // Get current team assignments from MetaCTF to detect members that need to be removed
   if (!effectiveDryRun && remoteTeamId) {
@@ -597,15 +597,15 @@ export async function syncTeamWithGamePlatform({
         .map((assignment: any) => assignment.syned_user_id);
 
       // Unassign members who are no longer in the local team
-      for (const synedUserId of membersToUnassign) {
+      for (const syncedUserId of membersToUnassign) {
         try {
           const unassignResult = await (resolvedClientInstance as GamePlatformClient).unassignMemberFromTeam({
-            syned_user_id: synedUserId,
+            syned_user_id: syncedUserId,
           });
-          unassignedMembers.push({ synedUserId, remote: unassignResult });
-          logger?.info?.(`Unassigned member ${synedUserId} from team ${remoteTeamId}`);
+          unassignedMembers.push({ syncedUserId, remote: unassignResult });
+          logger?.info?.(`Unassigned member ${syncedUserId} from team ${remoteTeamId}`);
         } catch (unassignError: any) {
-          logger?.warn?.(`Failed to unassign member ${synedUserId} from team ${remoteTeamId}`, { error: unassignError });
+          logger?.warn?.(`Failed to unassign member ${syncedUserId} from team ${remoteTeamId}`, { error: unassignError });
         }
       }
     } catch (assignmentsError: any) {
@@ -693,7 +693,7 @@ export async function deleteTeamFromGamePlatform({
   }
 
   const teamMapping = await getGamePlatformTeamByTeamId(supabase, teamId).catch(() => null);
-  const remoteTeamId = team.game_platform_id ?? teamMapping?.syned_team_id ?? null;
+  const remoteTeamId = team.game_platform_id ?? teamMapping?.synced_team_id ?? null;
 
   if (!remoteTeamId) {
     logger?.info?.(`Team ${teamId} has no game_platform_id, skipping remote deletion`);
@@ -730,7 +730,7 @@ export async function deleteTeamFromGamePlatform({
     .eq('id', teamId);
 
   await updateGamePlatformTeam(supabase, teamId, {
-    synedTeamId: null,
+    syncedTeamId: null,
     metactfTeamId: null,
     status: 'pending',
     syncError: null,
@@ -796,7 +796,7 @@ async function updateCompetitorSyncError(supabase: AnySupabaseClient, competitor
     await upsertGamePlatformProfile(supabase, {
       competitorId,
       metactfRole: 'user',
-      synedUserId: null,
+      syncedUserId: null,
       status,
       syncError: message,
       lastSyncedAt: timestamp,
@@ -835,7 +835,7 @@ async function persistCompetitorSyncSuccess(
       status: 'approved',
       syncError: null,
       lastSyncedAt: syncedAt,
-      synedUserId: remoteUserId,
+      syncedUserId: remoteUserId,
     },
   );
 
@@ -843,7 +843,7 @@ async function persistCompetitorSyncSuccess(
     await upsertGamePlatformProfile(supabase, {
       competitorId,
       metactfRole: 'user',
-      synedUserId: remoteUserId,
+      syncedUserId: remoteUserId,
       status: 'approved',
       syncError: null,
       lastSyncedAt: syncedAt,
@@ -860,7 +860,7 @@ async function persistTeamSyncSuccess(
   remoteTeamId: string,
   coachMetaId?: string | null,
   remoteMeta?: {
-    synedTeamId?: string | null;
+    syncedTeamId?: string | null;
     metactfTeamId?: number | null;
     metactfTeamName?: string | null;
     status?: GamePlatformSyncStatus;
@@ -886,7 +886,7 @@ async function persistTeamSyncSuccess(
 
   await upsertGamePlatformTeam(supabase, {
     teamId,
-    synedTeamId: remoteMeta?.synedTeamId ?? remoteTeamId,
+    syncedTeamId: remoteMeta?.syncedTeamId ?? remoteTeamId,
     metactfTeamId: remoteMeta?.metactfTeamId ?? null,
     metactfTeamName: remoteMeta?.metactfTeamName ?? team.name,
     status: remoteMeta?.status ?? 'approved',
@@ -976,7 +976,7 @@ export async function syncCompetitorGameStats({
     };
   }
 
-  const synedUserId = competitor.game_platform_id;
+  const syncedUserId = competitor.game_platform_id;
   const effectiveDryRun = isDryRunOverride(dryRun);
 
   if (effectiveDryRun) {
@@ -1003,7 +1003,7 @@ export async function syncCompetitorGameStats({
     const { data: syncState } = await supabase
       .from('game_platform_sync_state')
       .select('last_odl_synced_at')
-      .eq('syned_user_id', synedUserId)
+      .eq('synced_user_id', syncedUserId)
       .maybeSingle();
 
     const lastOdlSyncedAt = syncState?.last_odl_synced_at;
@@ -1012,8 +1012,8 @@ export async function syncCompetitorGameStats({
 
   logger?.info?.(
     afterTimeUnix
-      ? `Incremental ODL sync for ${synedUserId} after ${new Date(afterTimeUnix * 1000).toISOString()}`
-      : `Full ODL sync for ${synedUserId} (first sync)`
+      ? `Incremental ODL sync for ${syncedUserId} after ${new Date(afterTimeUnix * 1000).toISOString()}`
+      : `Full ODL sync for ${syncedUserId} (first sync)`
   );
 
   let scores: any = null;
@@ -1022,7 +1022,7 @@ export async function syncCompetitorGameStats({
   let missingRemoteMessage: string | null = null;
   try {
     scores = await resolvedClient.getScores({
-      syned_user_id: synedUserId,
+      syned_user_id: syncedUserId,
       after_time_unix: afterTimeUnix,
     });
   } catch (err: any) {
@@ -1030,23 +1030,23 @@ export async function syncCompetitorGameStats({
       missingRemoteUser = true;
       missingRemoteMessage = typeof err?.message === 'string'
         ? err.message
-        : `ODL scores unavailable for ${synedUserId}`;
-      logger?.info?.(`ODL scores missing for ${synedUserId}`);
+        : `ODL scores unavailable for ${syncedUserId}`;
+      logger?.info?.(`ODL scores missing for ${syncedUserId}`);
     } else {
       scoresError = err;
-      logger?.warn?.(`Failed to fetch ODL scores for ${synedUserId}`, { error: err });
+      logger?.warn?.(`Failed to fetch ODL scores for ${syncedUserId}`, { error: err });
     }
   }
 
   if (missingRemoteUser) {
-    const message = missingRemoteMessage ?? `ODL scores unavailable for ${synedUserId}`;
+    const message = missingRemoteMessage ?? `ODL scores unavailable for ${syncedUserId}`;
 
     await updateCompetitorSyncError(supabase, competitorId, message);
 
     const { error: syncStateMissingError } = await statsClient
       .from('game_platform_sync_state')
       .upsert({
-        syned_user_id: synedUserId,
+        synced_user_id: syncedUserId,
         last_attempt_at: new Date().toISOString(),
         last_result: 'failure',
         error_message: message.slice(0, 500),
@@ -1069,7 +1069,7 @@ export async function syncCompetitorGameStats({
       : 'Failed to fetch ODL scores';
 
     const syncStateFailurePayload = {
-      syned_user_id: synedUserId,
+      synced_user_id: syncedUserId,
       last_attempt_at: new Date().toISOString(),
       last_result: 'failure' as const,
       error_message: message.slice(0, 500),
@@ -1095,12 +1095,12 @@ export async function syncCompetitorGameStats({
   // Only fetch Flash CTF data if sentinel detected new events (or if we're forcing a full sync)
   if (!skipFlashCtfSync) {
     try {
-      flash = await resolvedClient.getFlashCtfProgress({ syned_user_id: synedUserId });
+      flash = await resolvedClient.getFlashCtfProgress({ syned_user_id: syncedUserId });
     } catch (err: any) {
       if (err?.status === 404) {
-        logger?.info?.(`No Flash CTF progress for ${synedUserId}`);
+        logger?.info?.(`No Flash CTF progress for ${syncedUserId}`);
       } else {
-        logger?.warn?.(`Failed to fetch Flash CTF progress for ${synedUserId}`, { error: err });
+        logger?.warn?.(`Failed to fetch Flash CTF progress for ${syncedUserId}`, { error: err });
       }
     }
   }
@@ -1117,7 +1117,7 @@ export async function syncCompetitorGameStats({
   const lastActivity = lastActivityUnix ? new Date(lastActivityUnix * 1000).toISOString() : null;
   const flashEntries: any[] = flash?.flash_ctfs ?? [];
 
-  const synedTeamId = Array.isArray((competitor as any).team_members) && (competitor as any).team_members[0]?.teams?.game_platform_id
+  const syncedTeamId = Array.isArray((competitor as any).team_members) && (competitor as any).team_members[0]?.teams?.game_platform_id
     ? (competitor as any).team_members[0].teams.game_platform_id
     : null;
   const metactfUserId = normalizedScores?.metactf_user_id ?? null;
@@ -1133,7 +1133,7 @@ export async function syncCompetitorGameStats({
     const eventId = entry?.event_id ?? `${entry?.flash_ctf_name ?? 'flash_ctf'}:${entry?.flash_ctf_time_start_unix ?? Date.now()}`;
 
     flashEventRows.push({
-      syned_user_id: synedUserId,
+      synced_user_id: syncedUserId,
       metactf_user_id: metactfUserId,
       event_id: eventId,
       flash_ctf_name: entry?.flash_ctf_name ?? null,
@@ -1154,9 +1154,9 @@ export async function syncCompetitorGameStats({
         const solveId = solve?.challenge_solve_id;
         if (!solveId) continue;
         flashSolveRows.push({
-          syned_user_id: synedUserId,
+          synced_user_id: syncedUserId,
           metactf_user_id: metactfUserId,
-          syned_team_id: synedTeamId,
+          synced_team_id: syncedTeamId,
           challenge_solve_id: solveId,
           challenge_id: solve?.challenge_id ?? null,
           challenge_title: solve?.challenge_title ?? null,
@@ -1175,9 +1175,9 @@ export async function syncCompetitorGameStats({
       const solveId = solve?.challenge_solve_id;
       if (!solveId) return null;
       return {
-        syned_user_id: synedUserId,
+        synced_user_id: syncedUserId,
         metactf_user_id: metactfUserId,
-        syned_team_id: synedTeamId,
+        synced_team_id: syncedTeamId,
         challenge_solve_id: solveId,
         challenge_id: solve?.challenge_id ?? null,
         challenge_title: solve?.challenge_title ?? null,
@@ -1193,7 +1193,7 @@ export async function syncCompetitorGameStats({
   if (odlSolveRows.length) {
     const { error: upsertOdlError } = await statsClient
       .from('game_platform_challenge_solves')
-      .upsert(odlSolveRows, { onConflict: 'syned_user_id,challenge_solve_id' });
+      .upsert(odlSolveRows, { onConflict: 'synced_user_id,challenge_solve_id' });
     if (upsertOdlError) {
       throw new Error(`Failed to upsert ODL challenge solves: ${upsertOdlError.message}`);
     }
@@ -1202,7 +1202,7 @@ export async function syncCompetitorGameStats({
   if (flashSolveRows.length) {
     const { error: upsertFlashSolveError } = await statsClient
       .from('game_platform_challenge_solves')
-      .upsert(flashSolveRows, { onConflict: 'syned_user_id,challenge_solve_id' });
+      .upsert(flashSolveRows, { onConflict: 'synced_user_id,challenge_solve_id' });
     if (upsertFlashSolveError) {
       throw new Error(`Failed to upsert Flash CTF challenge solves: ${upsertFlashSolveError.message}`);
     }
@@ -1211,7 +1211,7 @@ export async function syncCompetitorGameStats({
   if (flashEventRows.length) {
     const { error: upsertFlashEventError } = await statsClient
       .from('game_platform_flash_ctf_events')
-      .upsert(flashEventRows, { onConflict: 'syned_user_id,event_id' });
+      .upsert(flashEventRows, { onConflict: 'synced_user_id,event_id' });
     if (upsertFlashEventError) {
       throw new Error(`Failed to upsert Flash CTF events: ${upsertFlashEventError.message}`);
     }
@@ -1243,7 +1243,7 @@ export async function syncCompetitorGameStats({
   }
 
   const syncStatePayload = {
-    syned_user_id: synedUserId,
+    syned_user_id: syncedUserId,
     last_odl_synced_at: new Date().toISOString(),
     last_flash_ctf_synced_at: latestFlashStart,
     last_remote_accessed_at: lastActivity,
@@ -1262,9 +1262,9 @@ export async function syncCompetitorGameStats({
   }
 
   if (needsRefresh) {
-    logger?.info?.(`Marked ${synedUserId} for totals refresh (${odlSolves.length} new ODL, ${flashEntries.length} flash events)`);
+    logger?.info?.(`Marked ${syncedUserId} for totals refresh (${odlSolves.length} new ODL, ${flashEntries.length} flash events)`);
   } else if (needsStatsRowCreation) {
-    logger?.info?.(`Marked ${synedUserId} for totals refresh (stats row doesn't exist)`);
+    logger?.info?.(`Marked ${syncedUserId} for totals refresh (stats row doesn't exist)`);
   }
 
   // Return 'synced' only if we actually found new data, otherwise 'skipped_no_new_data'
@@ -1280,21 +1280,21 @@ export async function syncCompetitorGameStats({
 
 export interface RefreshCompetitorTotalsParams extends ServiceOptions {
   competitorId: string;
-  synedUserId: string;
+  syncedUserId: string;
 }
 
 export async function refreshCompetitorTotals({
   supabase,
   client,
   competitorId,
-  synedUserId,
+  syncedUserId,
   dryRun,
   logger,
 }: RefreshCompetitorTotalsParams): Promise<void> {
   const effectiveDryRun = isDryRunOverride(dryRun);
 
   if (effectiveDryRun) {
-    logger?.info?.(`[DRY RUN] Would refresh totals for ${synedUserId}`);
+    logger?.info?.(`[DRY RUN] Would refresh totals for ${syncedUserId}`);
     return;
   }
 
@@ -1306,18 +1306,18 @@ export async function refreshCompetitorTotals({
   // Fetch fresh totals (no after_time_unix parameter)
   let freshScores: any = null;
   try {
-    freshScores = await resolvedClient.getScores({ syned_user_id: synedUserId });
+    freshScores = await resolvedClient.getScores({ syned_user_id: syncedUserId });
   } catch (err: any) {
     // If user doesn't exist in game platform (404), clear the refresh flag and skip
     if (err?.status === 404) {
-      logger?.warn?.(`User ${synedUserId} not found in game platform, clearing refresh flag`);
+      logger?.warn?.(`User ${syncedUserId} not found in game platform, clearing refresh flag`);
       await statsClient
         .from('game_platform_sync_state')
         .update({ needs_totals_refresh: false })
-        .eq('syned_user_id', synedUserId);
+        .eq('synced_user_id', syncedUserId);
       return; // Skip this user gracefully
     }
-    logger?.error?.(`Failed to fetch fresh totals for ${synedUserId}`, { error: err });
+    logger?.error?.(`Failed to fetch fresh totals for ${syncedUserId}`, { error: err });
     throw err;
   }
 
@@ -1328,10 +1328,10 @@ export async function refreshCompetitorTotals({
   // Fetch Flash CTF totals
   let flash: any = null;
   try {
-    flash = await resolvedClient.getFlashCtfProgress({ syned_user_id: synedUserId });
+    flash = await resolvedClient.getFlashCtfProgress({ syned_user_id: syncedUserId });
   } catch (err: any) {
     if (err?.status !== 404) {
-      logger?.warn?.(`Failed to fetch Flash CTF for totals refresh ${synedUserId}`, { error: err });
+      logger?.warn?.(`Failed to fetch Flash CTF for totals refresh ${syncedUserId}`, { error: err });
     }
   }
 
@@ -1377,13 +1377,13 @@ export async function refreshCompetitorTotals({
   const { error: clearFlagError } = await statsClient
     .from('game_platform_sync_state')
     .update({ needs_totals_refresh: false })
-    .eq('syned_user_id', synedUserId);
+    .eq('synced_user_id', syncedUserId);
 
   if (clearFlagError) {
-    logger?.warn?.(`Failed to clear totals refresh flag for ${synedUserId}`, { error: clearFlagError });
+    logger?.warn?.(`Failed to clear totals refresh flag for ${syncedUserId}`, { error: clearFlagError });
   }
 
-  logger?.info?.(`Refreshed totals for ${synedUserId}: ${totalChallenges} challenges, ${totalPoints} points`);
+  logger?.info?.(`Refreshed totals for ${syncedUserId}: ${totalChallenges} challenges, ${totalPoints} points`);
 }
 
 export interface SweepPendingTotalsRefreshParams extends ServiceOptions {
@@ -1407,7 +1407,7 @@ export async function sweepPendingTotalsRefresh({
   // Find all competitors needing totals refresh
   let pendingQuery = statsClient
     .from('game_platform_sync_state')
-    .select('syned_user_id')
+    .select('synced_user_id')
     .eq('needs_totals_refresh', true)
     .limit(batchSize);
 
@@ -1417,7 +1417,7 @@ export async function sweepPendingTotalsRefresh({
     throw new Error(`Failed to query pending totals refresh: ${queryError.message}`);
   }
 
-  const pendingUserIds = (pendingStates || []).map(s => s.syned_user_id);
+  const pendingUserIds = (pendingStates || []).map(s => s.synced_user_id);
 
   if (pendingUserIds.length === 0) {
     logger?.info?.('No competitors need totals refresh');
@@ -1431,7 +1431,7 @@ export async function sweepPendingTotalsRefresh({
 
   logger?.info?.(`Found ${pendingUserIds.length} competitors needing totals refresh`);
 
-  // Map syned_user_id back to competitor_id
+  // Map synced_user_id back to competitor_id
   let competitorQuery = supabase
     .from('competitors')
     .select('id, game_platform_id')
@@ -1447,7 +1447,7 @@ export async function sweepPendingTotalsRefresh({
     throw new Error(`Failed to load competitors for refresh: ${competitorError.message}`);
   }
 
-  const results: Array<{ synedUserId: string; status: 'success' | 'failed'; error?: string }> = [];
+  const results: Array<{ syncedUserId: string; status: 'success' | 'failed'; error?: string }> = [];
   let refreshed = 0;
   let failed = 0;
 
@@ -1459,16 +1459,16 @@ export async function sweepPendingTotalsRefresh({
         supabase,
         client,
         competitorId: competitor.id,
-        synedUserId: competitor.game_platform_id,
+        syncedUserId: competitor.game_platform_id,
         dryRun: effectiveDryRun,
         logger,
       });
-      results.push({ synedUserId: competitor.game_platform_id, status: 'success' });
+      results.push({ syncedUserId: competitor.game_platform_id, status: 'success' });
       refreshed++;
     } catch (err: any) {
       logger?.error?.(`Failed to refresh totals for ${competitor.game_platform_id}`, { error: err });
       results.push({
-        synedUserId: competitor.game_platform_id,
+        syncedUserId: competitor.game_platform_id,
         status: 'failed',
         error: err?.message ?? 'Unknown error',
       });

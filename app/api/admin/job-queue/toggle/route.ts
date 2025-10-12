@@ -32,7 +32,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing enabled flag' }, { status: 400 });
   }
 
-  const supabase = getServiceRoleSupabaseClient();
+  let supabase;
+  try {
+    supabase = getServiceRoleSupabaseClient();
+  } catch (error) {
+    console.error('[job-queue/toggle] service role client unavailable', error);
+    return NextResponse.json({ error: 'Job queue settings unavailable' }, { status: 500 });
+  }
   const { data, error } = await supabase
     .from('job_queue_settings')
     .update({

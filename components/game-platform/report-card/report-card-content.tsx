@@ -150,7 +150,7 @@ export default function ReportCardContent({ competitorId }: { competitorId: stri
           {/* Performance Overview Cards */}
           {visibleSections.has('performance') && (
             <div data-section="performance">
-              <PerformanceOverview summary={data.summary} />
+  <PerformanceOverview summary={data.summary} />
             </div>
           )}
 
@@ -164,8 +164,15 @@ export default function ReportCardContent({ competitorId }: { competitorId: stri
           {/* Flash CTF and NIST Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" data-section="flash-nist-row">
             {/* Flash CTF Events */}
-            {visibleSections.has('flash-ctf') && data.flashCtfEvents.length > 0 && (
-              <FlashCtfEvents events={data.flashCtfEvents} />
+            {visibleSections.has('flash-ctf') && (
+              data.flashCtfEvents.length > 0 ? (
+                <FlashCtfEvents events={data.flashCtfEvents} />
+              ) : (
+                <div className="border rounded-lg p-6 flex flex-col justify-center items-center text-center text-sm text-muted-foreground h-full">
+                  <h3 className="text-lg font-semibold mb-2">Flash CTF Participation</h3>
+                  <p className="text-muted-foreground">No MetaCTF Flash CTF activity recorded yet.</p>
+                </div>
+              )
             )}
 
             {/* NIST Coverage */}

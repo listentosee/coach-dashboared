@@ -91,9 +91,9 @@ export async function GET(
 
     // If no game platform ID, return minimal data
     const profileMapping = await getGamePlatformProfile(supabase, { competitorId: competitor.id }).catch(() => null);
-    const synedUserId = competitor.game_platform_id ?? profileMapping?.syned_user_id ?? null;
+    const syncedUserId = competitor.game_platform_id ?? profileMapping?.synced_user_id ?? null;
 
-    if (!synedUserId) {
+    if (!syncedUserId) {
       return NextResponse.json({
         competitor: {
           id: competitor.id,
@@ -159,7 +159,7 @@ export async function GET(
     const { data: summaryData } = await supabase
       .from('game_platform_challenge_solves')
       .select('challenge_points, solved_at, challenge_category')
-      .eq('syned_user_id', synedUserId);
+      .eq('synced_user_id', syncedUserId);
 
     const totalChallenges = summaryData?.length || 0;
     const totalPoints = summaryData?.reduce((sum, c) => sum + (c.challenge_points || 0), 0) || 0;
@@ -170,7 +170,7 @@ export async function GET(
 
     // Fetch domain breakdown
     const { data: domainData } = await supabase.rpc('get_domain_stats', {
-      p_syned_user_id: synedUserId
+      p_syned_user_id: syncedUserId
     });
 
     // Fallback if RPC doesn't exist - calculate manually
@@ -212,7 +212,7 @@ export async function GET(
     const { data: recentChallenges } = await supabase
       .from('game_platform_challenge_solves')
       .select('*')
-      .eq('syned_user_id', synedUserId)
+      .eq('synced_user_id', syncedUserId)
       .order('solved_at', { ascending: false })
       .limit(50);
 
@@ -220,7 +220,7 @@ export async function GET(
     const { data: flashCtfEvents } = await supabase
       .from('game_platform_flash_ctf_events')
       .select('*')
-      .eq('syned_user_id', synedUserId)
+      .eq('synced_user_id', syncedUserId)
       .order('started_at', { ascending: false });
 
     // Build activity timeline (last 90 days)

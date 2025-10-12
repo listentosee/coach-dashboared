@@ -180,15 +180,15 @@ export async function POST(request: NextRequest) {
           }
 
           try {
-            await upsertGamePlatformProfile(supabase, {
-              coachId: user.id,
-              metactfRole: 'coach',
-              synedUserId: metactfUserId,
-              metactfUserId: metactfResponse?.metactf_user_id ?? null,
-              metactfUsername: metactfResponse?.metactf_username ?? null,
-              status: normalizeStatus(metactfStatus),
-              syncError: metactfError,
-              lastSyncedAt: new Date().toISOString(),
+          await upsertGamePlatformProfile(supabase, {
+            coachId: user.id,
+            metactfRole: 'coach',
+            syncedUserId: metactfUserId,
+            metactfUserId: metactfResponse?.metactf_user_id ?? null,
+            metactfUsername: metactfResponse?.metactf_username ?? null,
+            status: normalizeStatus(metactfStatus),
+            syncError: metactfError,
+            lastSyncedAt: new Date().toISOString(),
             });
           } catch (repoError: any) {
             logger.warn('Failed to persist game platform coach mapping', {

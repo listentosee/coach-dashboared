@@ -155,7 +155,7 @@ export async function POST(
     // Attempt to onboard competitor if they are not yet on the Game Platform
     let competitorOnboarding: any = null;
     const competitorMapping = await getGamePlatformProfile(supabase, { competitorId: competitor.id }).catch(() => null);
-    if (!competitor.game_platform_id && !competitorMapping?.syned_user_id) {
+    if (!competitor.game_platform_id && !competitorMapping?.synced_user_id) {
       try {
         competitorOnboarding = await onboardCompetitorToGamePlatform({
           supabase,

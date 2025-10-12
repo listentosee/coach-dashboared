@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
     }
 
     const gamePlatformIds = (competitors || [])
-      .map((c) => c.game_platform_id || mappingByCompetitorId.get(c.id)?.syned_user_id)
+      .map((c) => c.game_platform_id || mappingByCompetitorId.get(c.id)?.synced_user_id)
       .filter((id): id is string => Boolean(id));
 
     let stats: any[] = [];
@@ -111,8 +111,8 @@ export async function GET(request: NextRequest) {
       if (gamePlatformIds.length > 0) {
         const { data: solvesData, error: solvesError } = await statsClient
           .from('game_platform_challenge_solves')
-          .select('syned_user_id, challenge_title, challenge_category, challenge_points, source, solved_at')
-          .in('syned_user_id', gamePlatformIds);
+          .select('synced_user_id, challenge_title, challenge_category, challenge_points, source, solved_at')
+          .in('synced_user_id', gamePlatformIds);
 
         if (solvesError) {
           console.error('Dashboard challenge solves query failed', solvesError);
@@ -124,8 +124,8 @@ export async function GET(request: NextRequest) {
         // Query Flash CTF events from the normalized table
         const { data: flashData, error: flashError } = await statsClient
           .from('game_platform_flash_ctf_events')
-          .select('syned_user_id, event_id, flash_ctf_name, challenges_solved, points_earned, started_at')
-          .in('syned_user_id', gamePlatformIds);
+          .select('synced_user_id, event_id, flash_ctf_name, challenges_solved, points_earned, started_at')
+          .in('synced_user_id', gamePlatformIds);
 
         if (flashError) {
           console.error('Dashboard Flash CTF events query failed', flashError);
@@ -144,19 +144,23 @@ export async function GET(request: NextRequest) {
     // Group challenge solves by competitor
     const solvesByCompetitor = new Map<string, any[]>();
     for (const solve of challengeSolves) {
-      if (!solvesByCompetitor.has(solve.syned_user_id)) {
-        solvesByCompetitor.set(solve.syned_user_id, []);
+      const key = solve.synced_user_id;
+      if (!key) continue;
+      if (!solvesByCompetitor.has(key)) {
+        solvesByCompetitor.set(key, []);
       }
-      solvesByCompetitor.get(solve.syned_user_id)!.push(solve);
+      solvesByCompetitor.get(key)!.push(solve);
     }
 
     // Group Flash CTF events by competitor
     const flashEventsByCompetitor = new Map<string, any[]>();
     for (const event of flashCtfEvents) {
-      if (!flashEventsByCompetitor.has(event.syned_user_id)) {
-        flashEventsByCompetitor.set(event.syned_user_id, []);
+      const key = event.synced_user_id;
+      if (!key) continue;
+      if (!flashEventsByCompetitor.has(key)) {
+        flashEventsByCompetitor.set(key, []);
       }
-      flashEventsByCompetitor.get(event.syned_user_id)!.push(event);
+      flashEventsByCompetitor.get(key)!.push(event);
     }
 
     const competitorMap = new Map<string, any>();
@@ -165,7 +169,7 @@ export async function GET(request: NextRequest) {
 
     for (const competitor of competitors || []) {
       const profileMapping = mappingByCompetitorId.get(competitor.id) ?? null;
-      const synedUserId = competitor.game_platform_id || profileMapping?.syned_user_id || null;
+      const syncedUserId = competitor.game_platform_id || profileMapping?.synced_user_id || null;
       const membershipRaw = competitor.team_members;
       const teamMembership = Array.isArray(membershipRaw)
         ? membershipRaw[0] ?? null
@@ -184,8 +188,8 @@ export async function GET(request: NextRequest) {
       const monthlyCtf = stat?.monthly_ctf_challenges ?? 0;
 
       // Get challenge solves from the normalized table instead of raw_data
-      const competitorSolves = synedUserId
-        ? (solvesByCompetitor.get(synedUserId) || [])
+      const competitorSolves = syncedUserId
+        ? (solvesByCompetitor.get(syncedUserId) || [])
         : [];
 
       // Calculate category counts AND points from actual challenge solves
@@ -204,7 +208,7 @@ export async function GET(request: NextRequest) {
         last_name: competitor.last_name,
         coach_id: competitor.coach_id,
         status: competitor.status,
-        game_platform_id: synedUserId,
+        game_platform_id: syncedUserId,
         game_platform_synced_at: competitor.game_platform_synced_at ?? profileMapping?.last_synced_at ?? null,
         game_platform_sync_error: competitor.game_platform_sync_error ?? profileMapping?.sync_error ?? null,
         team_id: teamMembership?.team_id || null,
@@ -226,7 +230,7 @@ export async function GET(request: NextRequest) {
           division: team.division,
           affiliation: team.affiliation ?? competitor.coach?.school_name ?? null,
         } : null,
-        game_platform_id: synedUserId,
+        game_platform_id: syncedUserId,
         status: competitor.status,
         name: `${competitor.first_name} ${competitor.last_name}`.trim(),
       });
@@ -255,7 +259,7 @@ export async function GET(request: NextRequest) {
         };
 
         roster.totalMembers += 1;
-        if (synedUserId) {
+        if (syncedUserId) {
           roster.syncedMembers += 1;
           roster.membersOnPlatform.push({
             competitorId: competitor.id,
@@ -403,7 +407,7 @@ export async function GET(request: NextRequest) {
     const unsyncedCompetitors = (competitors || [])
       .filter((c) => {
         const mapping = mappingByCompetitorId.get(c.id);
-        return !c.game_platform_id && !mapping?.syned_user_id;
+        return !c.game_platform_id && !mapping?.synced_user_id;
       })
       .map((c) => ({
         competitorId: c.id,
@@ -458,9 +462,9 @@ export async function GET(request: NextRequest) {
         : supabase;
 
       const { data: flashEvents } = await flashClient
-        .from('game_platform_flash_ctf_events')
-        .select('syned_user_id, event_id, flash_ctf_name, challenges_solved, points_earned, started_at, raw_payload')
-        .in('syned_user_id', syncedCompetitorIds)
+          .from('game_platform_flash_ctf_events')
+          .select('synced_user_id, event_id, flash_ctf_name, challenges_solved, points_earned, started_at, raw_payload')
+          .in('synced_user_id', syncedCompetitorIds)
         .gte('started_at', twelveMonthsAgo.toISOString())
         .order('started_at', { ascending: false });
 
@@ -472,7 +476,9 @@ export async function GET(request: NextRequest) {
           const eventDate = new Date(event.started_at);
           // Check if event is within the selected time range
           if (rangeStartTime === null || eventDate >= rangeStartTime) {
-            participantsInRange.add(event.syned_user_id);
+            if (event.synced_user_id) {
+              participantsInRange.add(event.synced_user_id);
+            }
           }
         }
         monthlyCtfParticipantsFromEvents = participantsInRange.size;
@@ -482,7 +488,8 @@ export async function GET(request: NextRequest) {
       const monthlyTotalsMap = new Map();
 
       (flashEvents || []).forEach(event => {
-        const competitor = competitorMap.get(Array.from(competitorMap.values()).find((c: any) => c.game_platform_id === event.syned_user_id)?.id || '');
+        if (!event.synced_user_id) return;
+        const competitor = competitorMap.get(Array.from(competitorMap.values()).find((c: any) => c.game_platform_id === event.synced_user_id)?.id || '');
         if (!competitor) return;
 
         const eventDate = new Date(event.started_at);
@@ -587,7 +594,7 @@ export async function GET(request: NextRequest) {
       // Group Flash CTF events by competitor for drill-down
       const eventsByCompetitor = new Map<string, any[]>();
       (flashEvents || []).forEach(event => {
-        const competitor = Array.from(competitorMap.values()).find((c: any) => c.game_platform_id === event.syned_user_id);
+        const competitor = Array.from(competitorMap.values()).find((c: any) => c.game_platform_id === event.synced_user_id);
         if (!competitor) return;
 
         if (!eventsByCompetitor.has(competitor.id)) {

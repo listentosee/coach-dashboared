@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
         await upsertGamePlatformProfile(supabase, {
           competitorId: competitor.id,
           metactfRole: 'user',
-          synedUserId: validatedData.game_platform_id,
+          syncedUserId: validatedData.game_platform_id,
           status: 'pending',
           syncError: null,
           lastSyncedAt: null,

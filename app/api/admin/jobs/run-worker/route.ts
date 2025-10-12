@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { runJobs } from '@/lib/jobs/runner';
+import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase';
 
 export async function POST() {
   const cookieStore = await cookies();
@@ -24,6 +25,14 @@ export async function POST() {
   }
 
   try {
+    // Ensure service role credentials exist before invoking the worker
+    try {
+      getServiceRoleSupabaseClient();
+    } catch (error) {
+      console.error('[run-worker] service role client unavailable', error);
+      return NextResponse.json({ error: 'Worker unavailable' }, { status: 500 });
+    }
+
     // Call the worker function directly
     const result = await runJobs({ limit: 5, force: false });
 

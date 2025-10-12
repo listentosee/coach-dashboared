@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface Student {
@@ -213,9 +213,8 @@ export default function MonthlyCtfMomentum({ view, data, onStudentClick }: Props
                   const studentEvents = data.eventsByCompetitor?.[student.competitorId] || [];
 
                   return (
-                    <>
+                    <React.Fragment key={student.competitorId}>
                       <tr
-                        key={student.competitorId}
                         className="hover:bg-meta-dark/40"
                         title={`${student.challengesSolved} challenges solved`}
                       >
@@ -252,12 +251,12 @@ export default function MonthlyCtfMomentum({ view, data, onStudentClick }: Props
                         </td>
                       </tr>
                       {isExpanded && studentEvents.length > 0 && (
-                        <tr key={`${student.competitorId}-events`}>
+                        <tr>
                           <td colSpan={5} className="bg-meta-dark/20 py-2 px-8">
                             <div className="space-y-1">
                               {studentEvents.map((event, idx) => (
                                 <button
-                                  key={idx}
+                                  key={event.eventId ?? `${student.competitorId}-${idx}`}
                                   onClick={() => onStudentClick?.(student.competitorId, student.name, event.eventName)}
                                   className="block w-full text-left text-xs hover:text-meta-accent transition-colors"
                                 >
@@ -273,7 +272,7 @@ export default function MonthlyCtfMomentum({ view, data, onStudentClick }: Props
                           </td>
                         </tr>
                       )}
-                    </>
+                    </React.Fragment>
                   );
                 })
               )}

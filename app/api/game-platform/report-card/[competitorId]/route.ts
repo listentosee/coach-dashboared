@@ -91,75 +91,15 @@ export async function GET(
 
     // If no game platform ID, return minimal data
     const profileMapping = await getGamePlatformProfile(supabase, { competitorId: competitor.id }).catch(() => null);
-    const syncedUserId = competitor.game_platform_id ?? profileMapping?.synced_user_id ?? null;
-
-    if (!syncedUserId) {
-      return NextResponse.json({
-        competitor: {
-          id: competitor.id,
-          name: `${competitor.first_name} ${competitor.last_name}`,
-          email: competitor.email_school || competitor.email_personal,
-          grade: competitor.grade,
-          division: competitor.division,
-          team: competitor.team_members?.[0]?.teams?.name || null,
-          gamePlatformSynced: false,
-        },
-        summary: null,
-        domains: [],
-        recentChallenges: [],
-        flashCtfEvents: [],
-        activityTimeline: [],
-        insights: [
-          {
-            type: 'sync_pending',
-            message: 'Competitor not yet synced with Game Platform. Sync required to view report.',
-            priority: 'high'
-          }
-        ],
-        nistCoverage: {
-          rolesCovered: [],
-          totalRoles: 0,
-          coveragePercent: 0,
-        }
-      });
-    }
-
-    if (!profileMapping || profileMapping.status === 'error') {
-      return NextResponse.json({
-        competitor: {
-          id: competitor.id,
-          name: `${competitor.first_name} ${competitor.last_name}`,
-          email: competitor.email_school || competitor.email_personal,
-          grade: competitor.grade,
-          division: competitor.division,
-          team: competitor.team_members?.[0]?.teams?.name || null,
-          gamePlatformSynced: false,
-        },
-        summary: null,
-        domains: [],
-        recentChallenges: [],
-        flashCtfEvents: [],
-        activityTimeline: [],
-        insights: [
-          {
-            type: 'sync_error',
-            message: profileMapping?.sync_error ?? 'Competitor sync pending or failed. Please retry synchronization.',
-            priority: 'high',
-          },
-        ],
-        nistCoverage: {
-          rolesCovered: [],
-          totalRoles: 0,
-          coveragePercent: 0,
-        },
-      });
-    }
+    const syncedUserId = profileMapping?.synced_user_id ?? competitor.game_platform_id ?? null;
 
     // Fetch summary stats
-    const { data: summaryData } = await supabase
-      .from('game_platform_challenge_solves')
-      .select('challenge_points, solved_at, challenge_category')
-      .eq('synced_user_id', syncedUserId);
+    const { data: summaryData } = syncedUserId
+      ? await supabase
+          .from('game_platform_challenge_solves')
+          .select('challenge_points, solved_at, challenge_category')
+          .eq('synced_user_id', syncedUserId)
+      : { data: null };
 
     const totalChallenges = summaryData?.length || 0;
     const totalPoints = summaryData?.reduce((sum, c) => sum + (c.challenge_points || 0), 0) || 0;
@@ -169,9 +109,11 @@ export async function GET(
     const lastActivity = summaryData?.[0]?.solved_at || null;
 
     // Fetch domain breakdown
-    const { data: domainData } = await supabase.rpc('get_domain_stats', {
-      p_syned_user_id: syncedUserId
-    });
+    const { data: domainData } = syncedUserId
+      ? await supabase.rpc('get_domain_stats', {
+          p_syned_user_id: syncedUserId
+        })
+      : { data: null };
 
     // Fallback if RPC doesn't exist - calculate manually
     let domains = [];
@@ -209,19 +151,23 @@ export async function GET(
     }
 
     // Fetch recent challenges
-    const { data: recentChallenges } = await supabase
-      .from('game_platform_challenge_solves')
-      .select('*')
-      .eq('synced_user_id', syncedUserId)
-      .order('solved_at', { ascending: false })
-      .limit(50);
+    const { data: recentChallenges } = syncedUserId
+      ? await supabase
+          .from('game_platform_challenge_solves')
+          .select('*')
+          .eq('synced_user_id', syncedUserId)
+          .order('solved_at', { ascending: false })
+          .limit(50)
+      : { data: null };
 
     // Fetch Flash CTF events
-    const { data: flashCtfEvents } = await supabase
-      .from('game_platform_flash_ctf_events')
-      .select('*')
-      .eq('synced_user_id', syncedUserId)
-      .order('started_at', { ascending: false });
+    const { data: flashCtfEvents } = syncedUserId
+      ? await supabase
+          .from('game_platform_flash_ctf_events')
+          .select('*')
+          .eq('synced_user_id', syncedUserId)
+          .order('started_at', { ascending: false })
+      : { data: null };
 
     // Build activity timeline (last 90 days)
     const ninetyDaysAgo = new Date();
@@ -282,7 +228,9 @@ export async function GET(
         division: competitor.division,
         team: competitor.team_members?.[0]?.teams?.name || null,
         teamDivision: competitor.team_members?.[0]?.teams?.division || null,
-        gamePlatformSynced: true,
+        gamePlatformSynced: Boolean(syncedUserId),
+        syncStatus: profileMapping?.status ?? null,
+        syncError: profileMapping?.sync_error ?? null,
         lastSynced: competitor.game_platform_synced_at,
       },
       summary: {

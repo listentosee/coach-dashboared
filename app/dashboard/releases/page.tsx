@@ -315,6 +315,44 @@ export default function ReleaseManagementPage() {
     })
   }, [eligibleCompetitors, agreements])
 
+  const releaseStatusCounts = useMemo(() => {
+    const counts = {
+      notSent: 0,
+      sent: 0,
+      complete: 0,
+      manual: 0,
+    };
+
+    for (const item of releaseUniverse) {
+      if (item.agreement && item.agreement.status === 'completed') {
+        counts.complete += 1;
+        continue;
+      }
+
+      if (item.agreement && item.agreement.status === 'completed_manual') {
+        counts.manual += 1;
+        continue;
+      }
+
+      if (item.hasLegacySigned) {
+        counts.manual += 1;
+        continue;
+      }
+
+      if (item.agreement) {
+        counts.sent += 1;
+        continue;
+      }
+
+      counts.notSent += 1;
+    }
+
+    return counts;
+  }, [releaseUniverse])
+
+  const totalCompetitorsCount = analytics?.competitorCount ?? competitors.length
+  const releaseEligibleCount = releaseUniverse.length
+
   const searchTermNormalized = searchTerm.trim().toLowerCase()
 
   const releaseData: ReleaseData[] = useMemo(() => {
@@ -563,7 +601,7 @@ export default function ReleaseManagementPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col space-y-4">
         <div>
           <h1 className="text-3xl font-bold text-meta-light">Release Management</h1>
           <div className="text-meta-muted mt-2 space-y-2">
@@ -574,79 +612,64 @@ export default function ReleaseManagementPage() {
               <span className="text-meta-light">or higher appear here.</span>
             </div>
             <p>Manage release forms and track signing status. Only active competitors with complete profiles are listed.</p>
-            {(() => {
-              // Represent the Release Status distribution across all eligible rows
-              const counts = {
-                no_release: 0,
-                sent: 0,
-                viewed: 0,
-                print_ready: 0,
-                completed: 0,
-                completed_manual: 0,
-                legacy_signed: 0,
-                declined: 0,
-                expired: 0,
-              }
-
-              for (const item of releaseUniverse) {
-                if (item.agreement) {
-                  const s = item.agreement.status as keyof typeof counts
-                  if (counts[s] !== undefined) counts[s] += 1
-                  else counts.no_release += 1
-                } else if (item.hasLegacySigned) {
-                  counts.legacy_signed += 1
-                } else {
-                  counts.no_release += 1
-                }
-              }
-
-              const total = Math.max(1, releaseUniverse.length)
-              const pct = (n: number) => (n / total) * 100
-              const segments = [
-                { key: 'no_release',       label: 'No Release',         count: counts.no_release,       bg: 'bg-slate-600',  text: 'text-white' },
-                { key: 'sent',             label: 'Sent',               count: counts.sent,             bg: 'bg-blue-600',   text: 'text-white' },
-                { key: 'viewed',           label: 'Viewed',             count: counts.viewed,           bg: 'bg-yellow-600', text: 'text-white' },
-                { key: 'print_ready',      label: 'Print Ready',        count: counts.print_ready,      bg: 'bg-purple-600', text: 'text-white' },
-                { key: 'completed',        label: 'Completed',          count: counts.completed,        bg: 'bg-green-600',  text: 'text-white' },
-                { key: 'completed_manual', label: 'Completed (Manual)', count: counts.completed_manual, bg: 'bg-orange-600', text: 'text-white' },
-                { key: 'legacy_signed',    label: 'Legacy Signed',      count: counts.legacy_signed,    bg: 'bg-green-700',  text: 'text-white' },
-                { key: 'declined',         label: 'Declined',           count: counts.declined,         bg: 'bg-red-600',    text: 'text-white' },
-                { key: 'expired',          label: 'Expired',            count: counts.expired,          bg: 'bg-gray-600',   text: 'text-white' },
-              ]
-              const visible = segments.filter(s => s.count > 0)
-              return (
-                <div className="mt-3">
-                  <div className="w-full rounded overflow-hidden flex border border-meta-border">
-                    {visible.length === 0 ? (
-                      <div className="w-full py-2 text-center text-xs text-meta-muted">No release rows to display</div>
-                    ) : (
-                      visible.map(s => (
-                        <div
-                          key={s.key}
-                          className={`flex items-center justify-center px-2 py-1 whitespace-nowrap ${s.bg} ${s.text}`}
-                          style={{ width: `${Math.max(6, pct(s.count))}%`, minWidth: 80 }}
-                          title={`${s.label} ${s.count}`}
-                        >
-                          <span className="text-[11px] font-semibold truncate">{s.label} {s.count}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )
-            })()}
             <div className="text-sm">
               <div className="text-meta-light font-medium">How to send:</div>
-              <div>- Digital send: Click Send Release (Email) to email the signer.</div>
-              <div>- Manual send: 1) Click Send Release (Print) to generate a pre-filled PDF, 2) click the pdf download button, 3) print the form, 4) have it signed on paper, 6) then upload it via “Upload Signed Document”.</div>
+              <div>- Digital send: Click Send Release (Paper airplane) to email to the signer.</div>
+              <div>- Manual send: 1) Click Print Pre-filled to generate a pre-filled PDF, 2) click the pdf download button, 3) print the form, 4) have it signed on paper, 6) then upload it via “Upload Signed Document”.</div>
             </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="bg-meta-card border-meta-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-meta-light">Total Competitors</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-meta-light">{totalCompetitorsCount}</div>
+                <p className="text-xs text-meta-muted">
+                  All competitors on your roster.
+                </p>
+                <p className="text-[11px] text-meta-muted mt-1">
+                  Release-eligible today: {releaseEligibleCount}.
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="bg-meta-card border-meta-border md:col-span-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-meta-light">Release Status Berakdown</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-[11px] text-meta-muted mb-3 grid grid-cols-2 gap-y-1 gap-x-4">
+                  <div><span className="text-meta-light">Not Sent:</span> No release has been issued yet.</div>
+                  <div><span className="text-meta-light">Sent:</span> Release dispatched and awaiting completion.</div>
+                  <div><span className="text-meta-light">Complete:</span> Digitally signed.</div>
+                  <div><span className="text-meta-light">Manual Signed:</span> Paper/legacy release on file.</div>
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="bg-meta-dark rounded p-3">
+                    <div className="text-xs text-meta-muted">Not Sent</div>
+                    <div className="text-xl font-bold text-rose-300">{releaseStatusCounts.notSent}</div>
+                  </div>
+                  <div className="bg-meta-dark rounded p-3">
+                    <div className="text-xs text-meta-muted">Sent</div>
+                    <div className="text-xl font-bold text-blue-300">{releaseStatusCounts.sent}</div>
+                  </div>
+                  <div className="bg-meta-dark rounded p-3">
+                    <div className="text-xs text-meta-muted">Complete</div>
+                    <div className="text-xl font-bold text-emerald-300">{releaseStatusCounts.complete}</div>
+                  </div>
+                  <div className="bg-meta-dark rounded p-3">
+                    <div className="text-xs text-meta-muted">Manual Signed</div>
+                    <div className="text-xl font-bold text-amber-300">{releaseStatusCounts.manual}</div>
+                  </div>
+                </div>
+                <p className="text-[11px] text-meta-muted mt-3">
+                  Totals align with release queue ({releaseStatusCounts.notSent + releaseStatusCounts.sent + releaseStatusCounts.complete + releaseStatusCounts.manual} of {releaseEligibleCount} release-eligible competitors).
+                </p>
+              </CardContent>
+            </Card>
           </div>
           <ActingAsBanner />
         </div>
-        <Button onClick={fetchData} variant="outline" className="text-meta-light border-meta-border">
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
       </div>
 
       <Card className="bg-meta-card border-meta-border">
@@ -664,8 +687,14 @@ export default function ReleaseManagementPage() {
                 <span>Show Only Uncompleted Releases</span>
               </label>
             </div>
-            <div className="text-sm text-meta-muted whitespace-nowrap">
-              Showing {Math.min(visibleCount, releaseData.length)} of {releaseData.length}
+            <div className="flex items-center gap-3">
+              <Button onClick={fetchData} variant="outline" className="text-meta-light border-meta-border">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+              <div className="text-sm text-meta-muted whitespace-nowrap">
+                Showing {Math.min(visibleCount, releaseData.length)} of {releaseData.length}
+              </div>
             </div>
           </div>
         </CardHeader>

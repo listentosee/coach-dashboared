@@ -85,6 +85,27 @@ CREATE TYPE "public"."completion_source" AS ENUM (
 ALTER TYPE "public"."completion_source" OWNER TO "postgres";
 
 
+CREATE TYPE "public"."metactf_role" AS ENUM (
+    'coach',
+    'user'
+);
+
+
+ALTER TYPE "public"."metactf_role" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."metactf_sync_status" AS ENUM (
+    'pending',
+    'user_created',
+    'approved',
+    'denied',
+    'error'
+);
+
+
+ALTER TYPE "public"."metactf_sync_status" OWNER TO "postgres";
+
+
 CREATE TYPE "public"."team_status" AS ENUM (
     'forming',
     'active',
@@ -1022,22 +1043,12 @@ CREATE OR REPLACE FUNCTION "public"."job_queue_claim"("p_limit" integer DEFAULT 
     AS $$
 DECLARE
   v_claimed_ids uuid[];
+  v_recurring_ids uuid[];
+  v_regular_ids uuid[];
+  v_remaining_limit integer;
 BEGIN
-  -- First, check for recurring jobs that need to run
-  -- A recurring job needs to run if:
-  -- 1. It's enabled (status = 'pending')
-  -- 2. It hasn't expired (expires_at is NULL or in the future)
-  -- 3. It's time to run (run_at <= now OR last_run_at + interval <= now)
-  UPDATE job_queue
-  SET
-    run_at = CASE
-      WHEN last_run_at IS NULL THEN run_at
-      ELSE last_run_at + (recurrence_interval_minutes || ' minutes')::interval
-    END,
-    status = 'running',
-    attempts = attempts + 1,
-    updated_at = now()
-  WHERE id IN (
+  -- First, claim recurring jobs that need to run
+  WITH recurring_to_claim AS (
     SELECT id
     FROM job_queue
     WHERE is_recurring = true
@@ -1049,28 +1060,53 @@ BEGIN
       )
     ORDER BY run_at
     LIMIT p_limit
-  )
-  RETURNING id INTO v_claimed_ids;
-
-  -- If we didn't fill the limit with recurring jobs, claim regular jobs
-  IF array_length(v_claimed_ids, 1) IS NULL OR array_length(v_claimed_ids, 1) < p_limit THEN
+    FOR UPDATE SKIP LOCKED
+  ),
+  updated_recurring AS (
     UPDATE job_queue
     SET
+      run_at = CASE
+        WHEN last_run_at IS NULL THEN run_at
+        ELSE last_run_at + (recurrence_interval_minutes || ' minutes')::interval
+      END,
       status = 'running',
       attempts = attempts + 1,
       updated_at = now()
-    WHERE id IN (
+    WHERE id IN (SELECT id FROM recurring_to_claim)
+    RETURNING id
+  )
+  SELECT ARRAY_AGG(id) INTO v_recurring_ids FROM updated_recurring;
+
+  -- Calculate remaining limit for regular jobs
+  v_remaining_limit := p_limit - COALESCE(array_length(v_recurring_ids, 1), 0);
+
+  -- If we didn't fill the limit with recurring jobs, claim regular jobs
+  IF v_remaining_limit > 0 THEN
+    WITH regular_to_claim AS (
       SELECT id
       FROM job_queue
       WHERE is_recurring = false
         AND status = 'pending'
         AND run_at <= now()
-        AND id != ALL(COALESCE(v_claimed_ids, ARRAY[]::uuid[]))
+        AND id != ALL(COALESCE(v_recurring_ids, ARRAY[]::uuid[]))
       ORDER BY run_at
-      LIMIT p_limit - COALESCE(array_length(v_claimed_ids, 1), 0)
+      LIMIT v_remaining_limit
+      FOR UPDATE SKIP LOCKED
+    ),
+    updated_regular AS (
+      UPDATE job_queue
+      SET
+        status = 'running',
+        attempts = attempts + 1,
+        updated_at = now()
+      WHERE id IN (SELECT id FROM regular_to_claim)
+      RETURNING id
     )
-    RETURNING id INTO v_claimed_ids;
+    SELECT ARRAY_AGG(id) INTO v_regular_ids FROM updated_regular;
   END IF;
+
+  -- Combine all claimed IDs
+  v_claimed_ids := COALESCE(v_recurring_ids, ARRAY[]::uuid[]) || COALESCE(v_regular_ids, ARRAY[]::uuid[]);
 
   -- Return all claimed jobs
   RETURN QUERY
@@ -2182,7 +2218,7 @@ CREATE TABLE IF NOT EXISTS "public"."conversations" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "type" "text" NOT NULL,
     "title" "text",
-    "created_by" "uuid" NOT NULL,
+    "created_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     CONSTRAINT "conversations_type_check" CHECK (("type" = ANY (ARRAY['dm'::"text", 'group'::"text", 'announcement'::"text"])))
 );
@@ -2193,9 +2229,9 @@ ALTER TABLE "public"."conversations" OWNER TO "postgres";
 
 CREATE TABLE IF NOT EXISTS "public"."game_platform_challenge_solves" (
     "id" bigint NOT NULL,
-    "syned_user_id" "text" NOT NULL,
+    "synced_user_id" "text" NOT NULL,
     "metactf_user_id" bigint,
-    "syned_team_id" "text",
+    "synced_team_id" "text",
     "challenge_solve_id" bigint NOT NULL,
     "challenge_id" bigint,
     "challenge_title" "text",
@@ -2225,7 +2261,7 @@ ALTER TABLE "public"."game_platform_challenge_solves" ALTER COLUMN "id" ADD GENE
 
 CREATE TABLE IF NOT EXISTS "public"."game_platform_flash_ctf_events" (
     "id" bigint NOT NULL,
-    "syned_user_id" "text" NOT NULL,
+    "synced_user_id" "text" NOT NULL,
     "metactf_user_id" bigint,
     "event_id" "text" NOT NULL,
     "flash_ctf_name" "text",
@@ -2253,6 +2289,26 @@ ALTER TABLE "public"."game_platform_flash_ctf_events" ALTER COLUMN "id" ADD GENE
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."game_platform_profiles" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "coach_id" "uuid",
+    "competitor_id" "uuid",
+    "metactf_role" "public"."metactf_role" NOT NULL,
+    "synced_user_id" "text",
+    "metactf_user_id" integer,
+    "metactf_username" "text",
+    "status" "public"."metactf_sync_status" DEFAULT 'pending'::"public"."metactf_sync_status",
+    "last_synced_at" timestamp with time zone,
+    "sync_error" "text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "game_platform_profiles_check" CHECK (((("coach_id" IS NOT NULL) AND ("competitor_id" IS NULL)) OR (("coach_id" IS NULL) AND ("competitor_id" IS NOT NULL))))
+);
+
+
+ALTER TABLE "public"."game_platform_profiles" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."game_platform_stats" (
     "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
     "competitor_id" "uuid" NOT NULL,
@@ -2261,13 +2317,41 @@ CREATE TABLE IF NOT EXISTS "public"."game_platform_stats" (
     "total_score" integer DEFAULT 0,
     "last_activity" timestamp with time zone,
     "synced_at" timestamp with time zone DEFAULT "now"(),
-    "raw_data" "jsonb",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"()
 );
 
 
 ALTER TABLE "public"."game_platform_stats" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."game_platform_stats_raw_data_backup" (
+    "competitor_id" "uuid" NOT NULL,
+    "raw_data" "jsonb",
+    "backed_up_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."game_platform_stats_raw_data_backup" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."game_platform_stats_raw_data_backup" IS 'Backup of raw_data column dropped on 2025-10-06. Can be deleted after 30 days if no issues arise. See docs/game-platform/MIGRATION-remove-raw-data-field.md';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."game_platform_sync_events" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "profile_id" "uuid",
+    "team_id" "uuid",
+    "event_type" "text" NOT NULL,
+    "request_payload" "jsonb",
+    "response_payload" "jsonb",
+    "status" "public"."metactf_sync_status",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."game_platform_sync_events" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."game_platform_sync_runs" (
@@ -2291,7 +2375,7 @@ COMMENT ON TABLE "public"."game_platform_sync_runs" IS 'Tracks global sync job e
 
 
 CREATE TABLE IF NOT EXISTS "public"."game_platform_sync_state" (
-    "syned_user_id" "text" NOT NULL,
+    "synced_user_id" "text" NOT NULL,
     "last_odl_synced_at" timestamp with time zone,
     "last_flash_ctf_synced_at" timestamp with time zone,
     "last_remote_accessed_at" timestamp with time zone,
@@ -2309,6 +2393,23 @@ ALTER TABLE "public"."game_platform_sync_state" OWNER TO "postgres";
 
 COMMENT ON COLUMN "public"."game_platform_sync_state"."needs_totals_refresh" IS 'Flag indicating competitor has new challenge solves and needs aggregate totals refreshed. Set by incremental sync job, cleared by totals refresh sweep job.';
 
+
+
+CREATE TABLE IF NOT EXISTS "public"."game_platform_teams" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "team_id" "uuid",
+    "synced_team_id" "text",
+    "metactf_team_id" integer,
+    "metactf_team_name" "text",
+    "status" "public"."metactf_sync_status" DEFAULT 'pending'::"public"."metactf_sync_status",
+    "last_synced_at" timestamp with time zone,
+    "sync_error" "text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."game_platform_teams" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."job_queue_settings" (
@@ -2485,12 +2586,12 @@ ALTER TABLE ONLY "public"."conversations"
 
 
 ALTER TABLE ONLY "public"."game_platform_challenge_solves"
-    ADD CONSTRAINT "game_platform_challenge_solve_syned_user_id_challenge_solve_key" UNIQUE ("syned_user_id", "challenge_solve_id");
+    ADD CONSTRAINT "game_platform_challenge_solves_pkey" PRIMARY KEY ("id");
 
 
 
 ALTER TABLE ONLY "public"."game_platform_challenge_solves"
-    ADD CONSTRAINT "game_platform_challenge_solves_pkey" PRIMARY KEY ("id");
+    ADD CONSTRAINT "game_platform_challenge_solves_synced_user_solve_key" UNIQUE ("synced_user_id", "challenge_solve_id");
 
 
 
@@ -2500,12 +2601,32 @@ ALTER TABLE ONLY "public"."game_platform_flash_ctf_events"
 
 
 ALTER TABLE ONLY "public"."game_platform_flash_ctf_events"
-    ADD CONSTRAINT "game_platform_flash_ctf_events_syned_user_id_event_id_key" UNIQUE ("syned_user_id", "event_id");
+    ADD CONSTRAINT "game_platform_flash_ctf_events_synced_user_event_key" UNIQUE ("synced_user_id", "event_id");
+
+
+
+ALTER TABLE ONLY "public"."game_platform_profiles"
+    ADD CONSTRAINT "game_platform_profiles_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."game_platform_profiles"
+    ADD CONSTRAINT "game_platform_profiles_synced_user_id_key" UNIQUE ("synced_user_id");
 
 
 
 ALTER TABLE ONLY "public"."game_platform_stats"
     ADD CONSTRAINT "game_platform_stats_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."game_platform_stats_raw_data_backup"
+    ADD CONSTRAINT "game_platform_stats_raw_data_backup_pkey" PRIMARY KEY ("competitor_id");
+
+
+
+ALTER TABLE ONLY "public"."game_platform_sync_events"
+    ADD CONSTRAINT "game_platform_sync_events_pkey" PRIMARY KEY ("id");
 
 
 
@@ -2515,7 +2636,17 @@ ALTER TABLE ONLY "public"."game_platform_sync_runs"
 
 
 ALTER TABLE ONLY "public"."game_platform_sync_state"
-    ADD CONSTRAINT "game_platform_sync_state_pkey" PRIMARY KEY ("syned_user_id");
+    ADD CONSTRAINT "game_platform_sync_state_pkey" PRIMARY KEY ("synced_user_id");
+
+
+
+ALTER TABLE ONLY "public"."game_platform_teams"
+    ADD CONSTRAINT "game_platform_teams_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."game_platform_teams"
+    ADD CONSTRAINT "game_platform_teams_team_id_key" UNIQUE ("team_id");
 
 
 
@@ -2629,6 +2760,18 @@ CREATE INDEX "agreements_zoho_completed_idx" ON "public"."agreements" USING "btr
 
 
 
+CREATE UNIQUE INDEX "game_platform_profiles_coach_idx" ON "public"."game_platform_profiles" USING "btree" ("coach_id") WHERE ("coach_id" IS NOT NULL);
+
+
+
+CREATE UNIQUE INDEX "game_platform_profiles_competitor_idx" ON "public"."game_platform_profiles" USING "btree" ("competitor_id") WHERE ("competitor_id" IS NOT NULL);
+
+
+
+CREATE UNIQUE INDEX "game_platform_teams_synced_idx" ON "public"."game_platform_teams" USING "btree" ("synced_team_id") WHERE ("synced_team_id" IS NOT NULL);
+
+
+
 CREATE INDEX "idx_activity_logs_created_at" ON "public"."activity_logs" USING "btree" ("created_at" DESC);
 
 
@@ -2661,11 +2804,11 @@ CREATE INDEX "idx_game_platform_challenge_solves_category" ON "public"."game_pla
 
 
 
-CREATE INDEX "idx_game_platform_challenge_solves_user" ON "public"."game_platform_challenge_solves" USING "btree" ("syned_user_id", "solved_at" DESC);
+CREATE INDEX "idx_game_platform_challenge_solves_user" ON "public"."game_platform_challenge_solves" USING "btree" ("synced_user_id", "solved_at" DESC);
 
 
 
-CREATE INDEX "idx_game_platform_flash_ctf_events_user" ON "public"."game_platform_flash_ctf_events" USING "btree" ("syned_user_id", "started_at" DESC);
+CREATE INDEX "idx_game_platform_flash_ctf_events_user" ON "public"."game_platform_flash_ctf_events" USING "btree" ("synced_user_id", "started_at" DESC);
 
 
 
@@ -2819,17 +2962,42 @@ ALTER TABLE ONLY "public"."conversation_members"
 
 
 ALTER TABLE ONLY "public"."conversation_members"
-    ADD CONSTRAINT "conversation_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE RESTRICT;
+    ADD CONSTRAINT "conversation_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
 
 
 
 ALTER TABLE ONLY "public"."conversations"
-    ADD CONSTRAINT "conversations_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id") ON DELETE RESTRICT;
+    ADD CONSTRAINT "conversations_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."game_platform_profiles"
+    ADD CONSTRAINT "game_platform_profiles_coach_id_fkey" FOREIGN KEY ("coach_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."game_platform_profiles"
+    ADD CONSTRAINT "game_platform_profiles_competitor_id_fkey" FOREIGN KEY ("competitor_id") REFERENCES "public"."competitors"("id") ON DELETE CASCADE;
 
 
 
 ALTER TABLE ONLY "public"."game_platform_stats"
     ADD CONSTRAINT "game_platform_stats_competitor_id_fkey" FOREIGN KEY ("competitor_id") REFERENCES "public"."competitors"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."game_platform_sync_events"
+    ADD CONSTRAINT "game_platform_sync_events_profile_id_fkey" FOREIGN KEY ("profile_id") REFERENCES "public"."game_platform_profiles"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."game_platform_sync_events"
+    ADD CONSTRAINT "game_platform_sync_events_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "public"."game_platform_teams"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."game_platform_teams"
+    ADD CONSTRAINT "game_platform_teams_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE CASCADE;
 
 
 
@@ -2874,7 +3042,7 @@ ALTER TABLE ONLY "public"."messages"
 
 
 ALTER TABLE ONLY "public"."profiles"
-    ADD CONSTRAINT "profiles_id_fkey" FOREIGN KEY ("id") REFERENCES "auth"."users"("id");
+    ADD CONSTRAINT "profiles_id_fkey" FOREIGN KEY ("id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
 
 
 
@@ -3198,13 +3366,47 @@ ALTER TABLE "public"."game_platform_challenge_solves" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."game_platform_flash_ctf_events" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."game_platform_profiles" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."game_platform_stats" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."game_platform_stats_raw_data_backup" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."game_platform_sync_events" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."game_platform_sync_runs" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."game_platform_sync_state" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."game_platform_teams" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "gp_profiles_admin_read" ON "public"."game_platform_profiles" FOR SELECT TO "authenticated" USING ("public"."is_admin_user"());
+
+
+
+CREATE POLICY "gp_profiles_coach_read" ON "public"."game_platform_profiles" FOR SELECT USING (((("coach_id" IS NOT NULL) AND ("coach_id" = "auth"."uid"())) OR (("competitor_id" IS NOT NULL) AND ("competitor_id" IN ( SELECT "competitors"."id"
+   FROM "public"."competitors"
+  WHERE ("competitors"."coach_id" = "auth"."uid"()))))));
+
+
+
+CREATE POLICY "gp_sync_events_profile_link" ON "public"."game_platform_sync_events" FOR SELECT USING (("profile_id" IN ( SELECT "game_platform_profiles"."id"
+   FROM "public"."game_platform_profiles"
+  WHERE (("game_platform_profiles"."coach_id" = "auth"."uid"()) OR ("game_platform_profiles"."competitor_id" IN ( SELECT "competitors"."id"
+           FROM "public"."competitors"
+          WHERE ("competitors"."coach_id" = "auth"."uid"())))))));
+
+
+
+CREATE POLICY "gp_teams_admin_read" ON "public"."game_platform_teams" FOR SELECT TO "authenticated" USING ("public"."is_admin_user"());
+
 
 
 ALTER TABLE "public"."job_queue" ENABLE ROW LEVEL SECURITY;
@@ -4080,9 +4282,27 @@ GRANT ALL ON SEQUENCE "public"."game_platform_flash_ctf_events_id_seq" TO "servi
 
 
 
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_profiles" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_profiles" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_profiles" TO "service_role";
+
+
+
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_stats" TO "anon";
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_stats" TO "authenticated";
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_stats" TO "service_role";
+
+
+
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_stats_raw_data_backup" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_stats_raw_data_backup" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_stats_raw_data_backup" TO "service_role";
+
+
+
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_sync_events" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_sync_events" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_sync_events" TO "service_role";
 
 
 
@@ -4095,6 +4315,12 @@ GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public".
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_sync_state" TO "anon";
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_sync_state" TO "authenticated";
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_sync_state" TO "service_role";
+
+
+
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_teams" TO "anon";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_teams" TO "authenticated";
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."game_platform_teams" TO "service_role";
 
 
 

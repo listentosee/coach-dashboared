@@ -35,6 +35,7 @@ export interface Competitor {
   game_platform_id?: string;
   game_platform_synced_at?: string;
   game_platform_sync_error?: string | null;
+  game_platform_status?: string | null;
   team_id?: string;
   team_name?: string;
   team_position?: number;
@@ -210,11 +211,48 @@ export const createCompetitorColumns = (
     ),
     cell: ({ row }) => {
       const competitor = row.original;
+      const status = competitor.game_platform_status || (competitor.game_platform_synced_at ? 'approved' : 'pending');
+      const statusLabel = (() => {
+        switch (status) {
+          case 'approved':
+          case 'user_created':
+            return 'Registered';
+          case 'pending':
+            return 'Pending';
+          case 'error':
+            return 'Error';
+          case 'denied':
+            return 'Denied';
+          default:
+            return 'Waiting';
+        }
+      })();
+
+      const colorClass = (() => {
+        switch (status) {
+          case 'approved':
+          case 'user_created':
+            return 'bg-green-600 text-white';
+          case 'pending':
+            return 'bg-yellow-500 text-white';
+          case 'error':
+          case 'denied':
+            return 'bg-red-600 text-white';
+          default:
+            return 'bg-gray-600 text-white';
+        }
+      })();
+
       return (
         <div className="text-center">
-          <div className={`px-2 py-1 text-xs font-medium rounded ${competitor.game_platform_synced_at ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-            {competitor.game_platform_synced_at ? 'Registered' : 'Waiting'}
+          <div className={`px-2 py-1 text-xs font-medium rounded ${colorClass}`}>
+            {statusLabel}
           </div>
+          {competitor.game_platform_sync_error && (
+            <div className="mt-1 text-[11px] text-red-300">
+              {competitor.game_platform_sync_error}
+            </div>
+          )}
         </div>
       );
     },

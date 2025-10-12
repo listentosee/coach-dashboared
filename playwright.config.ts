@@ -6,10 +6,10 @@ dotenv.config()
 const BASE_URL = process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
 
 export default defineConfig({
-  testDir: 'tests',
+  testDir: 'tests/e2e',
   timeout: 60_000,
   retries: process.env.CI ? 2 : 0,
-  workers: 1, // Security tests need isolation
+  workers: 1,
   fullyParallel: false,
 
   use: {
@@ -21,28 +21,18 @@ export default defineConfig({
 
   projects: [
     {
-      name: 'security-auth',
-      testMatch: /auth\/.*\.spec\.ts/,
+      name: 'internal-routes',
+      testMatch: /internal-routes\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
-      name: 'security-authorization',
-      testMatch: /authorization\/.*\.spec\.ts/,
+      name: 'game-platform-routes',
+      testMatch: /game-platform-routes\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
-      name: 'security-injection',
-      testMatch: /injection\/.*\.spec\.ts/,
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'security-privacy',
-      testMatch: /privacy\/.*\.spec\.ts/,
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'e2e-game-platform',
-      testMatch: /e2e\/.*\.spec\.ts/,
+      name: 'metactf-live',
+      testMatch: /metactf-live\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
   ],

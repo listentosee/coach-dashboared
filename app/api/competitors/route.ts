@@ -3,6 +3,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { logger } from '@/lib/logging/safe-logger';
+import type { GamePlatformProfileRecord } from '@/lib/integrations/game-platform/repository';
 
 export async function GET(request: NextRequest) {
   try {
@@ -90,6 +91,8 @@ export async function GET(request: NextRequest) {
     let teamMembersData: any[] = [];
     let agreementsData: any[] = [];
     
+    let profileMappings: GamePlatformProfileRecord[] = [];
+
     if (competitorIds.length > 0) {
       const { data: teamMembers, error: teamMembersError } = await supabase
         .from('team_members')
@@ -112,6 +115,24 @@ export async function GET(request: NextRequest) {
         .in('competitor_id', competitorIds)
         .order('created_at', { ascending: false })
       if (!aggsErr) agreementsData = aggs || []
+
+      const { data: mappingData, error: mappingError } = await supabase
+        .from('game_platform_profiles')
+        .select('*')
+        .in('competitor_id', competitorIds);
+
+      if (mappingError) {
+        logger.error('Failed to load game platform mappings', { error: mappingError instanceof Error ? mappingError.message : String(mappingError) });
+      } else {
+        profileMappings = mappingData || [];
+      }
+    }
+
+    const mappingByCompetitorId = new Map<string, GamePlatformProfileRecord>();
+    for (const mapping of profileMappings) {
+      if (mapping.competitor_id) {
+        mappingByCompetitorId.set(mapping.competitor_id, mapping);
+      }
     }
 
     // Transform the data to include team information
@@ -122,6 +143,8 @@ export async function GET(request: NextRequest) {
       const joinedName = coachProfile ? [coachProfile.first_name, coachProfile.last_name].filter(Boolean).join(' ').trim() : ''
       const coachFullName = coachProfile?.full_name?.trim() || joinedName
       const coachLabel = coachFullName || coachProfile?.email || null
+      const mapping = mappingByCompetitorId.get(competitor.id) ?? null
+      const synedUserId = competitor.game_platform_id || mapping?.syned_user_id || null
 
       return {
         id: competitor.id,
@@ -136,9 +159,10 @@ export async function GET(request: NextRequest) {
         division: (competitor as any).division || null,
         media_release_date: competitor.media_release_date,
         participation_agreement_date: competitor.participation_agreement_date,
-        game_platform_id: competitor.game_platform_id,
-        game_platform_synced_at: competitor.game_platform_synced_at,
-        game_platform_sync_error: (competitor as any).game_platform_sync_error || null,
+        game_platform_id: synedUserId,
+        game_platform_synced_at: competitor.game_platform_synced_at ?? mapping?.last_synced_at ?? null,
+        game_platform_sync_error: (competitor as any).game_platform_sync_error || mapping?.sync_error || null,
+        game_platform_status: mapping?.status ?? null,
         profile_update_token: competitor.profile_update_token,
         profile_update_token_expires: competitor.profile_update_token_expires,
         created_at: competitor.created_at,

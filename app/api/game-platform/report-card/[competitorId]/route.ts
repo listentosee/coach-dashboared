@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { getGamePlatformProfile } from '@/lib/integrations/game-platform/repository';
 
 // NIST NICE Work Role code mappings
 const NIST_ROLE_NAMES: Record<string, string> = {
@@ -89,7 +90,10 @@ export async function GET(
     }
 
     // If no game platform ID, return minimal data
-    if (!competitor.game_platform_id) {
+    const profileMapping = await getGamePlatformProfile(supabase, { competitorId: competitor.id }).catch(() => null);
+    const synedUserId = competitor.game_platform_id ?? profileMapping?.syned_user_id ?? null;
+
+    if (!synedUserId) {
       return NextResponse.json({
         competitor: {
           id: competitor.id,
@@ -120,7 +124,36 @@ export async function GET(
       });
     }
 
-    const synedUserId = competitor.game_platform_id;
+    if (!profileMapping || profileMapping.status === 'error') {
+      return NextResponse.json({
+        competitor: {
+          id: competitor.id,
+          name: `${competitor.first_name} ${competitor.last_name}`,
+          email: competitor.email_school || competitor.email_personal,
+          grade: competitor.grade,
+          division: competitor.division,
+          team: competitor.team_members?.[0]?.teams?.name || null,
+          gamePlatformSynced: false,
+        },
+        summary: null,
+        domains: [],
+        recentChallenges: [],
+        flashCtfEvents: [],
+        activityTimeline: [],
+        insights: [
+          {
+            type: 'sync_error',
+            message: profileMapping?.sync_error ?? 'Competitor sync pending or failed. Please retry synchronization.',
+            priority: 'high',
+          },
+        ],
+        nistCoverage: {
+          rolesCovered: [],
+          totalRoles: 0,
+          coveragePercent: 0,
+        },
+      });
+    }
 
     // Fetch summary stats
     const { data: summaryData } = await supabase

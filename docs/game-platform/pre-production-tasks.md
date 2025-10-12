@@ -52,8 +52,8 @@
 
 - [ ] **Clean test data**
   ```sql
-  -- Remove any mock data
-  DELETE FROM game_platform_challenge_solves WHERE syned_user_id LIKE '%mock%';
+  -- Remove any seeded test data
+  DELETE FROM game_platform_challenge_solves WHERE syned_user_id LIKE '%test%';
   DELETE FROM game_platform_sync_state WHERE 1=1;  -- Fresh start
   ```
 
@@ -121,7 +121,7 @@
 
 - [ ] **Add retry logic verification**
   - Verify exponential backoff is working
-  - Test with mock 500 errors
+  - Simulate vendor 500 errors
   - Ensure max retry limit prevents infinite loops
 
 - [ ] **Improve error messages**
@@ -169,7 +169,7 @@
 **Owner:** Engineering
 
 - [ ] **Test sync job performance**
-  - Time a full sync with mock data (all 18 competitors)
+  - Time a full sync with seeded test data (all 18 competitors)
   - Estimate time for production (100+ competitors)
   - Verify database can handle volume
 

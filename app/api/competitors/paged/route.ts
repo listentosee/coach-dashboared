@@ -3,6 +3,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { isUserAdmin } from '@/lib/utils/admin-check'
 import { calculateCompetitorStatus } from '@/lib/utils/competitor-status'
+import type { GamePlatformProfileRecord } from '@/lib/integrations/game-platform/repository'
 
 // Admin-only, server-paginated competitors listing with latest agreement info
 export async function GET(req: NextRequest) {
@@ -50,6 +51,7 @@ export async function GET(req: NextRequest) {
 
     const ids = (rows || []).map(r => r.id)
     let latestAgreements: any[] = []
+    let profileMappings: GamePlatformProfileRecord[] = []
     if (ids.length) {
       const { data: aggs } = await supabase
         .from('agreements')
@@ -57,13 +59,36 @@ export async function GET(req: NextRequest) {
         .in('competitor_id', ids)
         .order('created_at', { ascending: false })
       latestAgreements = aggs || []
+
+      const { data: mappingData, error: mappingError } = await supabase
+        .from('game_platform_profiles')
+        .select('*')
+        .in('competitor_id', ids)
+
+      if (mappingError) {
+        console.error('Failed to fetch competitor MetaCTF mappings', mappingError)
+      } else {
+        profileMappings = mappingData || []
+      }
+    }
+
+    const mappingByCompetitorId = new Map<string, GamePlatformProfileRecord>()
+    for (const mapping of profileMappings) {
+      if (mapping.competitor_id) {
+        mappingByCompetitorId.set(mapping.competitor_id, mapping)
+      }
     }
 
     const mapped = (rows || []).map((c: any) => {
       const status = calculateCompetitorStatus(c)
       const latest = latestAgreements.find(a => a.competitor_id === c.id) || null
+      const mapping = mappingByCompetitorId.get(c.id) ?? null
       return {
         ...c,
+        game_platform_id: c.game_platform_id || mapping?.syned_user_id || null,
+        game_platform_synced_at: c.game_platform_synced_at ?? mapping?.last_synced_at ?? null,
+        game_platform_sync_error: c.game_platform_sync_error ?? mapping?.sync_error ?? null,
+        game_platform_status: mapping?.status ?? null,
         status,
         agreement_status: latest?.status || null,
         agreement_mode: latest?.metadata?.mode || null,
@@ -76,4 +101,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

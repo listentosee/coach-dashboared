@@ -32,6 +32,7 @@ interface Competitor {
   game_platform_id?: string;
   game_platform_synced_at?: string;
   game_platform_sync_error?: string | null;
+  game_platform_status?: string | null;
   team_id?: string;
   team_name?: string;
   team_position?: number;
@@ -623,7 +624,10 @@ export default function DashboardPage() {
       return;
     }
 
-    if (competitor.game_platform_id) {
+    const gpStatus = competitor.game_platform_status ?? (competitor.game_platform_synced_at ? 'approved' : null);
+    const hasRegistered = gpStatus === 'approved' || gpStatus === 'user_created' || Boolean(competitor.game_platform_id);
+
+    if (hasRegistered) {
       alert('Competitor is already registered on the Game Platform.');
       return;
     }
@@ -645,7 +649,7 @@ export default function DashboardPage() {
         throw new Error(message);
       }
 
-      if (payload?.status === 'mocked') {
+      if (payload?.status === 'dry_run') {
         alert('Game Platform integration is running in dry-run mode. Payload validated but no remote registration occurred.');
       } else {
         alert('Competitor added to the Game Platform successfully.');

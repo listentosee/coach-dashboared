@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { z } from 'zod';
 import { onboardCompetitorToGamePlatform, syncTeamWithGamePlatform } from '@/lib/integrations/game-platform/service';
+import { getGamePlatformProfile } from '@/lib/integrations/game-platform/repository';
 
 const AddMemberSchema = z.object({
   competitor_id: z.string().uuid('Invalid competitor ID'),
@@ -153,7 +154,8 @@ export async function POST(
 
     // Attempt to onboard competitor if they are not yet on the Game Platform
     let competitorOnboarding: any = null;
-    if (!competitor.game_platform_id) {
+    const competitorMapping = await getGamePlatformProfile(supabase, { competitorId: competitor.id }).catch(() => null);
+    if (!competitor.game_platform_id && !competitorMapping?.syned_user_id) {
       try {
         competitorOnboarding = await onboardCompetitorToGamePlatform({
           supabase,

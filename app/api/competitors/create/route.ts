@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { logger } from '@/lib/logging/safe-logger';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
+import { upsertGamePlatformProfile } from '@/lib/integrations/game-platform/repository';
 
 const CompetitorSchema = z.object({
   first_name: z.string().min(1),
@@ -109,6 +110,24 @@ export async function POST(request: NextRequest) {
     }
 
     logger.info('Competitor created successfully', { competitor_id: competitor.id });
+
+    if (validatedData.game_platform_id) {
+      try {
+        await upsertGamePlatformProfile(supabase, {
+          competitorId: competitor.id,
+          metactfRole: 'user',
+          synedUserId: validatedData.game_platform_id,
+          status: 'pending',
+          syncError: null,
+          lastSyncedAt: null,
+        });
+      } catch (repoError: any) {
+        logger.warn('Failed to persist competitor MetaCTF mapping from manual ID', {
+          error: repoError?.message,
+          competitorId: competitor.id,
+        });
+      }
+    }
 
     // Generate profile update link using current request origin (production-safe)
     const forwardedProto = request.headers.get('x-forwarded-proto') || 'https'

@@ -352,5 +352,3 @@ export class GamePlatformClient {
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
 }
-
-export type GamePlatformClientMock = Pick<GamePlatformClient, 'createUser' | 'createTeam' | 'assignMemberToTeam' | 'deleteTeam' | 'getTeamAssignments' | 'getScores' | 'sendPasswordReset'>;

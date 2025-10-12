@@ -10,7 +10,7 @@
 - ✅ Dashboard UI integration
 - ✅ Detailed score ingestion (ODL + Flash CTF)
 - ✅ Drill-down components
-- ✅ Comprehensive mock environment with 403 realistic challenge records
+- ✅ Staging dataset seeded with 403 realistic challenge records
 - ✅ Test data across 9 cybersecurity domains
 
 **What's Remaining from Phase C:**
@@ -76,7 +76,7 @@ AND table_name LIKE 'game_platform%';
 
 #### Data Cleanup
 - [ ] Remove any test data from development
-- [ ] Clear mock IDs from `competitors.game_platform_id` if any exist
+- [ ] Clear test IDs from `competitors.game_platform_id` if any exist
 - [ ] Reset sync state table: `DELETE FROM game_platform_sync_state WHERE 1=1;`
 
 ---
@@ -84,7 +84,7 @@ AND table_name LIKE 'game_platform%';
 ### 3. Pre-Production Testing 🧪
 
 #### Staging Environment Test (If Available)
-- [ ] Deploy to staging with mock server first
+- [ ] Deploy to staging environment before production cutover
 - [ ] Verify all flows work end-to-end
 - [ ] Run full sync job for test competitors
 - [ ] Check database records created correctly

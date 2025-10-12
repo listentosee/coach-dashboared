@@ -1,13 +1,22 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@supabase/supabase-js';
-import { GamePlatformClient, GamePlatformClientMock, CreateUserPayload, CreateTeamPayload } from './client';
+import { GamePlatformClient, CreateUserPayload, CreateTeamPayload } from './client';
 import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
+import {
+  getGamePlatformProfile,
+  upsertGamePlatformProfile,
+  updateGamePlatformProfile,
+  getGamePlatformTeamByTeamId,
+  upsertGamePlatformTeam,
+  updateGamePlatformTeam,
+} from './repository';
+import type { GamePlatformSyncStatus } from './repository';
 
 export type AnySupabaseClient = SupabaseClient<any, any, any>;
 
 export interface ServiceOptions {
   supabase: AnySupabaseClient;
-  client?: GamePlatformClient | GamePlatformClientMock;
+  client?: GamePlatformClient;
   dryRun?: boolean;
   logger?: Pick<Console, 'error' | 'warn' | 'info' | 'debug'>;
 }
@@ -22,13 +31,13 @@ export interface SyncTeamParams extends ServiceOptions {
 }
 
 export interface OnboardResult {
-  status: 'synced' | 'skipped_requires_compliance' | 'skipped_already_synced' | 'mocked';
+  status: 'synced' | 'skipped_requires_compliance' | 'skipped_already_synced' | 'dry_run';
   competitor: any;
   remote?: any;
 }
 
 export interface SyncTeamResult {
-  status: 'synced' | 'created_team' | 'mocked' | 'skipped_missing_team' | 'skipped_missing_coach_mapping';
+  status: 'synced' | 'created_team' | 'dry_run' | 'skipped_missing_team' | 'skipped_missing_coach_mapping';
   team: any;
   assignedMembers?: Array<{ competitorId: string; remote?: any }>;
   skippedMembers?: Array<{ competitorId: string; reason: string }>;
@@ -40,7 +49,7 @@ export interface DeleteTeamParams extends ServiceOptions {
 }
 
 export interface DeleteTeamResult {
-  status: 'deleted' | 'skipped_not_synced' | 'mocked';
+  status: 'deleted' | 'skipped_not_synced' | 'dry_run';
   team: any;
 }
 
@@ -66,9 +75,19 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const GAME_PLATFORM_BASE_URL =
   process.env.META_CTF_BASE_URL ?? process.env.GAME_PLATFORM_API_BASE_URL ?? '';
-const IS_MOCK_INTEGRATION = /localhost|127\.0\.0\.1/.test(GAME_PLATFORM_BASE_URL);
+const ALLOWED_SYNC_STATUSES: GamePlatformSyncStatus[] = ['pending', 'user_created', 'approved', 'denied', 'error'];
 
-function resolveClient(client?: GamePlatformClient | GamePlatformClientMock, logger?: Pick<Console, 'error' | 'warn' | 'info'>) {
+function normalizeSyncStatus(
+  value: any,
+  fallback: GamePlatformSyncStatus = 'pending',
+): GamePlatformSyncStatus {
+  if (typeof value === 'string' && ALLOWED_SYNC_STATUSES.includes(value as GamePlatformSyncStatus)) {
+    return value as GamePlatformSyncStatus;
+  }
+  return fallback;
+}
+
+function resolveClient(client?: GamePlatformClient, logger?: Pick<Console, 'error' | 'warn' | 'info'>) {
   if (client) return client;
   try {
     return new GamePlatformClient({ logger });
@@ -79,12 +98,13 @@ function resolveClient(client?: GamePlatformClient | GamePlatformClientMock, log
 
 async function ensureCoachGamePlatformId(
   supabase: AnySupabaseClient,
-  resolvedClient: GamePlatformClient | GamePlatformClientMock,
-  coachProfile: { id: string; email?: string | null; first_name?: string | null; last_name?: string | null; full_name?: string | null; school_name?: string | null; division?: string | null; game_platform_user_id?: string | null },
+  resolvedClient: GamePlatformClient,
+  coachProfile: { id: string; email?: string | null; first_name?: string | null; last_name?: string | null; full_name?: string | null; school_name?: string | null; division?: string | null },
   logger?: Pick<Console, 'error' | 'warn' | 'info'>
 ): Promise<string> {
-  if (coachProfile.game_platform_user_id) {
-    return coachProfile.game_platform_user_id;
+  const existingMapping = await getGamePlatformProfile(supabase, { coachId: coachProfile.id }).catch(() => null);
+  if (existingMapping && existingMapping.syned_user_id && ['approved', 'user_created'].includes(existingMapping.status)) {
+    return existingMapping.syned_user_id;
   }
 
   const firstName = coachProfile.first_name || coachProfile.full_name?.split(' ')[0] || 'Coach';
@@ -103,52 +123,58 @@ async function ensureCoachGamePlatformId(
   };
 
   try {
-    // First, try to get the existing coach user from MetaCTF
     let response: any;
     let synedUserId: string;
     let userStatus: string | undefined;
+    let username: string | undefined;
 
     try {
       logger?.info?.(`🔍 Checking if coach ${coachProfile.id} exists on MetaCTF`);
       response = await (resolvedClient as GamePlatformClient).getUser({ syned_user_id: coachProfile.id });
       synedUserId = response.syned_user_id;
       userStatus = response.metactf_user_status;
+      username = response.metactf_username;
       logger?.info?.(`✅ Coach ${coachProfile.id} found on MetaCTF with status: ${userStatus}`, response);
     } catch (getUserError: any) {
-      // If coach doesn't exist (404), create them
       if (getUserError?.status === 404) {
         logger?.info?.(`📤 Coach ${coachProfile.id} not found on MetaCTF, creating new coach with payload:`, payload);
         response = await (resolvedClient as GamePlatformClient).createUser(payload);
         synedUserId = response.syned_user_id;
         userStatus = response.metactf_user_status;
+        username = response.metactf_username;
         logger?.info?.(`✅ Created coach ${coachProfile.id} on MetaCTF:`, response);
       } else {
-        // Other errors should be thrown
         throw getUserError;
       }
     }
 
-    // Check if coach is approved/verified
-    // MetaCTF requires coaches to be in "approved" or "user_created" status before they can have competitors
-    // Per MetaCTF: "user_created" and "approved" are functionally the same
-    if (userStatus && !['approved', 'user_created'].includes(userStatus)) {
-      const errorMsg = `Coach user on MetaCTF has status "${userStatus}" and must be "approved" or "user_created" before adding competitors. Please contact MetaCTF support to approve this coach.`;
-      logger?.warn?.(errorMsg, { coachId: coachProfile.id, userStatus });
+    const status = normalizeSyncStatus(userStatus);
+    const lastSyncedAt = new Date().toISOString();
+
+    await upsertGamePlatformProfile(supabase, {
+      coachId: coachProfile.id,
+      metactfRole: 'coach',
+      synedUserId,
+      metactfUserId: response?.metactf_user_id ?? null,
+      metactfUsername: username ?? null,
+      status,
+      syncError: null,
+      lastSyncedAt,
+    });
+
+    if (!['approved', 'user_created'].includes(status)) {
+      const errorMsg = `Coach user on MetaCTF has status "${status}" and must be "approved" or "user_created" before adding competitors. Please contact MetaCTF support to approve this coach.`;
+      logger?.warn?.(errorMsg, { coachId: coachProfile.id, userStatus: status });
+      await updateGamePlatformProfile(
+        supabase,
+        { coachId: coachProfile.id },
+        {
+          status,
+          syncError: errorMsg,
+          lastSyncedAt,
+        },
+      );
       throw new Error(errorMsg);
-    }
-
-    // Update local database with the MetaCTF syned_user_id (UUID) for linking
-    // This allows us to skip the API call next time if it's already set
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({
-        game_platform_user_id: synedUserId, // Store the UUID for linking to competitors
-        game_platform_last_synced_at: new Date().toISOString(),
-      })
-      .eq('id', coachProfile.id);
-
-    if (updateError) {
-      logger?.warn?.('Failed to persist coach game_platform_user_id', { coachId: coachProfile.id, error: updateError });
     }
 
     return synedUserId;
@@ -159,7 +185,7 @@ async function ensureCoachGamePlatformId(
 }
 
 function isDryRunOverride(dryRun?: boolean): boolean {
-  // Only check if feature is enabled - ignore dryRun mock parameter
+  // Respect feature flag: when integration is disabled, always treat as dry run
   return !FEATURE_ENABLED;
 }
 
@@ -187,7 +213,10 @@ export async function onboardCompetitorToGamePlatform({
     return { status: 'skipped_requires_compliance', competitor };
   }
 
-  if (competitor.game_platform_id) {
+  const competitorMapping = await getGamePlatformProfile(supabase, { competitorId }).catch(() => null);
+
+  const existingCompetitorStatus = competitorMapping?.status ?? null;
+  if (competitorMapping?.syned_user_id && ['approved', 'user_created'].includes(existingCompetitorStatus ?? '')) {
     return { status: 'skipped_already_synced', competitor };
   }
 
@@ -195,7 +224,7 @@ export async function onboardCompetitorToGamePlatform({
 
   const { data: coachProfile, error: coachError } = await supabase
     .from('profiles')
-    .select('id, role, is_approved, game_platform_user_id, email, first_name, last_name, full_name, school_name, division')
+    .select('id, role, is_approved, email, first_name, last_name, full_name, school_name, division')
     .eq('id', coachProfileId ?? competitor.coach_id)
     .maybeSingle();
 
@@ -208,13 +237,14 @@ export async function onboardCompetitorToGamePlatform({
     throw new Error('Coach not found or missing Game Platform mapping');
   }
 
+  const coachMapping = await getGamePlatformProfile(supabase, { coachId: coachProfile.id }).catch(() => null);
+
   const resolvedClient = resolveClient(client, logger);
 
   let synedCoachUserId =
     competitor.syned_coach_user_id ??
     (competitor as any).coach_game_platform_id ??
-    coachProfile.game_platform_user_id ??
-    (IS_MOCK_INTEGRATION ? coachProfile.id : null) ??
+    coachMapping?.syned_user_id ??
     null;
 
   if (!synedCoachUserId && !effectiveDryRun) {
@@ -230,10 +260,6 @@ export async function onboardCompetitorToGamePlatform({
     }
   }
 
-  if (!coachProfile.game_platform_user_id && synedCoachUserId) {
-    coachProfile.game_platform_user_id = synedCoachUserId;
-  }
-
   const userPayload: CreateUserPayload = {
     first_name: competitor.first_name,
     last_name: competitor.last_name,
@@ -244,7 +270,7 @@ export async function onboardCompetitorToGamePlatform({
     syned_school_id: competitor.syned_school_id ?? coachProfile.school_name ?? 'Unknown School',
     syned_region_id: competitor.syned_region_id ?? coachProfile.division ?? 'high_school',
     syned_coach_user_id: synedCoachUserId,
-    syned_user_id: String(competitor.game_platform_id ?? competitor.id),
+    syned_user_id: String(competitorMapping?.syned_user_id ?? competitor.id),
   };
 
   // Log the complete payload for debugging
@@ -253,7 +279,7 @@ export async function onboardCompetitorToGamePlatform({
     payload: userPayload,
     coachProfile: {
       id: coachProfile.id,
-      game_platform_user_id: coachProfile.game_platform_user_id,
+      syned_user_id: synedCoachUserId,
     }
   });
 
@@ -274,10 +300,10 @@ export async function onboardCompetitorToGamePlatform({
   try {
     if (effectiveDryRun) {
       return {
-        status: 'mocked',
+        status: 'dry_run',
         competitor,
         remote: {
-          mocked: true,
+          dryRun: true,
           expectedPayload: userPayload,
         },
       };
@@ -289,10 +315,26 @@ export async function onboardCompetitorToGamePlatform({
     // Store the syned_user_id (UUID) for linking, not the metactf_user_id (numeric)
     const remoteUserId = String((remoteResult as any)?.syned_user_id ?? null);
 
+    const competitorRemoteStatus = normalizeSyncStatus((remoteResult as any)?.metactf_user_status);
+    const competitorRemoteUsername = (remoteResult as any)?.metactf_username ?? null;
+    const competitorRemoteId = (remoteResult as any)?.metactf_user_id ?? null;
+    const competitorSyncTime = new Date().toISOString();
+
     if (!remoteUserId) {
       await updateCompetitorSyncError(supabase, competitorId, 'Game Platform did not return a syned_user_id');
       throw new Error('Game Platform did not return a syned_user_id');
     }
+
+    await upsertGamePlatformProfile(supabase, {
+      competitorId,
+      metactfRole: 'user',
+      synedUserId: remoteUserId,
+      metactfUserId: competitorRemoteId,
+      metactfUsername: competitorRemoteUsername,
+      status: competitorRemoteStatus,
+      syncError: null,
+      lastSyncedAt: competitorSyncTime,
+    });
 
     const updatedCompetitor = await persistCompetitorSyncSuccess(supabase, competitorId, competitor, remoteUserId);
 
@@ -410,6 +452,8 @@ export async function syncTeamWithGamePlatform({
     };
   }
 
+  const teamMapping = await getGamePlatformTeamByTeamId(supabase, teamId).catch(() => null);
+
   if (!team.syned_coach_user_id && !team.coach_game_platform_id && !team.coach_id) {
     await updateTeamSyncError(supabase, teamId, 'Missing Game Platform coach mapping');
     return {
@@ -420,7 +464,7 @@ export async function syncTeamWithGamePlatform({
 
   const { data: coachProfile, error: coachError } = await supabase
     .from('profiles')
-    .select('id, role, is_approved, game_platform_user_id, email, first_name, last_name, full_name, school_name, division')
+    .select('id, role, is_approved, email, first_name, last_name, full_name, school_name, division')
     .eq('id', team.syned_coach_user_id ?? team.coach_id)
     .maybeSingle();
 
@@ -440,7 +484,6 @@ export async function syncTeamWithGamePlatform({
     team.syned_coach_user_id ??
     team.coach_game_platform_id ??
     coachProfile.game_platform_user_id ??
-    (IS_MOCK_INTEGRATION ? coachProfile.id : null) ??
     null;
 
   if (!coachMetaId && !effectiveDryRun) {
@@ -452,10 +495,11 @@ export async function syncTeamWithGamePlatform({
     : coachProfile.school_name ?? 'Unknown';
 
   const divisionSource = team.division ?? null;
+  const existingSynedTeamId = team.game_platform_id ?? teamMapping?.syned_team_id ?? null;
 
   const teamPayload: CreateTeamPayload = {
     syned_coach_user_id: coachMetaId,
-    syned_team_id: team.game_platform_id ?? team.id,
+    syned_team_id: existingSynedTeamId ?? team.id,
     team_name: team.name,
     affiliation: affiliationFallback,
     division: sanitizeDivision(divisionSource),
@@ -470,7 +514,7 @@ export async function syncTeamWithGamePlatform({
   }
 
   const resolvedClientInstance = effectiveDryRun ? undefined : resolvedClient;
-  let remoteTeamId = team.game_platform_id ?? null;
+  let remoteTeamId = existingSynedTeamId;
   let remoteTeamResponse: any = null;
   let createdTeam = false;
 
@@ -483,8 +527,31 @@ export async function syncTeamWithGamePlatform({
       await updateTeamSyncError(supabase, teamId, 'Game Platform did not return a syned_team_id');
       throw new Error('Game Platform did not return a syned_team_id');
     }
+  }
 
-    await persistTeamSyncSuccess(supabase, teamId, team, remoteTeamId, coachMetaId);
+  let persistedTeam: any = null;
+  if (!effectiveDryRun && remoteTeamId) {
+    const metaStatus = remoteTeamResponse
+      ? normalizeSyncStatus((remoteTeamResponse as any)?.status, 'approved')
+      : teamMapping?.status
+      ? normalizeSyncStatus(teamMapping.status, 'approved')
+      : 'approved';
+
+    persistedTeam = await persistTeamSyncSuccess(
+      supabase,
+      teamId,
+      team,
+      remoteTeamId,
+      coachMetaId,
+      {
+        synedTeamId: remoteTeamId,
+        metactfTeamId:
+          (remoteTeamResponse as any)?.metactf_team_id ?? teamMapping?.metactf_team_id ?? null,
+        metactfTeamName:
+          (remoteTeamResponse as any)?.team_name ?? teamMapping?.metactf_team_name ?? team.name,
+        status: metaStatus,
+      },
+    );
   }
 
   const { data: teamMembers, error: membersError } = await supabase
@@ -566,7 +633,7 @@ export async function syncTeamWithGamePlatform({
       }
 
       if (effectiveDryRun) {
-        assignedMembers.push({ competitorId: member.id, remote: { mocked: true } });
+        assignedMembers.push({ competitorId: member.id, remote: { dryRun: true } });
         continue;
       }
 
@@ -582,7 +649,7 @@ export async function syncTeamWithGamePlatform({
 
   if (effectiveDryRun) {
     return {
-      status: 'mocked',
+      status: 'dry_run',
       team,
       assignedMembers,
       skippedMembers,
@@ -592,12 +659,14 @@ export async function syncTeamWithGamePlatform({
 
   await updateTeamSyncError(supabase, teamId, null);
 
+  const finalTeam = persistedTeam ?? {
+    ...team,
+    game_platform_id: remoteTeamId ?? team.game_platform_id,
+  };
+
   return {
     status: createdTeam ? 'created_team' : 'synced',
-    team: {
-      ...team,
-      game_platform_id: remoteTeamId,
-    },
+    team: finalTeam,
     assignedMembers,
     skippedMembers,
     unassignedMembers,
@@ -623,7 +692,10 @@ export async function deleteTeamFromGamePlatform({
     throw new Error(`Team ${teamId} not found: ${teamError?.message ?? 'unknown error'}`);
   }
 
-  if (!team.game_platform_id) {
+  const teamMapping = await getGamePlatformTeamByTeamId(supabase, teamId).catch(() => null);
+  const remoteTeamId = team.game_platform_id ?? teamMapping?.syned_team_id ?? null;
+
+  if (!remoteTeamId) {
     logger?.info?.(`Team ${teamId} has no game_platform_id, skipping remote deletion`);
     return {
       status: 'skipped_not_synced',
@@ -633,7 +705,7 @@ export async function deleteTeamFromGamePlatform({
 
   if (effectiveDryRun) {
     return {
-      status: 'mocked',
+      status: 'dry_run',
       team,
     };
   }
@@ -641,12 +713,29 @@ export async function deleteTeamFromGamePlatform({
   const resolvedClient = resolveClient(client, logger);
 
   try {
-    await resolvedClient.deleteTeam({ syned_team_id: team.game_platform_id });
+    await resolvedClient.deleteTeam({ syned_team_id: remoteTeamId });
     logger?.info?.(`Successfully deleted team ${teamId} from Game Platform`);
   } catch (error: any) {
     logger?.error?.('Failed to delete team from Game Platform', { teamId, error });
     throw error;
   }
+
+  await supabase
+    .from('teams')
+    .update({
+      game_platform_id: null,
+      game_platform_synced_at: new Date().toISOString(),
+      game_platform_sync_error: null,
+    })
+    .eq('id', teamId);
+
+  await updateGamePlatformTeam(supabase, teamId, {
+    synedTeamId: null,
+    metactfTeamId: null,
+    status: 'pending',
+    syncError: null,
+    lastSyncedAt: new Date().toISOString(),
+  });
 
   return {
     status: 'deleted',
@@ -682,13 +771,37 @@ function buildPreferredUsername(competitor: any): string {
 }
 
 async function updateCompetitorSyncError(supabase: AnySupabaseClient, competitorId: string, message: string | null) {
+  const timestamp = message ? null : new Date().toISOString();
+
   await supabase
     .from('competitors')
     .update({
       game_platform_sync_error: message,
-      ...(message ? {} : { game_platform_synced_at: new Date().toISOString() }),
+      ...(timestamp ? { game_platform_synced_at: timestamp } : {}),
     })
     .eq('id', competitorId);
+
+  const status: GamePlatformSyncStatus = message ? 'error' : 'approved';
+  const profile = await updateGamePlatformProfile(
+    supabase,
+    { competitorId },
+    {
+      status,
+      syncError: message,
+      lastSyncedAt: timestamp,
+    },
+  );
+
+  if (!profile) {
+    await upsertGamePlatformProfile(supabase, {
+      competitorId,
+      metactfRole: 'user',
+      synedUserId: null,
+      status,
+      syncError: message,
+      lastSyncedAt: timestamp,
+    });
+  }
 }
 
 async function persistCompetitorSyncSuccess(
@@ -698,11 +811,12 @@ async function persistCompetitorSyncSuccess(
   remoteUserId: string,
 ) {
   const nextStatus = calculateCompetitorStatus({ ...competitor, game_platform_id: remoteUserId });
+  const syncedAt = new Date().toISOString();
   const { data, error } = await supabase
     .from('competitors')
     .update({
       game_platform_id: remoteUserId,
-      game_platform_synced_at: new Date().toISOString(),
+      game_platform_synced_at: syncedAt,
       game_platform_sync_error: null,
       status: nextStatus,
     })
@@ -714,6 +828,28 @@ async function persistCompetitorSyncSuccess(
     throw new Error(`Failed to persist competitor Game Platform state: ${error.message}`);
   }
 
+  const profile = await updateGamePlatformProfile(
+    supabase,
+    { competitorId },
+    {
+      status: 'approved',
+      syncError: null,
+      lastSyncedAt: syncedAt,
+      synedUserId: remoteUserId,
+    },
+  );
+
+  if (!profile) {
+    await upsertGamePlatformProfile(supabase, {
+      competitorId,
+      metactfRole: 'user',
+      synedUserId: remoteUserId,
+      status: 'approved',
+      syncError: null,
+      lastSyncedAt: syncedAt,
+    });
+  }
+
   return data;
 }
 
@@ -723,12 +859,20 @@ async function persistTeamSyncSuccess(
   team: any,
   remoteTeamId: string,
   coachMetaId?: string | null,
+  remoteMeta?: {
+    synedTeamId?: string | null;
+    metactfTeamId?: number | null;
+    metactfTeamName?: string | null;
+    status?: GamePlatformSyncStatus;
+  },
 ) {
+  const syncedAt = new Date().toISOString();
+
   const { data, error } = await supabase
     .from('teams')
     .update({
       game_platform_id: remoteTeamId,
-      game_platform_synced_at: new Date().toISOString(),
+      game_platform_synced_at: syncedAt,
       game_platform_sync_error: null,
       ...(coachMetaId ? { syned_coach_user_id: coachMetaId } : {}),
     })
@@ -740,17 +884,35 @@ async function persistTeamSyncSuccess(
     throw new Error(`Failed to persist team Game Platform state: ${error.message}`);
   }
 
+  await upsertGamePlatformTeam(supabase, {
+    teamId,
+    synedTeamId: remoteMeta?.synedTeamId ?? remoteTeamId,
+    metactfTeamId: remoteMeta?.metactfTeamId ?? null,
+    metactfTeamName: remoteMeta?.metactfTeamName ?? team.name,
+    status: remoteMeta?.status ?? 'approved',
+    syncError: null,
+    lastSyncedAt: syncedAt,
+  });
+
   return data ?? { ...team, game_platform_id: remoteTeamId };
 }
 
 async function updateTeamSyncError(supabase: AnySupabaseClient, teamId: string, message: string | null) {
+  const timestamp = message ? null : new Date().toISOString();
+
   await supabase
     .from('teams')
     .update({
       game_platform_sync_error: message,
-      ...(message ? {} : { game_platform_synced_at: new Date().toISOString() }),
+      ...(timestamp ? { game_platform_synced_at: timestamp } : {}),
     })
     .eq('id', teamId);
+
+  await updateGamePlatformTeam(supabase, teamId, {
+    status: message ? 'error' : 'approved',
+    syncError: message,
+    lastSyncedAt: timestamp,
+  });
 }
 
 function sanitizeDivision(raw: string | null | undefined): 'high_school' | 'middle_school' | 'college' {
@@ -1489,7 +1651,7 @@ export async function syncAllCompetitorGameStats({
 
 type SyncAllTeamsParams = {
   supabase: AnySupabaseClient;
-  client?: GamePlatformClient | GamePlatformClientMock;
+  client?: GamePlatformClient;
   dryRun?: boolean | null;
   logger?: { info?: (...args: any[]) => void; warn?: (...args: any[]) => void; error?: (...args: any[]) => void } | Console;
   coachId?: string | null;

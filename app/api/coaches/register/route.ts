@@ -4,6 +4,10 @@ import { cookies } from 'next/headers';
 import { GamePlatformClient } from '@/lib/integrations/game-platform/client';
 import { logger } from '@/lib/logging/safe-logger';
 import { MondayClient } from '@/lib/integrations/monday';
+import {
+  upsertGamePlatformProfile,
+  type GamePlatformSyncStatus,
+} from '@/lib/integrations/game-platform/repository';
 import { AuditLogger } from '@/lib/audit/audit-logger';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
 
@@ -87,6 +91,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const normalizeStatus = (status?: string | null): GamePlatformSyncStatus => {
+      switch (status) {
+        case 'approved':
+        case 'user_created':
+        case 'pending':
+        case 'denied':
+        case 'error':
+          return status;
+        default:
+          return 'pending';
+      }
+    };
+
     // 2. Register coach on MetaCTF (if feature enabled)
     let metactfUserId: string | null = null;
     let metactfStatus: string | null = null;
@@ -158,6 +175,24 @@ export async function POST(request: NextRequest) {
           if (updateError) {
             logger.warn('Failed to update profile with MetaCTF user ID', {
               error: updateError,
+              userId: user.id,
+            });
+          }
+
+          try {
+            await upsertGamePlatformProfile(supabase, {
+              coachId: user.id,
+              metactfRole: 'coach',
+              synedUserId: metactfUserId,
+              metactfUserId: metactfResponse?.metactf_user_id ?? null,
+              metactfUsername: metactfResponse?.metactf_username ?? null,
+              status: normalizeStatus(metactfStatus),
+              syncError: metactfError,
+              lastSyncedAt: new Date().toISOString(),
+            });
+          } catch (repoError: any) {
+            logger.warn('Failed to persist game platform coach mapping', {
+              error: repoError?.message,
               userId: user.id,
             });
           }

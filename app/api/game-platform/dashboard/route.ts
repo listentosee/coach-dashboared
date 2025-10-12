@@ -58,9 +58,31 @@ export async function GET(request: NextRequest) {
     }
 
     const competitorIds = (competitors || []).map((c) => c.id);
+
+    let profileMappings: GamePlatformProfileRecord[] = [];
+    if (competitorIds.length) {
+      const { data: mappingData, error: mappingError } = await supabase
+        .from('game_platform_profiles')
+        .select('*')
+        .in('competitor_id', competitorIds);
+
+      if (mappingError) {
+        console.error('Dashboard profile mapping query failed', mappingError);
+      } else {
+        profileMappings = mappingData ?? [];
+      }
+    }
+
+    const mappingByCompetitorId = new Map<string, GamePlatformProfileRecord>();
+    for (const mapping of profileMappings) {
+      if (mapping.competitor_id) {
+        mappingByCompetitorId.set(mapping.competitor_id, mapping);
+      }
+    }
+
     const gamePlatformIds = (competitors || [])
-      .filter(c => c.game_platform_id)
-      .map(c => c.game_platform_id);
+      .map((c) => c.game_platform_id || mappingByCompetitorId.get(c.id)?.syned_user_id)
+      .filter((id): id is string => Boolean(id));
 
     let stats: any[] = [];
     let challengeSolves: any[] = [];
@@ -142,6 +164,8 @@ export async function GET(request: NextRequest) {
     const teamRoster = new Map<string, any>();
 
     for (const competitor of competitors || []) {
+      const profileMapping = mappingByCompetitorId.get(competitor.id) ?? null;
+      const synedUserId = competitor.game_platform_id || profileMapping?.syned_user_id || null;
       const membershipRaw = competitor.team_members;
       const teamMembership = Array.isArray(membershipRaw)
         ? membershipRaw[0] ?? null
@@ -160,8 +184,8 @@ export async function GET(request: NextRequest) {
       const monthlyCtf = stat?.monthly_ctf_challenges ?? 0;
 
       // Get challenge solves from the normalized table instead of raw_data
-      const competitorSolves = competitor.game_platform_id
-        ? (solvesByCompetitor.get(competitor.game_platform_id) || [])
+      const competitorSolves = synedUserId
+        ? (solvesByCompetitor.get(synedUserId) || [])
         : [];
 
       // Calculate category counts AND points from actual challenge solves
@@ -180,9 +204,9 @@ export async function GET(request: NextRequest) {
         last_name: competitor.last_name,
         coach_id: competitor.coach_id,
         status: competitor.status,
-        game_platform_id: competitor.game_platform_id,
-        game_platform_synced_at: competitor.game_platform_synced_at,
-        game_platform_sync_error: competitor.game_platform_sync_error,
+        game_platform_id: synedUserId,
+        game_platform_synced_at: competitor.game_platform_synced_at ?? profileMapping?.last_synced_at ?? null,
+        game_platform_sync_error: competitor.game_platform_sync_error ?? profileMapping?.sync_error ?? null,
         team_id: teamMembership?.team_id || null,
         team,
         coach_school: competitor.coach?.school_name ?? null,
@@ -190,6 +214,7 @@ export async function GET(request: NextRequest) {
         monthly_ctf_challenges: monthlyCtf,
         category_points: categoryPoints,
         category_counts: categoryCounts,
+        game_platform_profile: profileMapping,
       });
 
       competitorList.push({
@@ -201,7 +226,7 @@ export async function GET(request: NextRequest) {
           division: team.division,
           affiliation: team.affiliation ?? competitor.coach?.school_name ?? null,
         } : null,
-        game_platform_id: competitor.game_platform_id,
+        game_platform_id: synedUserId,
         status: competitor.status,
         name: `${competitor.first_name} ${competitor.last_name}`.trim(),
       });
@@ -230,7 +255,7 @@ export async function GET(request: NextRequest) {
         };
 
         roster.totalMembers += 1;
-        if (competitor.game_platform_id) {
+        if (synedUserId) {
           roster.syncedMembers += 1;
           roster.membersOnPlatform.push({
             competitorId: competitor.id,
@@ -376,19 +401,25 @@ export async function GET(request: NextRequest) {
     })).sort((a, b) => b.totalPoints - a.totalPoints);
 
     const unsyncedCompetitors = (competitors || [])
-      .filter((c) => !c.game_platform_id)
+      .filter((c) => {
+        const mapping = mappingByCompetitorId.get(c.id);
+        return !c.game_platform_id && !mapping?.syned_user_id;
+      })
       .map((c) => ({
         competitorId: c.id,
         name: `${c.first_name} ${c.last_name}`.trim(),
       }));
 
     const syncErrors = (competitors || [])
-      .filter((c) => !!c.game_platform_sync_error)
-      .map((c) => ({
-        competitorId: c.id,
-        name: `${c.first_name} ${c.last_name}`.trim(),
-        error: c.game_platform_sync_error,
-      }));
+      .map((c) => {
+        const mapping = mappingByCompetitorId.get(c.id);
+        return {
+          competitorId: c.id,
+          name: `${c.first_name} ${c.last_name}`.trim(),
+          error: c.game_platform_sync_error ?? mapping?.sync_error ?? null,
+        };
+      })
+      .filter((entry) => !!entry.error);
 
     const staleStats = leaderboard.filter((entry) => {
       if (!entry.lastActivity) return true;

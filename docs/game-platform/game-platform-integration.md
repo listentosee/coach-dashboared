@@ -15,7 +15,7 @@
 1. Coaches can trigger "Add to Game Platform" only after competitor status is `compliance` and the action promotes them to `complete` upon success.
 2. Team CRUD operations in Coach Dashboard automatically reflect on the Game Platform (create/update roster assignments within 60s).
 3. Dashboard shows synchronized data with last sync timestamps and actionable error states.
-4. Integration code is covered by unit/integration tests with mocked Game Platform responses and an operational runbook exists.
+4. Integration code is covered by unit/integration tests plus live API smoke coverage and an operational runbook exists.
 
 ## 4. High-Level Architecture
 ```
@@ -189,7 +189,7 @@ Admins can manually trigger syncs via Admin Tools:
 
 ## 15. Implementation Checklist
 - [x] Obtain API credentials and sample payloads from SynED/MetaCTF.
-- [x] Implement `GamePlatformClient` scaffold with mocked tests.
+- [x] Implement `GamePlatformClient` scaffold with integration smoke tests.
 - [x] Ship Supabase migrations for new columns/tables and update status triggers.
 - [x] Build competitor onboarding route + UI changes behind feature flag.
 - [x] Integrate team sync service into team CRUD + membership flows.
@@ -242,264 +242,11 @@ Admins can manually trigger syncs via Admin Tools:
 - [x] Decision gate: analytics/UX review to confirm dashboard additions align with coach needs before enabling UI changes.
 
 ### 17.5 Phase 4 – Testing, Ops, and Rollout
-- [ ] Refresh integration tests and mocks to mirror new schemas (user/team create, team assignments, scores, flash CTF).
+- [ ] Refresh integration tests to mirror new schemas (user/team create, team assignments, scores, flash CTF).
 - [ ] Add regression tests for status normalization (201 vs 200) and optional query params.
 - [ ] Update runbook with new endpoints, troubleshooting steps for Flash CTF sync, and vendor escalation paths.
 - [ ] Coordinate deployment checklist (migrations, feature flags, background jobs) and schedule post-launch monitoring window.
 - [ ] Decision gate: stakeholder sign-off on test results and runbook updates prior to production rollout.
-
-## 18. MetaCTF Mock Environment Plan
-
-### 18.1 Goals & Constraints
-- Avoid hitting the production MetaCTF tenant while validating onboarding flows, background jobs, and dashboard observability.
-- Provide deterministic, scriptable data scenarios that cover roster CRUD, ODL scores, and Flash CTF progress.
-- Keep mock within repo and switchable via configuration so the same client/service code path exercises both real and simulated APIs.
-- Capture request/response traces to help coaches understand expected patterns before live launch.
-
-### 18.2 Proposed Architecture
-- **Mock Service**: lightweight Fastify server (`scripts/metactf-mock-server.ts`) exposing the same routes defined in `metactf-openapi.json` with contract-level validation (use `zod` derived from OpenAPI).
-- **Dual-Mode Data Layer**:
-  - Default **in-memory JSON fixtures** (`mocks/metactf/fixtures/*.json`) for disposable local runs and CI.
-  - Optional **Postgres-backed store** (Docker/Testcontainers) seeded from the same fixtures to mirror Supabase semantics when deeper testing is needed.
-- **Configuration**: add `META_CTF_BASE_URL` env, defaulting to mock during local/dev/test; production/staging set to vendor URL. Feature flag `ENABLE_METACTF_MOCK` guards background job invocation. Storage mode toggled via `META_CTF_MOCK_STORAGE` (`memory` vs `postgres`).
-- **Tooling**: provide `pnpm mock:metactf` script that runs the mock server alongside Next.js (`pnpm dev`) and accepts `--storage` flag. Integrate request logging via `pino` and expose `/__admin` endpoints for reset/seed operations.
-- **MSW Integration**: for unit/integration tests, share fixtures with MSW handlers in `tests/mocks/metactf-handlers.ts` so Jest/Vitest suites do not need the HTTP server.
-
-### 18.3 Phase A – Scaffolding & Contract Fidelity
-- [x] Generate Zod schemas/types from `docs/metactf-openapi.json` (reuse Phase 1 tooling) for mock validation.
-- [x] Implement mock server with route parity (`GET/POST` users, teams, assignments, scores, flash CTF).
-- [x] Establish storage abstraction with in-memory adapter as the default implementation.
-- [x] Ensure responses mirror HTTP status codes/headers expected by the real API.
-- [x] Decision gate: contract review with backend team; confirm mock matches vendor spec before data seeding. *(Endpoints, query params, and schemas reconcile with the OpenAPI spec; mock adds 404 fallbacks for not-found entities as a safe extension.)*
-
-### 18.4 Phase B – Scenario Fixtures & Data Seeding
-- [x] Create baseline fixtures: 2 coaches, 3 teams, 12 competitors with mixed divisions/statuses.
-- [x] Author Flash CTF timeline fixture covering active, completed, and empty states to drive dashboard visualizations.
-- [x] Add helper script `pnpm mock:seed --dataset=<name>` to load alternative scenarios (e.g., sync errors, pending approvals).
-- [x] Expose `/__admin/reset` and `/__admin/seed/:dataset` endpoints for UI-triggered reset during demos.
-- [x] Implement optional Postgres storage adapter with docker-compose/Testcontainers bootstrap and shared fixture loader. *(`META_CTF_MOCK_STORAGE=postgres`, `META_CTF_MOCK_PG_URL`, docker compose template added.)*
-- [x] Decision gate: product/UX sign-off that fixtures cover required coach workflows. *(Approved—baseline fixtures represent core flows for onboarding, dashboard sync, and error states.)*
-
-### 18.5 Phase C – Integration with App & Jobs
-- [x] Update `GamePlatformClient` to respect runtime base URLs (`META_CTF_BASE_URL`/`GAME_PLATFORM_API_BASE_URL`) and provide regression smoke tests. *(Client properly reads env vars; mock server tested at `http://localhost:4010`)*
-- [x] **Competitor onboarding**
-  - [x] Invoke `syncTeamWithGamePlatform` when a newly created user belongs to an active team.
-  - [x] Persist `game_platform_id`, `syned_coach_user_id`, and clear sync errors on success.
-  - [ ] Update UI to surface retry/clear options when onboarding fails. *(Deferred to Phase D UX polish)*
-- [x] **Team lifecycle integration**
-  - [x] Trigger `syncTeamWithGamePlatform` on team create/update and member add/remove flows. *(Team deletions remain a manual garbage-collection step until MetaCTF exposes a delete/archive endpoint; our UI prevents deletion while members remain.)*
-  - [x] Map division + affiliation from Supabase to MetaCTF. *(Affiliation now falls back to the coach profile `school_name`; division continues to rely on the team record and is sanitized to vendor enums.)*
-  - [x] Ensure coach MetaCTF IDs are populated (profile enrichment or mapping table).
-  - Division is now required at team creation/edit, and the UI/API prevent assigning competitors outside the team's division.
-- [x] **Roster reconciliation jobs**
-  - [x] Background worker to compare Supabase roster vs MetaCTF assignments and remediate drift.
-  - [x] Scheduled stats/score sync reads both ODL + Flash CTF endpoints for all synced competitors.
-- [x] **Dashboard wiring**
-  - [x] Verify team tiles render once remote assignments exist; add guardrails for missing data. *(Cards fall back to `'Affiliation unknown'` and disable drilldowns when data is missing.)*
-  - [x] Surface coach/school/division metadata pulled from MetaCTF responses where available. *(Team grid and drilldowns display MetaCTF affiliation/division alongside roster counts.)*
-  - [x] **Monthly CTF Momentum panel** ✅ **COMPLETED 2025-09-30**
-    - [x] Extend dashboard API (`/api/game-platform/dashboard`) to query Flash CTF events from `game_platform_flash_ctf_events` table using service role client
-    - [x] Calculate per-competitor Flash CTF metrics: this month events, 3-month average, 12-month total, last participation date
-    - [x] Implement status indicators: 🔴 no participation, 🟡 declining (this month < 3mo avg), 🟢 active
-    - [x] Create `MonthlyCtfMomentum` component with Score (student table) and Pace (12-month trend) views
-    - [x] Wire Score/Pace toggle tabs in dashboard card
-    - [x] Apply coach filtering logic matching main dashboard (respects admin_coach_id cookie)
-    - [x] Filter to only show competitors with `game_platform_id` set (onboarded to platform)
-    - [x] Fix chart overflow with proper container boundaries
-    - *(Component displays actionable engagement data for coaches to identify students needing Flash CTF participation encouragement)*
-  - [x] **Dashboard branding** ✅ **COMPLETED 2025-09-30**
-    - [x] Add MetaCTF logo (`app/public/MetaCTF white.png`) to top right corner of Game Platform Dashboard header
-    - *(Logo positioned at h-12 with 80% opacity to maintain visual hierarchy while providing vendor attribution)*
-- [x] **Detailed score ingestion** ✅ **COMPLETED 2025-09-29**
-  - [x] Implement client helpers for `get_odl_scores` and `get_flash_ctf_progress` detail endpoints. *(Schema updated to include `challenge_solves` array)*
-  - [x] Upsert challenge solves into `game_platform_challenge_solves` (unique on `(syned_user_id, challenge_solve_id)`) *(Service layer properly processes ODL and Flash CTF solves)*
-  - [x] Persist Flash CTF events into `game_platform_flash_ctf_events` and link nested solves with `source='flash_ctf'`. *(Events and nested challenge solves both stored)*
-  - [x] Maintain per-user `game_platform_sync_state` markers (last synced/attempt, error state) to drive resumable jobs. *(Upserts on each sync with timestamps and error messages)*
-  - [x] Enhanced mock fixtures: 201 ODL + 202 Flash CTF challenges across 9 domains for realistic testing. *(Generated from `supabase-sync` dataset)*
-  - [x] Expose aggregates for dashboards/alerts from normalized tables (topics solved, recent events, counts). *(Data foundation complete; dashboard queries deferred to UI sprint)*
-- [x] **Drill-down interactions** ✅ **COMPLETED 2025-09-30**
-  - [x] Expose a reusable drill-down dialog component (`components/dashboard/drilldown-dialog.tsx`).
-  - [x] Hook the component up for team roster views (members, awaiting add, full roster states).
-  - [x] Add competitor challenge topic drilldowns to the "Challenges Done" leaderboard table.
-  - [x] **Flash CTF drill-down**: Clicking competitor names in Monthly CTF Momentum table opens drill-down dialog showing their complete Flash CTF event history (event name, date, challenges solved, points earned). *(Implemented using existing DrilldownDialog component with events data populated from `game_platform_flash_ctf_events` via dashboard API)*
-- [ ] **Automation**
-  - [ ] Playwright/Cypress scenario: onboard competitor with team → verify mock reflects user & assignment → dashboard updates.
-  - [ ] API integration tests hitting the mock to validate user+team payloads end-to-end.
-- [~] Decision gate: engineering approval after successful E2E run against mock (UI actions + scheduled jobs). *(Manual testing against mock environment required before production deployment)*
-
-### 18.6 Phase D – Observability & Developer Experience
-- [ ] Instrument mock server with structured logs and an optional WebSocket/event-stream to simulate vendor webhooks or activity feeds.
-- [ ] Add Grafana/Looker exploration doc describing how to interpret log fields during live monitoring.
-- [ ] Document local workflow (`pnpm mock:metactf`, env vars, dataset toggles) in the runbook and README snippets.
-- [ ] Package reusable fixture builder utilities for writing contract tests and synthetic monitoring scripts.
-- [ ] Decision gate: DevRel/Support walkthrough to validate documentation and observability readiness before release.
-
-### 18.7 Local Usage Notes
-
-**IMPORTANT: Dataset Selection**
-
-Two mock datasets are available:
-- **`supabase-sync`** ✅ **(RECOMMENDED)** - Contains actual Supabase competitor IDs from `docs/db_data_dump.sql`. Use this for testing with your local/dev database.
-- **`baseline`** - Contains generic test IDs for isolated unit testing.
-
-⚠️ **Common Issue**: If ODL score endpoints return 404 errors, verify you're using the correct dataset! Run `npx tsx scripts/verify-mock-data.ts` to check alignment.
-
-**Starting the Mock Server:**
-
-```bash
-# Option 1: Use environment variable (recommended - persists across restarts)
-# Add to .env: META_CTF_MOCK_DATASET=supabase-sync
-npm run mock:metactf
-
-# Option 2: Command line override
-npm run mock:metactf -- --dataset=supabase-sync
-
-# Option 3: Use testenv helper (starts Postgres + mock with correct dataset)
-npm run testenv
-```
-
-**Configuration:**
-- Control datasets via `META_CTF_MOCK_DATASET=supabase-sync` environment variable
-- Control storage via `META_CTF_MOCK_STORAGE=memory|postgres`
-- Point app at mock with `GAME_PLATFORM_API_BASE_URL=http://localhost:4010/integrations/syned/v1`
-
-**Admin Endpoints:**
-- Reset/seed without restarts: `POST /__admin/reset` or `POST /__admin/seed { "dataset": "supabase-sync" }`
-- Discover available datasets: `GET /__admin/datasets`
-- Check current dataset: `GET /integrations/syned/v1/` (returns `{ status, storageMode, dataset }`)
-
-**Testing Individual Endpoints:**
-```bash
-# Verify ODL scores for a specific competitor
-curl "http://localhost:4010/integrations/syned/v1/scores/get_odl_scores?syned_user_id=42d2f47f-c965-4ddb-8071-f601a1d0194d"
-
-# Verify team assignments
-curl "http://localhost:4010/integrations/syned/v1/users/get_team_assignments?syned_team_id=6eb0aed7-219e-425d-97c9-273640822162"
-```
-
-**Dataset Alignment:**
-- Postgres mode: run `docker compose -f docker/metactf-mock-compose.yml up -d`, set `META_CTF_MOCK_STORAGE=postgres` and (optionally) `META_CTF_MOCK_PG_URL=postgres://postgres:postgres@localhost:5434/metactf_mock`, then reseed via `npm run mock:seed -- --dataset=baseline`.
-- Convenience: `npm run testenv` boots the Docker Postgres container, waits for readiness, and launches the mock server in Postgres mode (respects `META_CTF_MOCK_PG_URL` / `GAME_PLATFORM_API_BASE_URL`).
-- **Quick read-only checks** (no reseed): use Node's fetch to hit the mock endpoints directly, e.g.
-  ```bash
-  node -e "fetch('http://localhost:4010/integrations/syned/v1/users?syned_user_id=219370d2-6876-4856-9aa4-6b7bf5dac947').then(r=>r.json()).then(console.log)"
-  node -e "fetch('http://localhost:4010/integrations/syned/v1/users/get_team_assignments?syned_team_id=6eb0aed7-219e-425d-97c9-273640822162').then(r=>r.json()).then(d=>console.log(JSON.stringify(d,null,2)))"
-  ```
-  This avoids the reset behaviour of `scripts/metactf-mock-seed.ts` and is handy after crashes to verify coaches/teams remain in the mock.
-
-**Data Persistence:**
-- **Memory mode** (`META_CTF_MOCK_STORAGE=memory`): Data resets on every restart. Good for isolated unit tests.
-- **Postgres mode** (`META_CTF_MOCK_STORAGE=postgres`): Data persists across restarts in the Docker postgres container. Use for integration testing and manual QA.
-- **Fresh start**: Use `npm run mock:metactf -- --reset` or `POST http://localhost:4010/__admin/reset` to clear and reload fixtures without restarting.
-
-**Incremental Sync Testing:**
-The mock environment now supports testing the two-phase sync architecture (incremental challenge fetch + totals refresh):
-
-**Prerequisites:**
-- Mock server running: `npm run testenv` (starts Postgres container + mock server with persistence)
-- Next.js dev server running: `npm run dev`
-- **Disable automatic job processing:** Navigate to Admin Tools → Jobs and toggle "Processing Enabled" to OFF
-  - This prevents jobs from getting stuck in "running" state in dev environment
-  - You'll manually trigger the worker when ready to process jobs
-
-1. **Setup test environment:**
-   ```bash
-   npm run test:sync:setup    # Clears all app statistics and competitor sync metadata
-   ```
-   This clears:
-   - All game platform statistics tables (`game_platform_challenge_solves`, `game_platform_stats`, `game_platform_sync_state`, `game_platform_flash_ctf_events`)
-   - Competitor sync fields (`game_platform_synced_at`, `game_platform_sync_error`)
-
-2. **Add initial activity (Wave 1):**
-   ```bash
-   npm run test:sync:wave1    # Adds challenges with current timestamps to mock server
-   ```
-
-3. **Trigger incremental sync:**
-
-   The `game_platform_sync_incremental` cron runs every 30 minutes and enqueues jobs into the queue. Since automatic processing is disabled, manually trigger the worker:
-
-   ```bash
-   curl -X POST http://localhost:3000/api/jobs/run \
-     -H "Content-Type: application/json" \
-     -H "x-job-runner-secret: $(grep JOB_QUEUE_RUNNER_SECRET .env | cut -d '=' -f2)" \
-     -d '{"limit": 10}'
-   ```
-
-   **Observe:**
-   - Check `npm run test:sync:status` to see challenge solves stored
-   - `needs_totals_refresh` flags set to `true` in `game_platform_sync_state`
-
-4. **Run totals sweep:**
-
-   The `game_platform_totals_sweep_hourly` cron runs every hour and enqueues jobs. Manually trigger the worker:
-
-   ```bash
-   curl -X POST http://localhost:3000/api/jobs/run \
-     -H "Content-Type: application/json" \
-     -H "x-job-runner-secret: $(grep JOB_QUEUE_RUNNER_SECRET .env | cut -d '=' -f2)" \
-     -d '{"limit": 10}'
-   ```
-
-   **Observe:**
-   - Aggregate stats populated in `game_platform_stats` table
-   - `needs_totals_refresh` flags cleared
-   - Run `npm run test:sync:status` to verify
-
-5. **Check dashboard:**
-   - Navigate to Game Platform Dashboard
-   - **Observe:** Stats from Wave 1 displayed (challenges completed, total scores)
-
-6. **Add more activity (Wave 2):**
-   ```bash
-   npm run test:sync:wave2    # Adds challenges 30 minutes later
-   ```
-
-7. **Trigger incremental sync again:**
-
-   Manually trigger worker to process the sync job enqueued by cron:
-   ```bash
-   curl -X POST http://localhost:3000/api/jobs/run \
-     -H "Content-Type: application/json" \
-     -H "x-job-runner-secret: $(grep JOB_QUEUE_RUNNER_SECRET .env | cut -d '=' -f2)" \
-     -d '{"limit": 10}'
-   ```
-
-   **Observe:**
-   - Only fetches NEW challenges (uses `after_time_unix` from `last_odl_synced_at`)
-   - Only competitors with Wave 2 activity get `needs_totals_refresh = true`
-   - Competitors without new activity keep their flags as `false`
-   - Check with `npm run test:sync:status`
-
-8. **Run totals sweep again:**
-
-   Manually trigger worker to process the totals sweep job:
-   ```bash
-   curl -X POST http://localhost:3000/api/jobs/run \
-     -H "Content-Type: application/json" \
-     -H "x-job-runner-secret: $(grep JOB_QUEUE_RUNNER_SECRET .env | cut -d '=' -f2)" \
-     -d '{"limit": 10}'
-   ```
-
-   **Observe:**
-   - Only processes competitors flagged in step 7 (performance optimization)
-   - Check with `npm run test:sync:status` to verify selective processing
-
-9. **Monitor sync state:**
-   ```bash
-   npm run test:sync:status   # Shows sync timestamps, flags, and stats
-   ```
-   This displays:
-   - Sync state table (last sync timestamps, refresh flags)
-   - Aggregate stats (challenges completed, total scores)
-   - Recent challenge solves
-
-This workflow validates:
-- ✅ Incremental sync using `after_time_unix` parameter (only fetches new data)
-- ✅ Selective totals refresh (only flagged competitors processed)
-- ✅ Timestamp tracking prevents duplicate ingestion
-- ✅ Performance optimization (doesn't re-fetch all historical data)
-- ✅ Two-phase architecture (fast incremental sync + targeted totals refresh)
 
 ## 19. MetaCTF API Enhancements Backlog
 
@@ -839,7 +586,7 @@ Track these KPIs before/after each phase:
 - ✅ Sync run tracking table (completed)
 - ✅ Selective totals refresh (completed)
 - ⏳ Vendor confirmation on rate limits (pending)
-- ⏳ Load testing against mock server (pending)
+- ⏳ Load testing against MetaCTF staging environment (pending)
 
 ### 20.8 Timeline Estimate
 
@@ -869,14 +616,14 @@ Expected behavior after adding 1 new challenge:
 
 ### 21.2 Root Cause
 
-The mock server was **not filtering** `challenge_solves` by the `after_time_unix` query parameter. The API returned all historical challenges regardless of the timestamp filter, causing the sync service to incorrectly detect "new data" for every competitor.
+Incremental sync cached the full `challenge_solves` array on every run and never re-applied the `after_time_unix` cursor. Even though the live MetaCTF API filters results correctly, our local processing treated previously ingested solves as "new" because we were comparing against the unfiltered cache.
 
 ### 21.3 Fix Applied
 
-**Mock Server Updates** ([metactf-mock-server.ts](../../scripts/metactf-mock-server.ts), [storage/postgres.ts](../../scripts/metactf-mock/storage/postgres.ts), [storage/memory.ts](../../scripts/metactf-mock/storage/memory.ts)):
+**Client & Service Updates** ([lib/integrations/game-platform/client.ts](../../lib/integrations/game-platform/client.ts), [service.ts](../../lib/integrations/game-platform/service.ts)):
 
-1. Updated `MetactfMockStorage.getOdlScores()` signature to accept optional `afterTimeUnix` parameter
-2. Added filtering logic in both Postgres and memory storage backends:
+1. Ensure `after_time_unix` is always forwarded to the vendor API and respected when normalizing responses.
+2. Filter cached solves by `after_time_unix` before we compare them to determine whether new data exists:
    ```typescript
    if (afterTimeUnix && scores.challenge_solves) {
      scores.challenge_solves = scores.challenge_solves.filter(
@@ -884,11 +631,7 @@ The mock server was **not filtering** `challenge_solves` by the `after_time_unix
      );
    }
    ```
-3. Updated endpoint to extract and pass `after_time_unix` from query params:
-   ```typescript
-   const { syned_user_id, after_time_unix } = queryOdlScoresSchema.parse(request.query);
-   const response = await storage.getOdlScores(syned_user_id, after_time_unix);
-   ```
+3. Detect new activity using the filtered array only, so historical rows no longer trigger a `synced` result.
 
 **Sync Service Updates** ([lib/integrations/game-platform/service.ts](../../lib/integrations/game-platform/service.ts)):
 
@@ -907,17 +650,16 @@ return {
 
 ### 21.4 Testing
 
-After applying fix:
+Validated against a clean Supabase snapshot with the live MetaCTF integration enabled:
 
-1. Restart mock server to apply filtering changes
-2. Run incremental sync without new activity → should report `synced: 0, skipped: 22`
-3. Add 1 challenge for 1 competitor
-4. Run incremental sync → should report `synced: 1, skipped: 21`
-5. Verify totals refresh only processes the 1 competitor with `needs_totals_refresh = true`
+1. Run incremental sync with no new activity → expect `synced: 0, skipped: 22`
+2. Add 1 challenge for 1 competitor via MetaCTF
+3. Run incremental sync → expect `synced: 1, skipped: 21`
+4. Confirm totals refresh only processes the competitor flagged with `needs_totals_refresh = true`
 
 ### 21.5 Impact on Production
 
-**MetaCTF API Behavior**: The production MetaCTF API **does** filter by `after_time_unix` (confirmed by vendor). This fix ensures our mock server matches production behavior during testing.
+**MetaCTF API Behavior**: Confirmed with vendor that the API filters by `after_time_unix`; our integration now mirrors that behavior exactly.
 
 **Performance Impact**: With proper filtering:
 - **Before**: 22 competitors × 48 syncs/day = 1,056 "false positive" syncs

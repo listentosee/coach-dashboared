@@ -20,20 +20,8 @@ System architecture and design standards
 MetaCTF Game Platform integration documentation
 - `game-platform-integration.md` - Integration plan and implementation details
 - `game-platform-report-card-spec.md` - Report card feature specification
-- `phase-c-completion-summary.md` - Phase C completion notes
 - `production-deployment-plan.md` - Production deployment strategy
 - `pre-production-tasks.md` - Tasks required before production deployment
-- `sync-verification-checklist.md` - Verification steps for data syncing
-
-### 📁 mock-environment/
-Mock server and test environment documentation
-- `enhanced-mock-data-summary.md` - Enhanced mock data generation summary
-- `metactf-mock-dataset-fix.md` - Mock dataset alignment fixes
-- `metactf-mock-quickstart.md` - Quick start guide for mock server
-- `metactf-openapi.json` - OpenAPI specification for MetaCTF API
-- `odl-challenge-solves-fix.md` - Fix for ODL challenge data ingestion
-- `testenv-fix-summary.md` - Test environment configuration fixes
-- `testenv-usage.md` - Guide for using the test environment
 
 ### 📁 cron-jobs/
 Scheduled job and background task documentation
@@ -76,8 +64,6 @@ Database schemas and data dumps
 
 **Getting Started:**
 - [Admin Setup](./admin/admin-setup-simple.md)
-- [Mock Environment Quick Start](./mock-environment/metactf-mock-quickstart.md)
-- [Test Environment Usage](./mock-environment/testenv-usage.md)
 
 **Integration:**
 - [Game Platform Integration](./game-platform/game-platform-integration.md)

@@ -79,79 +79,243 @@ export default function ReleaseManagementPage() {
   const [visibleCount, setVisibleCount] = useState(40)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const [analytics, setAnalytics] = useState<{ competitorCount?: number; teamCount?: number; statusCounts?: any } | null>(null)
+  const [releaseOffset, setReleaseOffset] = useState(0)
+  const [releaseTotal, setReleaseTotal] = useState<number | null>(null)
+  const [releaseStatusSummary, setReleaseStatusSummary] = useState<{
+    total: number
+    notSent: number
+    sent: number
+    complete: number
+    manual: number
+  } | null>(null)
+  const releaseInitLoadingRef = useRef(false)
+  const releaseLoadingRef = useRef(false)
 
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      
-      // Determine role and load via API for admin (server-filtered); otherwise direct for coach
-      const { data: { user } } = await supabase.auth.getUser();
-      let role: string | null = null
-      if (user) {
-        const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-        role = (profile as any)?.role || null
-        setIsAdmin(role === 'admin')
+  const computeReleaseSummary = useCallback(
+    (competitorsList: Competitor[], agreementsList: Agreement[]) => {
+      const summary = {
+        total: competitorsList.length,
+        notSent: 0,
+        sent: 0,
+        complete: 0,
+        manual: 0,
       }
 
-      if (role === 'admin') {
-        const r = await fetch('/api/admin/releases')
-        if (r.ok) {
-          const j = await r.json()
-          setCompetitors(j.competitors || [])
-          setAgreements(j.agreements || [])
-        } else {
-          setCompetitors([])
-          setAgreements([])
+      const agreementMap = new Map<string, Agreement>()
+      for (const agreement of agreementsList) {
+        if (!agreementMap.has(agreement.competitor_id)) {
+          agreementMap.set(agreement.competitor_id, agreement)
         }
-        // Fetch analytics totals for header panels (DB totals, not on-screen slice)
-        try {
-          const aUrl = coachId ? `/api/admin/analytics?coach_id=${coachId}` : '/api/admin/analytics'
-          const ar = await fetch(aUrl)
-          if (ar.ok) {
-            const aj = await ar.json()
-            setAnalytics({ competitorCount: aj?.totals?.competitorCount, teamCount: aj?.totals?.teamCount, statusCounts: aj?.statusCounts })
-          } else {
+      }
+
+      for (const competitor of competitorsList) {
+        const agreement = agreementMap.get(competitor.id)
+        const hasLegacy = competitor.is_18_or_over
+          ? !!competitor.participation_agreement_date
+          : !!competitor.media_release_date
+
+        if (agreement?.status === 'completed') {
+          summary.complete += 1
+        } else if (agreement?.status === 'completed_manual' || hasLegacy) {
+          summary.manual += 1
+        } else if (agreement) {
+          summary.sent += 1
+        } else {
+          summary.notSent += 1
+        }
+      }
+
+      return summary
+    },
+    [],
+  )
+
+  const fetchData = useCallback(
+    async (opts?: { reset?: boolean }) => {
+      const reset = opts?.reset ?? false
+      setLoading(true)
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        console.error('No session found')
+        return
+      }
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+
+        const adminMode = (profile as any)?.role === 'admin'
+        setIsAdmin(adminMode)
+
+        let scopedCompetitors: Competitor[] = []
+        let scopedAgreements: Agreement[] = []
+        let summary: { total: number; notSent: number; sent: number; complete: number; manual: number } | null = null
+
+        if (adminMode && !coachId) {
+          if (reset) {
+            releaseInitLoadingRef.current = false
+            releaseLoadingRef.current = false
+            setReleaseOffset(0)
+            setReleaseTotal(null)
+            setReleaseStatusSummary(null)
+            setCompetitors([])
+            setAgreements([])
+          }
+
+        if (releaseInitLoadingRef.current && !reset) {
+          setLoading(false)
+          return
+        }
+
+          releaseInitLoadingRef.current = true
+          releaseLoadingRef.current = true
+
+          try {
+            const limit = 40
+            const response = await fetch(`/api/releases/paged?offset=0&limit=${limit}`)
+            if (!response.ok) throw new Error('Failed to load releases')
+
+            const payload = await response.json()
+            const rows = (payload.competitors || []) as Competitor[]
+            const agreementsRows = (payload.agreements || []) as Agreement[]
+
+            scopedCompetitors = rows
+            scopedAgreements = agreementsRows
+            summary = payload.summary ?? computeReleaseSummary(rows, agreementsRows)
+
+            setCompetitors(scopedCompetitors)
+            setAgreements(scopedAgreements)
+            setReleaseOffset(scopedCompetitors.length)
+            setReleaseTotal(payload.total ?? scopedCompetitors.length)
+            setReleaseStatusSummary(summary)
+          } catch (error) {
+            console.error('Initial release load failed', error)
+            scopedCompetitors = []
+            scopedAgreements = []
+            summary = { total: 0, notSent: 0, sent: 0, complete: 0, manual: 0 }
+            setCompetitors(scopedCompetitors)
+            setAgreements(scopedAgreements)
+            setReleaseOffset(0)
+            setReleaseTotal(0)
+            setReleaseStatusSummary(summary)
+          } finally {
+            releaseLoadingRef.current = false
+          }
+        } else {
+          const scopeCoachId = adminMode && coachId ? coachId : user.id
+
+          const { data: competitorsData } = await supabase
+            .from('release_eligible_competitors')
+            .select('*')
+            .eq('coach_id', scopeCoachId)
+            .order('first_name', { ascending: true })
+            .order('last_name', { ascending: true })
+
+          scopedCompetitors = competitorsData || []
+          setCompetitors(scopedCompetitors)
+          setReleaseOffset(scopedCompetitors.length)
+          setReleaseTotal(scopedCompetitors.length)
+
+          const { data: agreementsData } = await supabase
+            .from('agreements')
+            .select('*')
+            .in('competitor_id', scopedCompetitors.map((c: any) => c.id))
+            .order('created_at', { ascending: false })
+
+          scopedAgreements = agreementsData || []
+          setAgreements(scopedAgreements)
+          summary = computeReleaseSummary(scopedCompetitors, scopedAgreements)
+          setReleaseStatusSummary(summary)
+        }
+
+        if (adminMode) {
+          const analyticsUrl = coachId
+            ? `/api/admin/analytics?coach_id=${coachId}`
+            : '/api/admin/analytics'
+          try {
+            const ar = await fetch(analyticsUrl)
+            if (ar.ok) {
+              const aj = await ar.json()
+              setAnalytics({
+                competitorCount: aj?.totals?.competitorCount,
+                teamCount: aj?.totals?.teamCount,
+                statusCounts: aj?.statusCounts,
+              })
+            } else {
+              setAnalytics(null)
+            }
+          } catch {
             setAnalytics(null)
           }
-        } catch { setAnalytics(null) }
-      } else {
-        // Coach: scoped client-side
-        const { data: competitorsData } = await supabase
-          .from('competitors')
-          .select('*')
-          .eq('coach_id', user?.id as string)
-          .order('first_name', { ascending: true })
-        const { data: agreementsData } = await supabase
-          .from('agreements')
-          .select('*')
-          .order('created_at', { ascending: false })
-        setCompetitors(competitorsData || [])
-        setAgreements(agreementsData || [])
-        // Compute simple totals for coach header
-        const list = competitorsData || []
-        const statusCount = (s: string) => list.filter((c: any) => c.status === s).length
-        setAnalytics({
-          competitorCount: list.length,
-          teamCount: 0,
-          statusCounts: {
-            pending: statusCount('pending'),
-            profile: statusCount('profile'),
-            compliance: statusCount('compliance'),
-            complete: statusCount('complete')
-          }
-        })
+        } else {
+          setAnalytics({ competitorCount: scopedCompetitors.length, teamCount: 0, statusCounts: null })
+        }
+      } catch (error) {
+        console.error('Error fetching release data:', error)
+      } finally {
+        setLoading(false)
       }
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [coachId]);
+    },
+    [coachId, computeReleaseSummary],
+  )
 
   // Initial and context-based fetch
   useEffect(() => {
-    if (!ctxLoading) fetchData();
-  }, [ctxLoading, fetchData])
+    if (!ctxLoading) fetchData({ reset: true })
+  }, [ctxLoading, coachId, fetchData])
+
+  const fetchMoreReleases = useCallback(async () => {
+    if (!(isAdmin && !coachId)) return
+    if (releaseLoadingRef.current) return
+    if (releaseTotal !== null && releaseOffset >= releaseTotal) return
+
+    releaseLoadingRef.current = true
+    try {
+      const limit = 20
+      const response = await fetch(`/api/releases/paged?offset=${releaseOffset}&limit=${limit}`)
+      if (!response.ok) {
+        throw new Error('Failed to load additional releases')
+      }
+
+      const payload = await response.json()
+      const rows = (payload.competitors || []) as Competitor[]
+      if (rows.length) {
+        const nextCompetitors = [...competitors, ...rows]
+
+        const incomingAgreements = (payload.agreements || []) as Agreement[]
+        const agreementMap = new Map<string, Agreement>()
+        for (const item of agreements) agreementMap.set(item.id, item)
+        for (const item of incomingAgreements) agreementMap.set(item.id, item)
+        const nextAgreements = Array.from(agreementMap.values()).sort((a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        )
+
+        setCompetitors(nextCompetitors)
+        setAgreements(nextAgreements)
+        setReleaseOffset(nextCompetitors.length)
+        setReleaseTotal(payload.total ?? releaseTotal ?? nextCompetitors.length)
+        if (payload.summary) {
+          setReleaseStatusSummary(payload.summary)
+        }
+      } else {
+        if (payload.total !== undefined && payload.total !== null) {
+          setReleaseTotal(payload.total)
+          setReleaseOffset(payload.total)
+        }
+        if (payload.summary) {
+          setReleaseStatusSummary(payload.summary)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading additional releases', error)
+    } finally {
+      releaseLoadingRef.current = false
+    }
+  }, [agreements, coachId, competitors, computeReleaseSummary, isAdmin, releaseOffset, releaseTotal])
 
   const sendRelease = async (competitorId: string, mode: 'email' | 'print' = 'email') => {
     try {
@@ -184,7 +348,7 @@ export default function ReleaseManagementPage() {
       }
 
       // Refresh data to show new agreement
-      await fetchData();
+      await fetchData({ reset: true });
     } catch (error: any) {
       console.error('Error sending release:', error);
       alert(error?.message || 'Failed to send release. Please try again.');
@@ -218,7 +382,7 @@ export default function ReleaseManagementPage() {
       }
 
       // Refresh data and close modal
-      await fetchData();
+      await fetchData({ reset: true });
       setUploadModalOpen(false);
       setSelectedAgreement(null);
     } catch (error) {
@@ -305,53 +469,69 @@ export default function ReleaseManagementPage() {
     })
   }, [competitors])
 
+  const agreementMap = useMemo(() => {
+    const map = new Map<string, Agreement>()
+    for (const agreement of agreements) {
+      if (!map.has(agreement.competitor_id)) {
+        map.set(agreement.competitor_id, agreement)
+      }
+    }
+    return map
+  }, [agreements])
+
   const releaseUniverse: ReleaseData[] = useMemo(() => {
     return eligibleCompetitors.map(competitor => {
-      const agreement = agreements.find(a => a.competitor_id === competitor.id)
+      const agreement = agreementMap.get(competitor.id)
       const hasLegacySigned = competitor.is_18_or_over
         ? !!competitor.participation_agreement_date
         : !!competitor.media_release_date
       return { competitor, agreement, hasLegacySigned }
     })
-  }, [eligibleCompetitors, agreements])
+  }, [eligibleCompetitors, agreementMap])
 
   const releaseStatusCounts = useMemo(() => {
+    if (releaseStatusSummary) {
+      const { notSent, sent, complete, manual } = releaseStatusSummary
+      return { notSent, sent, complete, manual }
+    }
+
     const counts = {
       notSent: 0,
       sent: 0,
       complete: 0,
       manual: 0,
-    };
+    }
 
     for (const item of releaseUniverse) {
       if (item.agreement && item.agreement.status === 'completed') {
-        counts.complete += 1;
-        continue;
+        counts.complete += 1
+        continue
       }
 
       if (item.agreement && item.agreement.status === 'completed_manual') {
-        counts.manual += 1;
-        continue;
+        counts.manual += 1
+        continue
       }
 
       if (item.hasLegacySigned) {
-        counts.manual += 1;
-        continue;
+        counts.manual += 1
+        continue
       }
 
       if (item.agreement) {
-        counts.sent += 1;
-        continue;
+        counts.sent += 1
+        continue
       }
 
-      counts.notSent += 1;
+      counts.notSent += 1
     }
 
-    return counts;
-  }, [releaseUniverse])
+    return counts
+  }, [releaseStatusSummary, releaseUniverse])
 
   const totalCompetitorsCount = analytics?.competitorCount ?? competitors.length
-  const releaseEligibleCount = releaseUniverse.length
+  const releaseEligibleTotal = releaseStatusSummary?.total ?? releaseTotal ?? releaseUniverse.length
+  const releaseLoadedCount = releaseUniverse.length
 
   const searchTermNormalized = searchTerm.trim().toLowerCase()
 
@@ -375,6 +555,21 @@ export default function ReleaseManagementPage() {
       return !isCompleted
     })
   }, [releaseUniverse, searchTermNormalized, hideCompleted])
+
+  const isAdminAll = isAdmin && !coachId
+  const displayedCount = isAdminAll ? releaseData.length : Math.min(visibleCount, releaseData.length)
+  const totalCount = isAdminAll ? releaseEligibleTotal : releaseData.length
+
+  const getScrollParent = (el: HTMLElement | null): HTMLElement | null => {
+    let node: HTMLElement | null = el?.parentElement ?? null
+    while (node) {
+      const style = window.getComputedStyle(node)
+      const overflowY = style.overflowY
+      if (overflowY === 'auto' || overflowY === 'scroll') return node
+      node = node.parentElement
+    }
+    return null
+  }
 
   const columns: ColumnDef<ReleaseData>[] = [
     {
@@ -574,10 +769,18 @@ export default function ReleaseManagementPage() {
     },
   ];
 
-  // Reset paging when filters/data change (must not be conditional)
-  useEffect(() => { setVisibleCount(40) }, [searchTerm, hideCompleted, competitors.length, agreements.length])
-  // Infinite scroll sentinel (must not be conditional)
   useEffect(() => {
+    if (isAdmin && !coachId) return
+    setVisibleCount(40)
+  }, [searchTerm, hideCompleted, competitors.length, agreements.length, isAdmin, coachId])
+
+  useEffect(() => {
+    if (!(isAdmin && !coachId)) return
+    setVisibleCount(releaseData.length)
+  }, [isAdmin, coachId, releaseData.length])
+
+  useEffect(() => {
+    if (isAdmin && !coachId) return
     const node = sentinelRef.current
     if (!node) return
     const obs = new IntersectionObserver((entries) => {
@@ -589,7 +792,52 @@ export default function ReleaseManagementPage() {
     }, { root: null, rootMargin: '200px', threshold: 0 })
     obs.observe(node)
     return () => obs.disconnect()
-  }, [releaseData.length])
+  }, [isAdmin, coachId, releaseData.length])
+
+  useEffect(() => {
+    if (!(isAdmin && !coachId)) return
+    const node = sentinelRef.current
+    if (!node) return
+    const rootEl = typeof window !== 'undefined' ? getScrollParent(node) : null
+    const obs = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue
+        if (!releaseLoadingRef.current && (releaseTotal === null || releaseOffset < releaseTotal)) {
+          void fetchMoreReleases()
+        }
+      }
+    }, { root: rootEl || null, rootMargin: '200px', threshold: 0 })
+    obs.observe(node)
+    return () => obs.disconnect()
+  }, [isAdmin, coachId, fetchMoreReleases, releaseOffset, releaseTotal])
+
+  useEffect(() => {
+    if (!(isAdmin && !coachId)) return
+    const node = sentinelRef.current
+    const rootEl = node ? getScrollParent(node) : null
+
+    const handleScroll = () => {
+      if (releaseLoadingRef.current) return
+      if (releaseTotal !== null && releaseOffset >= releaseTotal) return
+
+      const nearBottom = rootEl
+        ? rootEl.scrollTop + rootEl.clientHeight >= rootEl.scrollHeight - 200
+        : window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 200
+
+      if (nearBottom) {
+        void fetchMoreReleases()
+      }
+    }
+
+    const target: any = rootEl || window
+    target.addEventListener('scroll', handleScroll)
+    target.addEventListener('resize', handleScroll)
+    handleScroll()
+    return () => {
+      target.removeEventListener('scroll', handleScroll)
+      target.removeEventListener('resize', handleScroll)
+    }
+  }, [isAdmin, coachId, fetchMoreReleases, releaseOffset, releaseTotal])
 
   if (loading) {
     return (
@@ -614,7 +862,7 @@ export default function ReleaseManagementPage() {
             <p>Manage release forms and track signing status. Only active competitors with complete profiles are listed.</p>
             <div className="text-sm">
               <div className="text-meta-light font-medium">How to send:</div>
-              <div>- Digital send: Click Send Release (Paper airplane) to email to the signer.</div>
+              <div>- Digital send: Click Send Release (Email) to email the signer.</div>
               <div>- Manual send: 1) Click Print Pre-filled to generate a pre-filled PDF, 2) click the pdf download button, 3) print the form, 4) have it signed on paper, 6) then upload it via “Upload Signed Document”.</div>
             </div>
           </div>
@@ -629,13 +877,13 @@ export default function ReleaseManagementPage() {
                   All competitors on your roster.
                 </p>
                 <p className="text-[11px] text-meta-muted mt-1">
-                  Release-eligible today: {releaseEligibleCount}.
+                  Release-eligible loaded: {releaseLoadedCount}{releaseEligibleTotal !== releaseLoadedCount ? ` of ${releaseEligibleTotal}` : ''}.
                 </p>
               </CardContent>
             </Card>
             <Card className="bg-meta-card border-meta-border md:col-span-2">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-meta-light">Release Status Berakdown</CardTitle>
+                <CardTitle className="text-sm font-medium text-meta-light">Release Status Legend</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-[11px] text-meta-muted mb-3 grid grid-cols-2 gap-y-1 gap-x-4">
@@ -663,7 +911,7 @@ export default function ReleaseManagementPage() {
                   </div>
                 </div>
                 <p className="text-[11px] text-meta-muted mt-3">
-                  Totals align with release queue ({releaseStatusCounts.notSent + releaseStatusCounts.sent + releaseStatusCounts.complete + releaseStatusCounts.manual} of {releaseEligibleCount} release-eligible competitors).
+                  Totals align with release queue ({releaseStatusCounts.notSent + releaseStatusCounts.sent + releaseStatusCounts.complete + releaseStatusCounts.manual} of {releaseEligibleTotal} release-eligible competitors).
                 </p>
               </CardContent>
             </Card>
@@ -687,19 +935,16 @@ export default function ReleaseManagementPage() {
                 <span>Show Only Uncompleted Releases</span>
               </label>
             </div>
-            <div className="flex items-center gap-3">
-              <Button onClick={fetchData} variant="outline" className="text-meta-light border-meta-border">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
-              </Button>
-              <div className="text-sm text-meta-muted whitespace-nowrap">
-                Showing {Math.min(visibleCount, releaseData.length)} of {releaseData.length}
-              </div>
+            <div className="text-sm text-meta-muted whitespace-nowrap">
+              Showing {displayedCount} of {totalCount}
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <DataTable columns={columns} data={releaseData.slice(0, visibleCount)} />
+          <DataTable
+            columns={columns}
+            data={releaseData.slice(0, isAdminAll ? releaseData.length : visibleCount)}
+          />
           <div ref={sentinelRef} />
         </CardContent>
       </Card>

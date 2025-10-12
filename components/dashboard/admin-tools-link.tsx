@@ -78,6 +78,11 @@ export default function AdminToolsLink() {
               Job Queue
             </Button>
           </Link>
+          <Link href="/dashboard/admin-tools/nice-framework">
+            <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
+              NICE Framework
+            </Button>
+          </Link>
           <Link href="/dashboard/admin-tools/assist-coach">
             <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
               Assist Coach

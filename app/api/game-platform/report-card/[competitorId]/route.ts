@@ -204,19 +204,26 @@ export async function GET(
 
     // Calculate NIST coverage
     const nistRoles = new Set<string>();
-    const nistRoleDetails: Array<{ code: string; name: string }> = [];
     for (const challenge of recentChallenges || []) {
       const roles = (challenge.raw_payload as any)?.nist_nice_work_roles || [];
-      roles.forEach((role: string) => {
-        if (!nistRoles.has(role)) {
-          nistRoles.add(role);
-          nistRoleDetails.push({
-            code: role,
-            name: NIST_ROLE_NAMES[role] || role
-          });
-        }
-      });
+      roles.forEach((role: string) => nistRoles.add(role));
     }
+
+    // Fetch work role details from database
+    const { data: workRolesData } = await supabase
+      .from('nice_framework_work_roles')
+      .select('work_role_id, title')
+      .in('work_role_id', Array.from(nistRoles));
+
+    const workRolesMap = new Map<string, string>();
+    workRolesData?.forEach(role => {
+      workRolesMap.set(role.work_role_id, role.title);
+    });
+
+    const nistRoleDetails: Array<{ code: string; name: string }> = Array.from(nistRoles).map(roleId => ({
+      code: roleId,
+      name: workRolesMap.get(roleId) || NIST_ROLE_NAMES[roleId] || roleId
+    }));
 
     // Build response
     return NextResponse.json({

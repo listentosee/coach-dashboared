@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import {
@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 interface Challenge {
   id: string;
@@ -34,16 +35,53 @@ interface Props {
   challenges: Challenge[];
 }
 
+interface WorkRole {
+  work_role_id: string;
+  title: string;
+  category: string;
+}
+
 type SortField = 'solvedAt' | 'points' | 'title' | 'category';
 type SortDirection = 'asc' | 'desc';
 
 export default function ChallengesTable({ challenges }: Props) {
+  const supabase = createClientComponentClient();
   const [sortField, setSortField] = useState<SortField>('solvedAt');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  const [workRolesMap, setWorkRolesMap] = useState<Record<string, WorkRole>>({});
+
+  // Get all unique NIST role IDs from challenges
+  const allNistRoleIds = useMemo(() => {
+    const ids = new Set<string>();
+    challenges.forEach(c => c.nistRoles.forEach(roleId => ids.add(roleId)));
+    return Array.from(ids);
+  }, [challenges]);
+
+  // Fetch work role details from reference table
+  useEffect(() => {
+    if (allNistRoleIds.length === 0) return;
+
+    async function fetchWorkRoles() {
+      const { data } = await supabase
+        .from('nice_framework_work_roles')
+        .select('work_role_id, title, category')
+        .in('work_role_id', allNistRoleIds);
+
+      if (data) {
+        const map: Record<string, WorkRole> = {};
+        data.forEach(role => {
+          map[role.work_role_id] = role;
+        });
+        setWorkRolesMap(map);
+      }
+    }
+
+    fetchWorkRoles();
+  }, [allNistRoleIds, supabase]);
 
   // Get unique categories and sources
   const categories = useMemo(() => {
@@ -237,14 +275,18 @@ export default function ChallengesTable({ challenges }: Props) {
                 <TableCell>
                   {challenge.nistRoles.length > 0 ? (
                     <div className="flex flex-wrap gap-1 max-w-xs">
-                      {challenge.nistRoles.slice(0, 2).map(role => (
-                        <span
-                          key={role}
-                          className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-700"
-                        >
-                          {role}
-                        </span>
-                      ))}
+                      {challenge.nistRoles.slice(0, 2).map(roleId => {
+                        const role = workRolesMap[roleId];
+                        return (
+                          <span
+                            key={roleId}
+                            className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-700"
+                            title={role?.work_role_id || roleId}
+                          >
+                            {role?.title || roleId}
+                          </span>
+                        );
+                      })}
                       {challenge.nistRoles.length > 2 && (
                         <span className="text-xs text-muted-foreground">
                           +{challenge.nistRoles.length - 2}

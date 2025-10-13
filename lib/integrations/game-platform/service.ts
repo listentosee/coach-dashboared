@@ -1243,7 +1243,7 @@ export async function syncCompetitorGameStats({
   }
 
   const syncStatePayload = {
-    syned_user_id: syncedUserId,
+    synced_user_id: syncedUserId,
     last_odl_synced_at: new Date().toISOString(),
     last_flash_ctf_synced_at: latestFlashStart,
     last_remote_accessed_at: lastActivity,

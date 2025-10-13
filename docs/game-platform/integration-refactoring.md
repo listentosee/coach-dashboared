@@ -145,8 +145,72 @@ ALTER TABLE public.game_platform_profiles
   ALTER COLUMN metactf_role TYPE public.metactf_role
   USING metactf_role::text::public.metactf_role;
 
-CREATE UNIQUE INDEX game_platform_profiles_coach_idx ON public.game_platform_profiles(coach_id) WHERE coach_id IS NOT NULL;
-CREATE UNIQUE INDEX game_platform_profiles_competitor_idx ON public.game_platform_profiles(competitor_id) WHERE competitor_id IS NOT NULL;
+ALTER TABLE public.game_platform_profiles
+  ADD CONSTRAINT game_platform_profiles_coach_id_key UNIQUE (coach_id);
+
+ALTER TABLE public.game_platform_profiles
+  ADD CONSTRAINT game_platform_profiles_competitor_id_key UNIQUE (competitor_id);
+
+-- RLS: allow coaches (or admins) to upsert their own mappings
+CREATE POLICY gp_profiles_coach_insert ON public.game_platform_profiles
+  FOR INSERT
+  WITH CHECK (
+    public.is_admin_user()
+    OR (coach_id IS NOT NULL AND coach_id = auth.uid())
+    OR (
+      competitor_id IS NOT NULL
+      AND competitor_id IN (
+        SELECT id FROM public.competitors WHERE coach_id = auth.uid()
+      )
+    )
+  );
+
+CREATE POLICY gp_profiles_coach_update ON public.game_platform_profiles
+  FOR UPDATE
+  USING (
+    public.is_admin_user()
+    OR (coach_id IS NOT NULL AND coach_id = auth.uid())
+    OR (
+      competitor_id IS NOT NULL
+      AND competitor_id IN (
+        SELECT id FROM public.competitors WHERE coach_id = auth.uid()
+      )
+    )
+  )
+  WITH CHECK (
+    public.is_admin_user()
+    OR (coach_id IS NOT NULL AND coach_id = auth.uid())
+    OR (
+      competitor_id IS NOT NULL
+      AND competitor_id IN (
+        SELECT id FROM public.competitors WHERE coach_id = auth.uid()
+      )
+    )
+  );
+
+CREATE POLICY gp_teams_coach_insert ON public.game_platform_teams
+  FOR INSERT
+  WITH CHECK (
+    public.is_admin_user()
+    OR team_id IN (
+      SELECT id FROM public.teams WHERE coach_id = auth.uid()
+    )
+  );
+
+CREATE POLICY gp_teams_coach_update ON public.game_platform_teams
+  FOR UPDATE
+  USING (
+    public.is_admin_user()
+    OR team_id IN (
+      SELECT id FROM public.teams WHERE coach_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    public.is_admin_user()
+    OR team_id IN (
+      SELECT id FROM public.teams WHERE coach_id = auth.uid()
+    )
+  );
 
 -- 3. Create game_platform_teams table
 CREATE TABLE public.game_platform_teams (

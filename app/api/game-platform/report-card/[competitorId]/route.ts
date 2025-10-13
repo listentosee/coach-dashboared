@@ -3,6 +3,9 @@ import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { getGamePlatformProfile } from '@/lib/integrations/game-platform/repository';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // NIST NICE Work Role code mappings
 const NIST_ROLE_NAMES: Record<string, string> = {
   'SP-SYS-001': 'Information Systems Security Manager',
@@ -150,15 +153,18 @@ export async function GET(
       domains = domainData || [];
     }
 
-    // Fetch recent challenges
-    const { data: recentChallenges } = syncedUserId
+    // Fetch ALL challenges for NIST role calculation
+    const { data: allChallenges } = syncedUserId
       ? await supabase
           .from('game_platform_challenge_solves')
           .select('*')
           .eq('synced_user_id', syncedUserId)
-          .order('solved_at', { ascending: false })
-          .limit(50)
       : { data: null };
+
+    // Fetch recent challenges for display (limited to 50)
+    const recentChallenges = allChallenges?.slice(0, 50).sort((a, b) =>
+      new Date(b.solved_at).getTime() - new Date(a.solved_at).getTime()
+    ) || [];
 
     // Fetch Flash CTF events
     const { data: flashCtfEvents } = syncedUserId
@@ -202,28 +208,39 @@ export async function GET(
       totalChallenges,
     });
 
-    // Calculate NIST coverage
-    const nistRoles = new Set<string>();
-    for (const challenge of recentChallenges || []) {
+    // Calculate NIST coverage with points per role from ALL challenges
+    const nistRolesMap = new Map<string, number>(); // role_id -> total points
+    for (const challenge of allChallenges || []) {
       const roles = (challenge.raw_payload as any)?.nist_nice_work_roles || [];
-      roles.forEach((role: string) => nistRoles.add(role));
+      const points = challenge.challenge_points || 0;
+      roles.forEach((role: string) => {
+        nistRolesMap.set(role, (nistRolesMap.get(role) || 0) + points);
+      });
     }
 
     // Fetch work role details from database
     const { data: workRolesData } = await supabase
       .from('nice_framework_work_roles')
       .select('work_role_id, title')
-      .in('work_role_id', Array.from(nistRoles));
+      .in('work_role_id', Array.from(nistRolesMap.keys()));
 
     const workRolesMap = new Map<string, string>();
     workRolesData?.forEach(role => {
       workRolesMap.set(role.work_role_id, role.title);
     });
 
-    const nistRoleDetails: Array<{ code: string; name: string }> = Array.from(nistRoles).map(roleId => ({
-      code: roleId,
-      name: workRolesMap.get(roleId) || NIST_ROLE_NAMES[roleId] || roleId
-    }));
+    // Sort by points and take top 7
+    const allRoles = Array.from(nistRolesMap.entries())
+      .map(([roleId, points]) => ({
+        code: roleId,
+        name: workRolesMap.get(roleId) || NIST_ROLE_NAMES[roleId] || roleId,
+        points
+      }))
+      .sort((a, b) => b.points - a.points);
+
+    console.log(`[NIST] Total roles found: ${allRoles.length}, taking top 7`);
+    const nistRoleDetails = allRoles.slice(0, 7);
+    console.log(`[NIST] Returning ${nistRoleDetails.length} roles:`, nistRoleDetails.map(r => r.name));
 
     // Build response
     return NextResponse.json({
@@ -271,8 +288,8 @@ export async function GET(
       insights,
       nistCoverage: {
         rolesCovered: nistRoleDetails,
-        totalRoles: nistRoles.size,
-        coveragePercent: Math.round((nistRoles.size / 20) * 100), // Assuming ~20 major roles
+        totalRoles: nistRoleDetails.length,
+        coveragePercent: Math.round((nistRoleDetails.length / 7) * 100), // Out of top 7 displayed
       },
     });
 

@@ -624,8 +624,7 @@ export default function DashboardPage() {
       return;
     }
 
-    const gpStatus = competitor.game_platform_status ?? (competitor.game_platform_synced_at ? 'approved' : null);
-    const hasRegistered = gpStatus === 'approved' || gpStatus === 'user_created' || Boolean(competitor.game_platform_id);
+    const hasRegistered = Boolean(competitor.game_platform_id);
 
     if (hasRegistered) {
       alert('Competitor is already registered on the Game Platform.');

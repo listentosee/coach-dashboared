@@ -66,8 +66,10 @@ export async function GET(request: NextRequest) {
       total: number
       notSent: number
       sent: number
-      complete: number
-      manual: number
+      signedDigitally: number
+      signedManually: number
+      signedLegacy: number
+      signedTotal: number
     } | null = null
 
     if (offset === 0) {
@@ -114,8 +116,10 @@ export async function GET(request: NextRequest) {
         total: allCompetitors?.length ?? 0,
         notSent: 0,
         sent: 0,
-        complete: 0,
-        manual: 0,
+        signedDigitally: 0,
+        signedManually: 0,
+        signedLegacy: 0,
+        signedTotal: 0,
       }
 
       for (const competitor of allCompetitors || []) {
@@ -125,17 +129,25 @@ export async function GET(request: NextRequest) {
           : !!competitor.media_release_date
 
         if (agreement?.status === 'completed') {
-          totals.complete += 1
+          if (agreement.completion_source === 'manual') {
+            totals.signedManually += 1
+            totals.signedTotal += 1
+          } else {
+            totals.signedDigitally += 1
+            totals.signedTotal += 1
+          }
           continue
         }
 
         if (agreement?.status === 'completed_manual') {
-          totals.manual += 1
+          totals.signedManually += 1
+          totals.signedTotal += 1
           continue
         }
 
         if (hasLegacy) {
-          totals.manual += 1
+          totals.signedLegacy += 1
+          totals.signedTotal += 1
           continue
         }
 

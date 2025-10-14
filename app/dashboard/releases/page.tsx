@@ -85,8 +85,10 @@ export default function ReleaseManagementPage() {
     total: number
     notSent: number
     sent: number
-    complete: number
-    manual: number
+    signedDigitally: number
+    signedManually: number
+    signedLegacy: number
+    signedTotal: number
   } | null>(null)
   const releaseInitLoadingRef = useRef(false)
   const releaseLoadingRef = useRef(false)
@@ -97,8 +99,10 @@ export default function ReleaseManagementPage() {
         total: competitorsList.length,
         notSent: 0,
         sent: 0,
-        complete: 0,
-        manual: 0,
+        signedDigitally: 0,
+        signedManually: 0,
+        signedLegacy: 0,
+        signedTotal: 0,
       }
 
       const agreementMap = new Map<string, Agreement>()
@@ -115,9 +119,19 @@ export default function ReleaseManagementPage() {
           : !!competitor.media_release_date
 
         if (agreement?.status === 'completed') {
-          summary.complete += 1
-        } else if (agreement?.status === 'completed_manual' || hasLegacy) {
-          summary.manual += 1
+          if (agreement.completion_source === 'manual') {
+            summary.signedManually += 1
+            summary.signedTotal += 1
+          } else {
+            summary.signedDigitally += 1
+            summary.signedTotal += 1
+          }
+        } else if (agreement?.status === 'completed_manual') {
+          summary.signedManually += 1
+          summary.signedTotal += 1
+        } else if (hasLegacy) {
+          summary.signedLegacy += 1
+          summary.signedTotal += 1
         } else if (agreement) {
           summary.sent += 1
         } else {
@@ -153,7 +167,15 @@ export default function ReleaseManagementPage() {
 
         let scopedCompetitors: Competitor[] = []
         let scopedAgreements: Agreement[] = []
-        let summary: { total: number; notSent: number; sent: number; complete: number; manual: number } | null = null
+        let summary: {
+          total: number
+          notSent: number
+          sent: number
+          signedDigitally: number
+          signedManually: number
+          signedLegacy: number
+          signedTotal: number
+        } | null = null
 
         if (adminMode && !coachId) {
           if (reset) {
@@ -196,7 +218,7 @@ export default function ReleaseManagementPage() {
             console.error('Initial release load failed', error)
             scopedCompetitors = []
             scopedAgreements = []
-            summary = { total: 0, notSent: 0, sent: 0, complete: 0, manual: 0 }
+            summary = { total: 0, notSent: 0, sent: 0, signedDigitally: 0, signedManually: 0, signedLegacy: 0, signedTotal: 0 }
             setCompetitors(scopedCompetitors)
             setAgreements(scopedAgreements)
             setReleaseOffset(0)
@@ -421,11 +443,11 @@ export default function ReleaseManagementPage() {
     switch (status) {
       case 'completed':
         if (completionSource === 'manual') {
-          return <Badge className="bg-orange-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Completed (Manual)</Badge>;
+          return <Badge className="bg-orange-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Signed Manually</Badge>;
         }
-        return <Badge className="bg-green-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Completed</Badge>;
+        return <Badge className="bg-emerald-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Signed Digitally</Badge>;
       case 'completed_manual':
-        return <Badge className="bg-orange-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Completed (Manual)</Badge>;
+        return <Badge className="bg-orange-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Signed Manually</Badge>;
       case 'sent':
         return <Badge className="bg-blue-600 text-white"><Clock className="h-3 w-3 mr-1" />Sent</Badge>;
       case 'print_ready':
@@ -491,34 +513,54 @@ export default function ReleaseManagementPage() {
 
   const releaseStatusCounts = useMemo(() => {
     if (releaseStatusSummary) {
-      const { notSent, sent, complete, manual } = releaseStatusSummary
-      return { notSent, sent, complete, manual }
+      const {
+        notSent,
+        sent,
+        signedDigitally,
+        signedManually,
+        signedLegacy,
+        signedTotal,
+      } = releaseStatusSummary
+
+      return { notSent, sent, signedDigitally, signedManually, signedLegacy, signedTotal }
     }
 
     const counts = {
       notSent: 0,
       sent: 0,
-      complete: 0,
-      manual: 0,
+      signedDigitally: 0,
+      signedManually: 0,
+      signedLegacy: 0,
+      signedTotal: 0,
     }
 
     for (const item of releaseUniverse) {
-      if (item.agreement && item.agreement.status === 'completed') {
-        counts.complete += 1
+      const agreement = item.agreement
+
+      if (agreement && agreement.status === 'completed') {
+        if (agreement.completion_source === 'manual') {
+          counts.signedManually += 1
+          counts.signedTotal += 1
+        } else {
+          counts.signedDigitally += 1
+          counts.signedTotal += 1
+        }
         continue
       }
 
-      if (item.agreement && item.agreement.status === 'completed_manual') {
-        counts.manual += 1
+      if (agreement && agreement.status === 'completed_manual') {
+        counts.signedManually += 1
+        counts.signedTotal += 1
         continue
       }
 
       if (item.hasLegacySigned) {
-        counts.manual += 1
+        counts.signedLegacy += 1
+        counts.signedTotal += 1
         continue
       }
 
-      if (item.agreement) {
+      if (agreement) {
         counts.sent += 1
         continue
       }
@@ -617,7 +659,7 @@ export default function ReleaseManagementPage() {
         if (agreement) {
           return getStatusBadge(agreement.status, agreement.template_kind, agreement.completion_source);
         } else if (hasLegacySigned) {
-          return <Badge className="bg-green-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Legacy Signed</Badge>;
+          return <Badge className="bg-teal-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Signed Legacy</Badge>;
         }
 
         return <Badge className="bg-rose-600 text-white"><AlertCircle className="h-3 w-3 mr-1" />Not Sent</Badge>;
@@ -889,10 +931,14 @@ export default function ReleaseManagementPage() {
                 <div className="text-[11px] text-meta-muted mb-3 grid grid-cols-2 gap-y-1 gap-x-4">
                   <div><span className="text-meta-light">Not Sent:</span> No release has been issued yet.</div>
                   <div><span className="text-meta-light">Sent:</span> Release dispatched and awaiting completion.</div>
-                  <div><span className="text-meta-light">Complete:</span> Digitally signed.</div>
-                  <div><span className="text-meta-light">Manual Signed:</span> Paper/legacy release on file.</div>
+                  <div><span className="text-meta-light">Signed:</span> Completed release (digital, manual upload, or legacy paperwork).</div>
+                  <div className="col-span-2 text-meta-muted">
+                    <span className="text-meta-light">Signed breakdown:</span>
+                    {' '}
+                    Signed Digitally {releaseStatusCounts.signedDigitally} • Signed Manually {releaseStatusCounts.signedManually} • Signed Legacy {releaseStatusCounts.signedLegacy}
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                   <div className="bg-meta-dark rounded p-3">
                     <div className="text-xs text-meta-muted">Not Sent</div>
                     <div className="text-xl font-bold text-rose-300">{releaseStatusCounts.notSent}</div>
@@ -902,16 +948,12 @@ export default function ReleaseManagementPage() {
                     <div className="text-xl font-bold text-blue-300">{releaseStatusCounts.sent}</div>
                   </div>
                   <div className="bg-meta-dark rounded p-3">
-                    <div className="text-xs text-meta-muted">Complete</div>
-                    <div className="text-xl font-bold text-emerald-300">{releaseStatusCounts.complete}</div>
-                  </div>
-                  <div className="bg-meta-dark rounded p-3">
-                    <div className="text-xs text-meta-muted">Manual Signed</div>
-                    <div className="text-xl font-bold text-amber-300">{releaseStatusCounts.manual}</div>
+                    <div className="text-xs text-meta-muted">Signed</div>
+                    <div className="text-xl font-bold text-emerald-300">{releaseStatusCounts.signedTotal}</div>
                   </div>
                 </div>
                 <p className="text-[11px] text-meta-muted mt-3">
-                  Totals align with release queue ({releaseStatusCounts.notSent + releaseStatusCounts.sent + releaseStatusCounts.complete + releaseStatusCounts.manual} of {releaseEligibleTotal} release-eligible competitors).
+                  Totals align with release queue ({releaseStatusCounts.notSent + releaseStatusCounts.sent + releaseStatusCounts.signedTotal} of {releaseEligibleTotal} release-eligible competitors).
                 </p>
               </CardContent>
             </Card>

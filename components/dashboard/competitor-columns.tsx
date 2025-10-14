@@ -192,7 +192,7 @@ export const createCompetitorColumns = (
     },
   },
   {
-    accessorKey: "game_platform_synced_at",
+    accessorKey: "game_platform_id",
     header: ({ column }) => (
       <Button
         variant="ghost"
@@ -211,7 +211,7 @@ export const createCompetitorColumns = (
     ),
     cell: ({ row }) => {
       const competitor = row.original;
-      const isRegistered = Boolean(competitor.game_platform_synced_at);
+      const isRegistered = Boolean(competitor.game_platform_id);
       return (
         <div className="text-center">
           <div className={`px-2 py-1 text-xs font-medium rounded ${isRegistered ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>

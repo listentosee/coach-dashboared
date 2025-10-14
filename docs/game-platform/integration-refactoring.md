@@ -197,6 +197,15 @@ CREATE POLICY gp_teams_coach_insert ON public.game_platform_teams
     )
   );
 
+CREATE POLICY gp_teams_coach_read ON public.game_platform_teams
+  FOR SELECT
+  USING (
+    public.is_admin_user()
+    OR team_id IN (
+      SELECT id FROM public.teams WHERE coach_id = auth.uid()
+    )
+  );
+
 CREATE POLICY gp_teams_coach_update ON public.game_platform_teams
   FOR UPDATE
   USING (

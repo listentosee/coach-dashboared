@@ -437,7 +437,7 @@ export default function ReleaseManagementPage() {
       case 'expired':
         return <Badge className="bg-gray-600 text-white"><AlertCircle className="h-3 w-3 mr-1" />Expired</Badge>;
       default:
-        return <Badge variant="outline">No Release</Badge>;
+        return <Badge className="bg-rose-600 text-white"><AlertCircle className="h-3 w-3 mr-1" />Not Sent</Badge>;
     }
   };
 
@@ -618,9 +618,9 @@ export default function ReleaseManagementPage() {
           return getStatusBadge(agreement.status, agreement.template_kind, agreement.completion_source);
         } else if (hasLegacySigned) {
           return <Badge className="bg-green-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Legacy Signed</Badge>;
-        } else {
-          return <Badge variant="outline">No Release</Badge>;
         }
+
+        return <Badge className="bg-rose-600 text-white"><AlertCircle className="h-3 w-3 mr-1" />Not Sent</Badge>;
       },
     },
     {

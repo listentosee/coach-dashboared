@@ -98,7 +98,7 @@ const CreateTeamResponseSchema = z.object({
 });
 
 const TeamAssignmentResponseSchema = z.object({
-  syned_team_id: z.string(),
+  syned_team_id: z.string().optional(),
   syned_user_id: z.string(),
 });
 

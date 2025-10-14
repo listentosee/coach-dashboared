@@ -51,39 +51,42 @@ export async function DELETE(
       .select('id, position')
       .eq('team_id', teamId)
       .eq('competitor_id', competitor_id)
-      .single();
+      .maybeSingle();
 
-    if (memberError || !teamMember) {
-      return NextResponse.json({ error: 'Team member not found' }, { status: 404 });
+    if (memberError) {
+      console.error('Failed to lookup team member before deletion', memberError);
+      return NextResponse.json({ error: 'Failed to load team member' }, { status: 400 });
     }
 
-    // Remove the member from the team
-    const { error: deleteError } = await supabase
-      .from('team_members')
-      .delete()
-      .eq('team_id', teamId)
-      .eq('competitor_id', competitor_id);
+    if (teamMember) {
+      // Remove the member from the team
+      const { error: deleteError } = await supabase
+        .from('team_members')
+        .delete()
+        .eq('team_id', teamId)
+        .eq('competitor_id', competitor_id);
 
-    if (deleteError) {
-      console.error('Database error:', deleteError);
-      return NextResponse.json({ error: 'Failed to remove member: ' + deleteError.message }, { status: 400 });
+      if (deleteError) {
+        console.error('Database error:', deleteError);
+        return NextResponse.json({ error: 'Failed to remove member: ' + deleteError.message }, { status: 400 });
+      }
+
+      // Log the activity only when we actually removed a member
+      await supabase
+        .from('activity_logs')
+        .insert({
+          user_id: user.id,
+          action: 'team_member_removed',
+          entity_type: 'team_member',
+          entity_id: teamMember.id,
+          metadata: { 
+            team_name: team.name,
+            competitor_id,
+            position: teamMember.position,
+            coach_id: team.coach_id
+          }
+        });
     }
-
-    // Log the activity
-    await supabase
-      .from('activity_logs')
-      .insert({
-        user_id: user.id,
-        action: 'team_member_removed',
-        entity_type: 'team_member',
-        entity_id: teamMember.id,
-        metadata: { 
-          team_name: team.name,
-          competitor_id,
-          position: teamMember.position,
-          coach_id: team.coach_id
-        }
-      });
 
     let gamePlatformSync: any = null;
     try {
@@ -115,6 +118,7 @@ export async function DELETE(
 
     return NextResponse.json({
       message: 'Member removed successfully',
+      memberFound: Boolean(teamMember),
       gamePlatformSync,
     });
 

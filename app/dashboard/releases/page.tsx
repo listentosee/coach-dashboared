@@ -439,25 +439,51 @@ export default function ReleaseManagementPage() {
     }
   };
 
-  const getStatusBadge = (status: string, templateKind?: string, completionSource?: string) => {
-    switch (status) {
-      case 'completed':
-        if (completionSource === 'manual') {
-          return <Badge className="bg-orange-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Signed Manually</Badge>;
-        }
-        return <Badge className="bg-emerald-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Signed Digitally</Badge>;
-      case 'completed_manual':
-        return <Badge className="bg-orange-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Signed Manually</Badge>;
-      case 'sent':
-        return <Badge className="bg-blue-600 text-white"><Clock className="h-3 w-3 mr-1" />Sent</Badge>;
-      case 'print_ready':
-        return <Badge className="bg-purple-600 text-white"><FileText className="h-3 w-3 mr-1" />Print Ready</Badge>;
-      case 'viewed':
-        return <Badge className="bg-yellow-600 text-white"><FileText className="h-3 w-3 mr-1" />Viewed</Badge>;
-      case 'declined':
-        return <Badge className="bg-red-600 text-white"><XCircle className="h-3 w-3 mr-1" />Declined</Badge>;
-      case 'expired':
-        return <Badge className="bg-gray-600 text-white"><AlertCircle className="h-3 w-3 mr-1" />Expired</Badge>;
+  const getReleaseStatusLabel = (agreement?: Agreement, hasLegacySigned?: boolean): string => {
+    if (agreement) {
+      switch (agreement.status) {
+        case 'completed':
+          return agreement.completion_source === 'manual' ? 'Signed Manually' : 'Signed Digitally';
+        case 'completed_manual':
+          return 'Signed Manually';
+        case 'sent':
+          return 'Sent';
+        case 'print_ready':
+          return 'Print Ready';
+        case 'viewed':
+          return 'Viewed';
+        case 'declined':
+          return 'Declined';
+        case 'expired':
+          return 'Expired';
+        default:
+          return 'Not Sent';
+      }
+    }
+
+    if (hasLegacySigned) return 'Signed Legacy';
+    return 'Not Sent';
+  };
+
+  const renderStatusBadge = (agreement?: Agreement, hasLegacySigned?: boolean) => {
+    const label = getReleaseStatusLabel(agreement, hasLegacySigned);
+    switch (label) {
+      case 'Signed Digitally':
+        return <Badge className="bg-emerald-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />{label}</Badge>;
+      case 'Signed Manually':
+        return <Badge className="bg-orange-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />{label}</Badge>;
+      case 'Signed Legacy':
+        return <Badge className="bg-teal-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />{label}</Badge>;
+      case 'Sent':
+        return <Badge className="bg-blue-600 text-white"><Clock className="h-3 w-3 mr-1" />{label}</Badge>;
+      case 'Print Ready':
+        return <Badge className="bg-purple-600 text-white"><FileText className="h-3 w-3 mr-1" />{label}</Badge>;
+      case 'Viewed':
+        return <Badge className="bg-yellow-600 text-white"><FileText className="h-3 w-3 mr-1" />{label}</Badge>;
+      case 'Declined':
+        return <Badge className="bg-red-600 text-white"><XCircle className="h-3 w-3 mr-1" />{label}</Badge>;
+      case 'Expired':
+        return <Badge className="bg-gray-600 text-white"><AlertCircle className="h-3 w-3 mr-1" />{label}</Badge>;
       default:
         return <Badge className="bg-rose-600 text-white"><AlertCircle className="h-3 w-3 mr-1" />Not Sent</Badge>;
     }
@@ -652,17 +678,41 @@ export default function ReleaseManagementPage() {
     },
     {
       id: "status",
-      header: "Release Status",
+      accessorFn: (row) => ({
+        priority: getStatusPriority(row.agreement?.status ?? '', row.hasLegacySigned),
+        label: getReleaseStatusLabel(row.agreement, row.hasLegacySigned),
+      }),
+      sortingFn: (a, b) => {
+        const aValue = a.getValue<{ priority: number; label: string }>('status')
+        const bValue = b.getValue<{ priority: number; label: string }>('status')
+        const aPriority = aValue?.priority ?? getStatusPriority(a.original.agreement?.status ?? '', a.original.hasLegacySigned)
+        const bPriority = bValue?.priority ?? getStatusPriority(b.original.agreement?.status ?? '', b.original.hasLegacySigned)
+        if (aPriority !== bPriority) {
+          return aPriority - bPriority
+        }
+        const aLabel = aValue?.label ?? getReleaseStatusLabel(a.original.agreement, a.original.hasLegacySigned)
+        const bLabel = bValue?.label ?? getReleaseStatusLabel(b.original.agreement, b.original.hasLegacySigned)
+        return aLabel.localeCompare(bLabel)
+      },
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="h-auto p-0 font-medium text-left hover:bg-transparent"
+        >
+          Release Status
+          {column.getIsSorted() === "asc" ? (
+            <ChevronUp className="ml-2 h-4 w-4" />
+          ) : column.getIsSorted() === "desc" ? (
+            <ChevronDown className="ml-2 h-4 w-4" />
+          ) : (
+            <ChevronsUpDown className="ml-2 h-4 w-4" />
+          )}
+        </Button>
+      ),
       cell: ({ row }) => {
         const { agreement, hasLegacySigned } = row.original;
-        
-        if (agreement) {
-          return getStatusBadge(agreement.status, agreement.template_kind, agreement.completion_source);
-        } else if (hasLegacySigned) {
-          return <Badge className="bg-teal-600 text-white"><CheckCircle className="h-3 w-3 mr-1" />Signed Legacy</Badge>;
-        }
-
-        return <Badge className="bg-rose-600 text-white"><AlertCircle className="h-3 w-3 mr-1" />Not Sent</Badge>;
+        return renderStatusBadge(agreement, hasLegacySigned);
       },
     },
     {

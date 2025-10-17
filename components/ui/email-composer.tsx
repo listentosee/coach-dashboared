@@ -49,6 +49,8 @@ ${profileLink}
 
 Complete your profile to participate in this year's Mayors Cup program.
 
+This secure link expires in 7 days. If it expires before you finish, please ask your coach to send a new one.
+
 Thank you,`
   }),
   

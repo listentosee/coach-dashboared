@@ -18,7 +18,7 @@ CREATE OR REPLACE FUNCTION set_profile_update_token_with_expiry()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.profile_update_token = generate_profile_update_token();
-    NEW.profile_update_token_expires = NOW() + INTERVAL '30 days';
+    NEW.profile_update_token_expires = NOW() + INTERVAL '7 days';
     RETURN NEW;
 END;
 $$ language 'plpgsql';
@@ -31,5 +31,5 @@ CREATE TRIGGER set_profile_update_token BEFORE INSERT ON competitors
 UPDATE competitors 
 SET 
     profile_update_token = generate_profile_update_token(),
-    profile_update_token_expires = NOW() + INTERVAL '30 days'
+    profile_update_token_expires = NOW() + INTERVAL '7 days'
 WHERE profile_update_token IS NULL;

@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
 
     const coachId = user.id
 
-    let inserted = 0, updated = 0, skipped = 0, errors = 0
+    let inserted = 0, updated = 0, skipped = 0, errors = 0, duplicates = 0
     const errorDetails: Array<{ row: number; name: string; error: string }> = []
 
     // Enumerations (strict)
@@ -128,13 +128,15 @@ export async function POST(req: NextRequest) {
           });
         } catch (error) {
           if (error instanceof EmailConflictError) {
-            throw new Error(`Email already in use: ${error.details.conflicts.map(c => c.email).join(', ')}`);
+            duplicates++
+            skipped++
+            continue
           }
           throw error;
         }
 
         if (existingId) {
-          if (onConflict === 'skip') { skipped++; continue }
+          if (onConflict === 'skip') { skipped++; duplicates++; continue }
           const { error: updErr } = await supabase
             .from('competitors')
             .update({
@@ -197,6 +199,7 @@ export async function POST(req: NextRequest) {
       inserted,
       updated,
       skipped,
+      duplicates,
       errors,
       total: inputRows.length,
       errorDetails: errorDetails.slice(0, 10) // Limit to first 10 errors to avoid large responses

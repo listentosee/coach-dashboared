@@ -145,7 +145,10 @@ export default function BulkImportPage() {
   const [edited, setEdited] = useState<Row[]>([])
   const [errors, setErrors] = useState<Record<number, string[]>>({})
   const [submitting, setSubmitting] = useState(false)
-  const [progress, setProgress] = useState<{ total: number; done: number; failed: number }>({ total: 0, done: 0, failed: 0 })
+  const [progress, setProgress] = useState<{ total: number; created: number; updated: number; duplicates: number; failed: number }>({ total: 0, created: 0, updated: 0, duplicates: 0, failed: 0 })
+  const [duplicateConflicts, setDuplicateConflicts] = useState<Record<number, { email_school?: string[]; email_personal?: string[] }>>({})
+  const [duplicateCheckLoading, setDuplicateCheckLoading] = useState(false)
+  const [duplicateCheckError, setDuplicateCheckError] = useState<string | null>(null)
 
   const disableAdminAll = !ctxLoading && coachId === null // Admin All-coaches → read-only
 
@@ -197,6 +200,14 @@ export default function BulkImportPage() {
   const currentRows: Row[] = useMemo(() => {
     return mapped.map((m, i) => ({ ...m, ...(edited[i] || {}) }))
   }, [mapped, edited])
+
+  const duplicateCheckKey = useMemo(() => {
+    return currentRows
+      .map(row => `${(row.email_school || '').trim().toLowerCase()}|${(row.email_personal || '').trim().toLowerCase()}`)
+      .join('||')
+  }, [currentRows])
+
+  const duplicateRowCount = useMemo(() => Object.keys(duplicateConflicts).length, [duplicateConflicts])
 
   // Determine if current user is admin. Bulk Import is coach-only per policy.
   useEffect(() => {
@@ -279,6 +290,119 @@ export default function BulkImportPage() {
 
   const errorCount = Object.keys(errors).length
 
+  useEffect(() => {
+    if (step !== 3) {
+      setDuplicateConflicts({})
+      setDuplicateCheckLoading(false)
+      setDuplicateCheckError(null)
+      return
+    }
+
+    if (!currentRows.length) {
+      setDuplicateConflicts({})
+      setDuplicateCheckLoading(false)
+      setDuplicateCheckError(null)
+      return
+    }
+
+    let cancelled = false
+
+    const runCheck = async () => {
+      setDuplicateCheckLoading(true)
+      setDuplicateCheckError(null)
+      try {
+        const res = await fetch('/api/competitors/bulk-import/check-duplicates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rows: currentRows.map((row, index) => ({
+              rowIndex: index,
+              email_school: row.email_school,
+              email_personal: row.email_personal,
+            })),
+          }),
+        })
+
+        if (!res.ok) {
+          let message = 'Failed to check duplicates'
+          try {
+            const payload = await res.json()
+            if (payload?.error) message = payload.error
+          } catch {
+            // ignore
+          }
+          throw new Error(message)
+        }
+
+        const data = await res.json()
+        if (cancelled) return
+
+        const friendlySource = (source: string) => {
+          switch (source) {
+            case 'profile':
+              return 'Coach/Staff Profile Email'
+            case 'competitor_school':
+              return 'Competitor School Email'
+            case 'competitor_personal':
+              return 'Competitor Personal Email'
+            default:
+              return source
+          }
+        }
+
+        const conflictMap: Record<number, { email_school?: string[]; email_personal?: string[] }> = {}
+
+        const conflicts: Array<{
+          rowIndex: number
+          column: 'email_school' | 'email_personal'
+          email: string
+          conflictTypes?: string[]
+          systemMatches?: Array<{ source: string }>
+        }> = Array.isArray(data?.conflicts) ? data.conflicts : []
+
+        for (const conflict of conflicts) {
+          if (conflict.rowIndex === undefined || conflict.column === undefined) continue
+          const entry = conflictMap[conflict.rowIndex] || {}
+          const existingMessages = Array.isArray(entry[conflict.column]) ? entry[conflict.column]! : []
+
+          if (conflict.conflictTypes?.includes('in_system')) {
+            const sources = conflict.systemMatches?.map(match => friendlySource(match.source)) ?? []
+            const message = sources.length
+              ? `Matches existing records (${sources.join(', ')})`
+              : 'Matches existing records in system'
+            if (!existingMessages.includes(message)) existingMessages.push(message)
+          }
+
+          if (conflict.conflictTypes?.includes('in_file')) {
+            const message = 'Duplicate email within uploaded file'
+            if (!existingMessages.includes(message)) existingMessages.push(message)
+          }
+
+          if (existingMessages.length) {
+            conflictMap[conflict.rowIndex] = {
+              ...entry,
+              [conflict.column]: existingMessages,
+            }
+          }
+        }
+
+        setDuplicateConflicts(conflictMap)
+      } catch (error: any) {
+        if (cancelled) return
+        setDuplicateConflicts({})
+        setDuplicateCheckError(error?.message || 'Failed to check duplicates')
+      } finally {
+        if (!cancelled) setDuplicateCheckLoading(false)
+      }
+    }
+
+    runCheck()
+
+    return () => {
+      cancelled = true
+    }
+  }, [step, duplicateCheckKey, currentRows])
+
   const handleFile = async (file: File) => {
     setFileName(file.name)
     const isCSV = /\.(csv)$/i.test(file.name)
@@ -351,7 +475,7 @@ export default function BulkImportPage() {
     setSubmitting(true)
     try {
       const total = currentRows.length
-      setProgress({ total, done: 0, failed: 0 })
+      setProgress({ total, created: 0, updated: 0, duplicates: 0, failed: 0 })
       const chunkSize = 100
       for (let start = 0; start < total; start += chunkSize) {
         const chunk = currentRows.slice(start, start + chunkSize).map(serializeRowForApi)
@@ -362,9 +486,18 @@ export default function BulkImportPage() {
         })
         if (res.ok) {
           const j = await res.json()
-          setProgress(p => ({ total: p.total, done: p.done + (j.inserted || 0) + (j.updated || 0) + (j.skipped || 0), failed: p.failed + (j.errors || 0) }))
+          setProgress(p => ({
+            total: p.total,
+            created: p.created + (j.inserted || 0),
+            updated: p.updated + (j.updated || 0),
+            duplicates: p.duplicates + (j.duplicates ?? j.skipped ?? 0),
+            failed: p.failed + (j.errors || 0),
+          }))
         } else {
-          setProgress(p => ({ ...p, failed: p.failed + chunk.length }))
+          setProgress(p => ({
+            ...p,
+            failed: p.failed + chunk.length,
+          }))
         }
       }
       setStep(4)
@@ -536,6 +669,17 @@ export default function BulkImportPage() {
           {step === 3 && (
             <div className="space-y-4">
               <div className="text-sm text-meta-muted">Rows: {currentRows.length}. Errors: {errorCount}. Click cells to edit.</div>
+              {duplicateCheckLoading && (
+                <div className="text-sm text-meta-muted">Checking for duplicate emails…</div>
+              )}
+              {duplicateCheckError && (
+                <div className="text-sm text-red-400">{duplicateCheckError}</div>
+              )}
+              {!duplicateCheckLoading && !duplicateCheckError && duplicateRowCount > 0 && (
+                <div className="text-sm text-amber-300">
+                  Duplicate emails detected in {duplicateRowCount} {duplicateRowCount === 1 ? 'row' : 'rows'}. These entries will be skipped or update existing records during import.
+                </div>
+              )}
               <div className="overflow-x-auto overflow-y-auto border border-meta-border rounded max-h-[28rem]">
                 <table className="min-w-[1400px] text-xs">
                   <thead>
@@ -554,6 +698,14 @@ export default function BulkImportPage() {
                             const rawValue = (edited[i]?.[f.key] ?? r[f.key]) || ''
                             const enumOptions = getEnumOptions(f.key)
                             const isInvalid = invalid[i]?.[f.key]
+                            const isEmailField = f.key === 'email_school' || f.key === 'email_personal'
+                            const duplicateMessages = isEmailField ? duplicateConflicts[i]?.[f.key as 'email_school' | 'email_personal'] : undefined
+                            const hasDuplicate = Array.isArray(duplicateMessages) && duplicateMessages.length > 0
+                            const borderClass = isInvalid
+                              ? 'border-red-500 ring-1 ring-red-500/70'
+                              : hasDuplicate
+                                ? 'border-amber-500 ring-1 ring-amber-500/70'
+                                : 'border-meta-border'
 
                             // Normalize the value for enum fields to match the select options
                             let displayValue = rawValue
@@ -566,13 +718,13 @@ export default function BulkImportPage() {
                             }
 
                             return (
-                              <td key={f.key} className="px-2 py-1 border-b border-meta-border whitespace-nowrap">
+                              <td key={f.key} className="px-2 py-1 border-b border-meta-border whitespace-nowrap align-top">
                                 {enumOptions ? (
                                   <div className="flex flex-col gap-1">
                                     <select
                                       value={displayValue}
                                       onChange={e => updateEdit(i, f.key, e.target.value)}
-                                      className={`bg-meta-dark border ${isInvalid ? 'border-red-500 ring-1 ring-red-500/70' : 'border-meta-border'} text-meta-light h-8 text-xs rounded px-2 focus-visible:ring-1 focus-visible:ring-meta-accent ${
+                                      className={`bg-meta-dark border ${borderClass} text-meta-light h-8 text-xs rounded px-2 focus-visible:ring-1 focus-visible:ring-meta-accent ${
                                         (f.key === 'grade') ? 'w-32' :
                                         (f.key === 'division' || f.key === 'gender' || f.key === 'race' || f.key === 'ethnicity' || f.key === 'level_of_technology') ? 'w-56' :
                                         'w-40'
@@ -590,20 +742,32 @@ export default function BulkImportPage() {
                                         Was: "{rawValue}"
                                       </div>
                                     )}
+                                    {hasDuplicate && duplicateMessages!.map((msg, idx) => (
+                                      <div key={idx} className="text-[10px] text-amber-300 italic max-w-[14rem]">
+                                        {msg}
+                                      </div>
+                                    ))}
                                   </div>
                                 ) : (
-                                  <Input
-                                    value={rawValue}
-                                    onChange={e => updateEdit(i, f.key, e.target.value)}
-                                    className={`bg-meta-dark border ${isInvalid ? 'border-red-500 ring-1 ring-red-500/70' : 'border-meta-border'} text-meta-light h-8 text-xs focus-visible:ring-1 focus-visible:ring-meta-accent ${
-                                      (f.key === 'first_name' || f.key === 'last_name') ? 'w-40' :
-                                      (f.key === 'is_18_or_over') ? 'w-28' :
-                                      (f.key === 'years_competing') ? 'w-24' :
-                                      (f.key === 'email_school' || f.key === 'email_personal' || f.key === 'parent_email') ? 'w-56' :
-                                      (f.key === 'parent_name') ? 'w-48' :
-                                      'w-40'
-                                    }`}
-                                  />
+                                  <div className="flex flex-col gap-1">
+                                    <Input
+                                      value={rawValue}
+                                      onChange={e => updateEdit(i, f.key, e.target.value)}
+                                      className={`bg-meta-dark border ${borderClass} text-meta-light h-8 text-xs focus-visible:ring-1 focus-visible:ring-meta-accent ${
+                                        (f.key === 'first_name' || f.key === 'last_name') ? 'w-40' :
+                                        (f.key === 'is_18_or_over') ? 'w-28' :
+                                        (f.key === 'years_competing') ? 'w-24' :
+                                        (f.key === 'email_school' || f.key === 'email_personal' || f.key === 'parent_email') ? 'w-56' :
+                                        (f.key === 'parent_name') ? 'w-48' :
+                                        'w-40'
+                                      }`}
+                                    />
+                                    {hasDuplicate && duplicateMessages!.map((msg, idx) => (
+                                      <div key={idx} className="text-[10px] text-amber-300 italic max-w-[14rem]">
+                                        {msg}
+                                      </div>
+                                    ))}
+                                  </div>
                                 )}
                               </td>
                             )
@@ -628,9 +792,44 @@ export default function BulkImportPage() {
           {step === 4 && (
             <div className="space-y-3">
               <div className="text-meta-light">Import Complete</div>
-              <div className="text-sm text-meta-muted">Processed {progress.total} rows. Success: {progress.done - progress.failed}. Failed: {progress.failed}.</div>
+              <div className="text-sm text-meta-muted">Processed {progress.total} rows.</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="rounded border border-meta-border bg-meta-dark px-3 py-2">
+                  <div className="text-meta-muted text-xs uppercase tracking-wide">Created</div>
+                  <div className="text-meta-light text-lg font-semibold">{progress.created}</div>
+                </div>
+                <div className="rounded border border-meta-border bg-meta-dark px-3 py-2">
+                  <div className="text-meta-muted text-xs uppercase tracking-wide">Updated</div>
+                  <div className="text-meta-light text-lg font-semibold">{progress.updated}</div>
+                </div>
+                <div className="rounded border border-meta-border bg-meta-dark px-3 py-2">
+                  <div className="text-meta-muted text-xs uppercase tracking-wide">Duplicate Emails Skipped</div>
+                  <div className="text-amber-300 text-lg font-semibold">{progress.duplicates}</div>
+                </div>
+                <div className="rounded border border-meta-border bg-meta-dark px-3 py-2">
+                  <div className="text-meta-muted text-xs uppercase tracking-wide">Failed</div>
+                  <div className="text-red-300 text-lg font-semibold">{progress.failed}</div>
+                </div>
+              </div>
+              <div className="text-xs text-meta-muted">
+                Successful imports: {progress.created + progress.updated}. Resolve duplicates or failures above before re-importing any remaining competitors.
+              </div>
               <div className="flex gap-2">
-                <Button onClick={() => { setStep(1); setRows([]); setEdited([]); setErrors({}); setProgress({ total: 0, done: 0, failed: 0 }) }} className="bg-meta-accent text-white">Import Another File</Button>
+                <Button
+                  onClick={() => {
+                    setStep(1);
+                    setRows([]);
+                    setEdited([]);
+                    setErrors({});
+                    setDuplicateConflicts({});
+                    setDuplicateCheckError(null);
+                    setDuplicateCheckLoading(false);
+                    setProgress({ total: 0, created: 0, updated: 0, duplicates: 0, failed: 0 });
+                  }}
+                  className="bg-meta-accent text-white"
+                >
+                  Import Another File
+                </Button>
               </div>
             </div>
           )}

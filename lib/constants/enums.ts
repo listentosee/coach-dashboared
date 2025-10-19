@@ -5,6 +5,10 @@ export const ALLOWED_DIVISIONS = [
   'middle_school', 'high_school', 'college',
 ] as const
 
+export const ALLOWED_PROGRAM_TRACKS = [
+  'traditional', 'adult_ed',
+] as const
+
 export const ALLOWED_GENDERS = [
   'male', 'female', 'other', 'prefer_not_to_say',
 ] as const

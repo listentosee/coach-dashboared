@@ -24,6 +24,7 @@ interface Competitor {
   is_18_or_over?: boolean;
   grade?: string;
   division?: 'middle_school' | 'high_school' | 'college' | null;
+  program_track?: 'traditional' | 'adult_ed' | null;
   status: string;
   media_release_signed: boolean;
   media_release_date?: string;
@@ -99,6 +100,7 @@ export default function DashboardPage() {
   const adminLoadingRef = useRef<boolean>(false)
   const [registeringId, setRegisteringId] = useState<string | null>(null)
   const [profileLinkDialog, setProfileLinkDialog] = useState<ProfileLinkDialogState | null>(null)
+  const [collegeTrackFilter, setCollegeTrackFilter] = useState<'all' | 'traditional' | 'adult_ed'>('all')
 
   const fetchData = useCallback(async () => {
     try {
@@ -288,6 +290,12 @@ export default function DashboardPage() {
     if (!ctxLoading) fetchData();
   }, [ctxLoading, coachId, fetchData]);
 
+  useEffect(() => {
+    if (divisionFilter !== 'college' && collegeTrackFilter !== 'all') {
+      setCollegeTrackFilter('all')
+    }
+  }, [divisionFilter, collegeTrackFilter])
+
   // Auth-driven refresh
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
@@ -319,7 +327,10 @@ export default function DashboardPage() {
                          competitor.last_name.toLowerCase().startsWith(term);
     const matchesActiveFilter = showInactive || competitor.is_active;
     const matchesDivision = divisionFilter === 'all' || competitor.division === divisionFilter;
-    return matchesSearch && matchesActiveFilter && matchesDivision;
+    const matchesTrack = divisionFilter !== 'college'
+      || collegeTrackFilter === 'all'
+      || ((competitor.program_track || 'traditional') === collegeTrackFilter);
+    return matchesSearch && matchesActiveFilter && matchesDivision && matchesTrack;
   });
 
   // Derived counters for the pager indicator (always match DataTable input)
@@ -869,6 +880,8 @@ export default function DashboardPage() {
                 const base = (competitors || []).filter(c => (showInactive || c.is_active))
                 const present = new Set(base.map(c => c.division).filter(Boolean) as string[])
                 const count = (d?: string) => base.filter(c => (!d || c.division===d)).length
+                const collegeOnly = base.filter(c => c.division === 'college')
+                const trackCount = (t: 'traditional' | 'adult_ed') => collegeOnly.filter(c => (c.program_track || 'traditional') === t).length
                 const order: Array<{value: any; label: string}> = [
                   { value: 'all', label: 'All (' + count() + ')' },
                   ...(present.has('middle_school') ? [{ value: 'middle_school', label: 'Middle (' + count('middle_school') + ')' }] : []),
@@ -890,6 +903,27 @@ export default function DashboardPage() {
                         </button>
                       ))}
                     </div>
+                    {divisionFilter === 'college' && collegeOnly.length > 0 && (
+                      <div className="flex items-center ml-4">
+                        <span className="mr-2 text-meta-light">Track:</span>
+                        <div className="flex rounded-md overflow-hidden border border-meta-border">
+                          {[
+                            { value: 'all', label: 'All (' + collegeOnly.length + ')' },
+                            { value: 'traditional', label: 'Traditional (' + trackCount('traditional') + ')' },
+                            { value: 'adult_ed', label: 'Adult Ed/Continuing Ed (' + trackCount('adult_ed') + ')' },
+                          ].map(opt => (
+                            <button
+                              key={opt.value}
+                              onClick={() => setCollegeTrackFilter(opt.value as 'all' | 'traditional' | 'adult_ed')}
+                              className={`px-3 py-1 ${collegeTrackFilter === opt.value ? 'bg-amber-500 text-white' : 'bg-meta-card text-meta-light hover:bg-meta-dark'}`}
+                              title={`Show ${opt.label}`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )
               })()}

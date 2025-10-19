@@ -5,8 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import ActingAsBanner from '@/components/admin/ActingAsBanner'
-import { ALLOWED_DIVISIONS, ALLOWED_ETHNICITIES, ALLOWED_GENDERS, ALLOWED_GRADES, ALLOWED_LEVELS_OF_TECHNOLOGY, ALLOWED_RACES } from '@/lib/constants/enums'
-import { normalizeEnumValue, normalizeGrade } from '@/lib/utils/import-normalize'
+import { ALLOWED_DIVISIONS, ALLOWED_ETHNICITIES, ALLOWED_GENDERS, ALLOWED_GRADES, ALLOWED_LEVELS_OF_TECHNOLOGY, ALLOWED_RACES, ALLOWED_PROGRAM_TRACKS } from '@/lib/constants/enums'
+import { normalizeEnumValue, normalizeGrade, normalizeProgramTrack } from '@/lib/utils/import-normalize'
 import { supabase } from '@/lib/supabase/client'
 import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext'
 
@@ -25,6 +25,7 @@ type FieldKey =
   | 'ethnicity'
   | 'level_of_technology'
   | 'years_competing'
+  | 'program_track'
 
 type FieldConfig = {
   key: FieldKey
@@ -34,20 +35,44 @@ type FieldConfig = {
 }
 
 const FIELDS: FieldConfig[] = [
-  { key: 'first_name', label: 'First Name', required: true },
-  { key: 'last_name', label: 'Last Name', required: true },
-  { key: 'is_18_or_over', label: 'Is Adult (Y/N/True/False)', required: true, hint: 'Values like Y, Yes, True, 1 map to true' },
-  { key: 'grade', label: 'Grade', required: true },
-  { key: 'email_school', label: 'School Email (Required)', required: true },
-  { key: 'email_personal', label: 'Personal Email (Optional)' },
-  { key: 'parent_name', label: 'Parent Name (Minor)' },
-  { key: 'parent_email', label: 'Parent Email (Minor)' },
-  { key: 'division', label: 'Division (middle_school | high_school | college)' },
-  { key: 'gender', label: 'Gender (male | female | other | prefer_not_to_say)' },
-  { key: 'race', label: 'Race (white | black | hispanic | asian | native | pacific | other | declined_to_answer)' },
-  { key: 'ethnicity', label: 'Ethnicity (not_hispanic | hispanic | declined_to_answer)' },
-  { key: 'level_of_technology', label: 'Level of Technology (PC | MAC | Chrome book | Linux | Other)' },
-  { key: 'years_competing', label: 'Years Competing (0-20)' },
+  { key: 'first_name', label: 'First Name', required: true, hint: 'At least two characters; letters, spaces, hyphens, apostrophes, and periods allowed.' },
+  { key: 'last_name', label: 'Last Name', required: true, hint: 'At least two characters; letters, spaces, hyphens, apostrophes, and periods allowed.' },
+  { key: 'is_18_or_over', label: 'Is Adult', required: true, hint: 'Accepts Y/N, Yes/No, True/False, or 1/0.' },
+  { key: 'grade', label: 'Grade', required: true, hint: 'Use 6–12 for middle/high school. College division auto-sets to "college".' },
+  { key: 'email_school', label: 'School Email', required: true, hint: 'Must be a valid email for the competitor.' },
+  { key: 'email_personal', label: 'Personal Email', hint: 'Optional; must be a valid email if provided.' },
+  { key: 'parent_name', label: 'Parent Name', hint: 'Optional; provide for minors when available.' },
+  { key: 'parent_email', label: 'Parent Email', hint: 'Required if parent name provided; must be a valid email.' },
+  { key: 'division', label: 'Division', hint: 'Allowed: middle_school | high_school | college' },
+  { key: 'program_track', label: 'Program Track', hint: 'College only. Allowed: traditional | adult_ed. Blank defaults to traditional.' },
+  { key: 'gender', label: 'Gender', hint: 'Allowed: male | female | other | prefer_not_to_say' },
+  { key: 'race', label: 'Race', hint: 'Allowed: white | black | hispanic | asian | native | pacific | other | declined_to_answer' },
+  { key: 'ethnicity', label: 'Ethnicity', hint: 'Allowed: not_hispanic | hispanic | declined_to_answer' },
+  { key: 'level_of_technology', label: 'Level of Technology', hint: 'Allowed: pc | mac | chrome_book | linux | other' },
+  { key: 'years_competing', label: 'Years Competing', hint: 'Whole number 0–20 representing prior experience.' },
+]
+
+const FIELD_LOOKUP = FIELDS.reduce((acc, field) => {
+  acc[field.key] = field
+  return acc
+}, {} as Record<FieldKey, FieldConfig>)
+
+const COLUMN_ORDER: FieldKey[] = [
+  'first_name',
+  'last_name',
+  'is_18_or_over',
+  'grade',
+  'email_school',
+  'email_personal',
+  'parent_name',
+  'parent_email',
+  'division',
+  'program_track',
+  'gender',
+  'race',
+  'ethnicity',
+  'level_of_technology',
+  'years_competing',
 ]
 
 type Row = Record<FieldKey, string>
@@ -61,6 +86,7 @@ const serializeRowForApi = (row: Row) => ({
   race: normalizeEnumValue(row.race),
   ethnicity: normalizeEnumValue(row.ethnicity),
   level_of_technology: normalizeEnumValue(row.level_of_technology),
+  program_track: normalizeProgramTrack(row.program_track),
 })
 
 function parseBoolean(input: string): boolean | null {
@@ -118,6 +144,22 @@ function parseCSV(text: string): string[][] {
   return rows
 }
 
+function isDocumentationRow(row: string[] | undefined): boolean {
+  if (!row || row.length === 0) return false
+  let informative = 0
+  let nonEmpty = 0
+  for (const cell of row) {
+    if (!cell) continue
+    nonEmpty++
+    const lower = cell.toLowerCase()
+    if (lower.includes('allowed:') || lower.includes('[required')) {
+      informative++
+    }
+  }
+  if (nonEmpty === 0) return false
+  return informative >= Math.max(2, Math.ceil(nonEmpty * 0.4))
+}
+
 export default function BulkImportPage() {
   const { coachId, loading: ctxLoading } = useAdminCoachContext()
   const [isAdmin, setIsAdmin] = useState(false)
@@ -141,6 +183,7 @@ export default function BulkImportPage() {
     ethnicity: null,
     level_of_technology: null,
     years_competing: null,
+    program_track: null,
   })
   const [edited, setEdited] = useState<Row[]>([])
   const [errors, setErrors] = useState<Record<number, string[]>>({})
@@ -176,6 +219,7 @@ export default function BulkImportPage() {
     tryMap('parent_name', ['parent name', 'guardian name', 'parent'])
     tryMap('parent_email', ['parent email', 'guardian email'])
     tryMap('division', ['division'])
+    tryMap('program_track', ['track', 'program track', 'college track', 'program'])
     tryMap('gender', ['gender'])
     tryMap('race', ['race'])
     tryMap('ethnicity', ['ethnicity'])
@@ -229,7 +273,82 @@ export default function BulkImportPage() {
   const allowedEthnicities = ALLOWED_ETHNICITIES as readonly string[]
   const allowedLevels = ALLOWED_LEVELS_OF_TECHNOLOGY as readonly string[]
   const allowedGrades = ALLOWED_GRADES as readonly string[]
+  const allowedProgramTracks = ALLOWED_PROGRAM_TRACKS as readonly string[]
   const [invalid, setInvalid] = useState<Record<number, Partial<Record<FieldKey, boolean>>>>({})
+
+  const fieldGuide = useMemo(() => ({
+    first_name: {
+      description: 'Required. At least two characters; letters, spaces, hyphens, apostrophes, and periods are allowed.',
+    },
+    last_name: {
+      description: 'Required. At least two characters; letters, spaces, hyphens, apostrophes, and periods are allowed.',
+    },
+    is_18_or_over: {
+      description: 'Required. Accepts Y/N, Yes/No, True/False, or 1/0. Determines whether parent information is needed.',
+    },
+    grade: {
+      description: 'Required. Use numeric grades 6–12 for middle/high school. When Division is college, the importer will automatically assign grade "college".',
+    },
+    email_school: {
+      description: 'Required. Must be a valid email address for the competitor (students 18+ use school email; minors use this for communications).',
+    },
+    email_personal: {
+      description: 'Optional. Must be a valid email if provided (often used for secondary contact).',
+    },
+    parent_name: {
+      description: 'Optional. Provide when the competitor is a minor (under 18). If set, must be at least two characters.',
+    },
+    parent_email: {
+      description: 'Optional. Required when a parent name is provided; must be a valid email address.',
+    },
+    division: {
+      description: 'Optional but recommended. Controls roster grouping and available program tracks. Leave blank to assign later in the UI.',
+    },
+    program_track: {
+      description: 'Optional. Only used when Division is college. Use "traditional" for current college students or "adult_ed" for Adult Ed/Continuing Ed learners. Leave blank to default to traditional.',
+    },
+    gender: {
+      description: 'Optional. Use the canonical gender tokens so analytics remain consistent.',
+    },
+    race: {
+      description: 'Optional. Use the canonical race tokens so analytics remain consistent.',
+    },
+    ethnicity: {
+      description: 'Optional. Use the canonical ethnicity tokens so analytics remain consistent.',
+    },
+    level_of_technology: {
+      description: 'Optional. Indicates the primary device the competitor uses (PC, MAC, chromebook, etc.).',
+    },
+    years_competing: {
+      description: 'Optional. Whole number from 0–20 representing prior competition experience.',
+    },
+  } as Record<FieldKey, { description: string }>), [])
+
+  const allowedValueLookup = useMemo(() => ({
+    division: allowedDivisions,
+    program_track: allowedProgramTracks,
+    gender: allowedGenders,
+    race: allowedRaces,
+    ethnicity: allowedEthnicities,
+    level_of_technology: allowedLevels,
+    grade: allowedGrades,
+    first_name: null,
+    last_name: null,
+    is_18_or_over: null,
+    email_school: null,
+    email_personal: null,
+    parent_name: null,
+    parent_email: null,
+    years_competing: null,
+  } as Record<FieldKey, readonly string[] | null>), [
+    allowedDivisions,
+    allowedProgramTracks,
+    allowedGenders,
+    allowedRaces,
+    allowedEthnicities,
+    allowedLevels,
+    allowedGrades,
+  ])
 
   // Validate (with normalization for multi-word enums)
   useEffect(() => {
@@ -262,6 +381,14 @@ export default function BulkImportPage() {
       // Optional enumerations (if provided, must be valid)
       const div = normalizeEnumValue(row.division)
       if (row.division && !allowedDivisions.includes(div as any)) { rowErr.push('Invalid division'); mark(i, 'division') }
+      const track = normalizeProgramTrack(row.program_track)
+      if (div === 'college') {
+        if (track && !allowedProgramTracks.includes(track as any)) {
+          rowErr.push('Program track must be traditional or adult_ed'); mark(i, 'program_track')
+        }
+      } else if (track) {
+        rowErr.push('Program track only applies to college division'); mark(i, 'program_track')
+      }
       const gender = normalizeEnumValue(row.gender)
       if (row.gender && !allowedGenders.includes(gender as any)) { rowErr.push('Invalid gender'); mark(i, 'gender') }
       const race = normalizeEnumValue(row.race)
@@ -286,6 +413,7 @@ export default function BulkImportPage() {
     allowedGrades,
     allowedLevels,
     allowedRaces,
+    allowedProgramTracks,
   ])
 
   const errorCount = Object.keys(errors).length
@@ -430,7 +558,8 @@ export default function BulkImportPage() {
           }
           parsed.push(arr)
         })
-        setRows(parsed)
+        const sanitized = parsed.length > 0 && isDocumentationRow(parsed[0]) ? parsed.slice(1) : parsed
+        setRows(sanitized)
         setHeaderIndex(0)
         setStep(2)
       } catch (e) {
@@ -443,7 +572,8 @@ export default function BulkImportPage() {
     const text = await file.text()
     const parsed = parseCSV(text)
     setRaw(text)
-    setRows(parsed)
+    const sanitized = parsed.length > 0 && isDocumentationRow(parsed[0]) ? parsed.slice(1) : parsed
+    setRows(sanitized)
     setHeaderIndex(0)
     setStep(2)
   }
@@ -524,6 +654,9 @@ export default function BulkImportPage() {
           {step === 1 && (
             <div className="space-y-3">
               <p className="text-sm text-meta-muted">Select a CSV or .xlsx exported from your spreadsheet. The first row should contain column headers.</p>
+              <p className="text-xs text-meta-muted">
+                XLSX templates include documentation in the file but it&apos;s removed automatically here—leave the header row index at <code>0</code> unless your sheet has additional header rows of its own.
+              </p>
               <div className="flex items-center gap-2">
                 <Input type="file" accept=".csv,.xlsx" onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} className="bg-meta-dark border-meta-border text-meta-light" />
                 <Button
@@ -531,8 +664,8 @@ export default function BulkImportPage() {
                   variant="outline"
                   className="text-meta-light border-meta-border"
                   onClick={() => {
-                    const headers = ['First Name','Last Name','Is Adult (Y/N/True/False)','Grade','School Email (Required)','Personal Email (Optional)','Parent Name (Minor)','Parent Email (Minor)','Division','Gender','Race','Ethnicity','Level of Technology','Years Competing']
-                    const csv = headers.join(',') + '\n'
+                    const headerLabelsCsv = COLUMN_ORDER.map((key) => FIELD_LOOKUP[key]?.label ?? key)
+                    const csv = headerLabelsCsv.join(',') + '\n'
                     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
                     const url = URL.createObjectURL(blob)
                     const a = document.createElement('a')
@@ -555,15 +688,43 @@ export default function BulkImportPage() {
                       const { Workbook } = await import('exceljs')
                       const wb = new Workbook()
                       const ws = wb.addWorksheet('Template')
-                      const headers = ['First Name','Last Name','Is Adult (Y/N/True/False)','Grade','School Email (Required)','Personal Email (Optional)','Parent Name (Minor)','Parent Email (Minor)','Division','Gender','Race','Ethnicity','Level of Technology','Years Competing']
-                      ws.addRow(headers)
-                      ws.getRow(1).font = { bold: true }
+                      const headers = COLUMN_ORDER.map((key) => FIELD_LOOKUP[key]?.label ?? key)
+
+                      const docRow = COLUMN_ORDER.map((key) => {
+                        const fieldConfig = FIELD_LOOKUP[key]
+                        const doc = fieldGuide[key]
+                        const allowedValues = allowedValueLookup[key]
+                        const parts: string[] = []
+                        if (fieldConfig?.required) parts.push('[Required]')
+                        if (doc?.description) parts.push(doc.description)
+                        else if (fieldConfig?.hint) parts.push(fieldConfig.hint)
+                        if (allowedValues) parts.push(`Allowed: ${allowedValues.join(' | ')}`)
+                        return parts.join(' ')
+                      })
+                      ws.addRow(docRow)
+                      const docRowRef = ws.getRow(1)
+                      docRowRef.font = { italic: true, color: { argb: 'FF4B5563' } }
+                      docRowRef.alignment = { wrapText: true, vertical: 'top' }
+                      docRowRef.height = 60
+                      docRowRef.eachCell((cell) => {
+                        cell.fill = {
+                          type: 'pattern',
+                          pattern: 'solid',
+                          fgColor: { argb: 'FFF3F4F6' },
+                        }
+                      })
+
+                      const headerRow = ws.addRow(headers)
+                      headerRow.font = { bold: true }
+                      headerRow.alignment = { wrapText: true }
+                      ws.columns = headers.map(() => ({ width: 40 }))
                       const ws2 = wb.addWorksheet('Cheat Sheet')
                       ws2.addRow(['Field','Allowed Values'])
                       ws2.getRow(1).font = { bold: true }
                       const add = (name: string, values: readonly string[]) => ws2.addRow([name, values.join(' | ')])
                       add('grade', allowedGrades)
                       add('division', allowedDivisions)
+                      add('program_track (college only)', allowedProgramTracks)
                       add('gender', allowedGenders)
                       add('race', allowedRaces)
                       add('ethnicity', allowedEthnicities)
@@ -592,11 +753,11 @@ export default function BulkImportPage() {
               {/* Cheat sheet inline */}
               <div className="mt-4 p-3 border border-meta-border rounded bg-meta-dark">
                 <div className="text-sm text-meta-light font-medium mb-2">Allowed Values (strict)</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-meta-muted">
-                  <div>
-                    <div className="font-semibold text-meta-light">grade</div>
-                    <div>{allowedGrades.join(', ')}</div>
-                  </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-meta-muted">
+      <div>
+        <div className="font-semibold text-meta-light">grade</div>
+        <div>{allowedGrades.join(', ')}</div>
+      </div>
                   <div>
                     <div className="font-semibold text-meta-light">division</div>
                     <div>{allowedDivisions.join(', ')}</div>
@@ -614,21 +775,62 @@ export default function BulkImportPage() {
                     <div>{allowedEthnicities.join(', ')}</div>
                   </div>
                   <div>
-                    <div className="font-semibold text-meta-light">level_of_technology</div>
-                    <div>{allowedLevels.join(', ')}</div>
-                  </div>
-                </div>
+        <div className="font-semibold text-meta-light">level_of_technology</div>
+        <div>{allowedLevels.join(', ')}</div>
+      </div>
+      <div>
+        <div className="font-semibold text-meta-light">program_track</div>
+        <div>{allowedProgramTracks.join(', ')}</div>
+      </div>
+    </div>
                 <div className="text-xs text-meta-muted mt-3">
                   <div className="font-medium text-meta-light mb-1">Non-enumerated fields</div>
                   <ul className="list-disc pl-5 space-y-1">
                     <li><span className="font-semibold text-meta-light">email_school</span>: required for all participants; must be a valid email.</li>
                     <li><span className="font-semibold text-meta-light">email_personal</span>: optional; if present must be a valid email.</li>
+                    <li><span className="font-semibold text-meta-light">program_track</span>: optional; only used when division is <code>college</code>. Leave blank or <code>traditional</code> for traditional students, use <code>adult_ed</code> for continuing/adult education.</li>
                     <li><span className="font-semibold text-meta-light">parent_name</span>: optional for minors at import.</li>
                     <li><span className="font-semibold text-meta-light">parent_email</span>: required if <em>parent_name</em> is provided; otherwise optional. If present, must be a valid email.</li>
                   </ul>
                   <div className="mt-2">Values are case-insensitive; we store canonical tokens shown above. School email is required for all participants. For minors, parent name is optional; if provided, parent email is required.</div>
                 </div>
               </div>
+              <details className="mt-4 border border-meta-border rounded bg-meta-dark/70 text-meta-light">
+                <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Field Reference Guide</summary>
+                <div className="px-3 pb-3">
+                  <div className="overflow-x-auto mt-3 border border-meta-border/80 rounded">
+                    <table className="min-w-full text-xs text-left">
+                      <thead className="bg-meta-dark text-meta-light uppercase tracking-wide">
+                        <tr>
+                          <th className="px-3 py-2">Field</th>
+                          <th className="px-3 py-2">Required?</th>
+                          <th className="px-3 py-2">Description</th>
+                          <th className="px-3 py-2 whitespace-nowrap">Allowed Values</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {FIELDS.map((field) => {
+                          const doc = fieldGuide[field.key]
+                          const allowedValues = allowedValueLookup[field.key]
+                          return (
+                            <tr key={field.key} className="border-t border-meta-border/60">
+                              <td className="px-3 py-2 font-medium text-meta-light whitespace-nowrap">{field.label}</td>
+                              <td className="px-3 py-2 text-meta-light">{field.required ? 'Yes' : 'Optional'}</td>
+                              <td className="px-3 py-2 text-meta-muted">{doc?.description || field.hint || '—'}</td>
+                              <td className="px-3 py-2 text-meta-muted whitespace-pre-wrap">
+                                {allowedValues ? allowedValues.join(', ') : '—'}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-[11px] text-meta-muted mt-2">
+                    Tip: leave optional columns blank if you prefer to complete them later inside the dashboard. Program track applies only to college division rows.
+                  </p>
+                </div>
+              </details>
             </div>
           )}
 

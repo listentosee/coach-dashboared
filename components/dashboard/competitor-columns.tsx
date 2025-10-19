@@ -12,6 +12,11 @@ const DIVISION_LABELS: Record<string, string> = {
   college: 'College',
 };
 
+const PROGRAM_TRACK_LABELS: Record<string, string> = {
+  traditional: 'Traditional College',
+  adult_ed: 'Adult Ed/Continuing Ed',
+};
+
 const formatDivisionLabel = (division?: string | null) => {
   if (!division) return null;
   return DIVISION_LABELS[division] ?? division.replace(/_/g, ' ');
@@ -27,6 +32,7 @@ export interface Competitor {
   is_18_or_over?: boolean;
   grade?: string;
   division?: string | null;
+  program_track?: string | null;
   status: string;
   media_release_signed: boolean;
   media_release_date?: string;
@@ -130,6 +136,13 @@ export const createCompetitorColumns = (
               </div>
             ) : null;
           })()}
+          {competitor.division === 'college' && (
+            <div className="mt-1">
+              <Badge className="bg-amber-600 text-white">
+                {PROGRAM_TRACK_LABELS[competitor.program_track ?? 'traditional'] || 'College Track'}
+              </Badge>
+            </div>
+          )}
           {showCoachHint && (
             <div className="text-xs text-meta-muted mt-1">
               Coach: {coachLabel}

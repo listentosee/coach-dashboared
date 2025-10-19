@@ -18,6 +18,7 @@ const CompetitorSchema = z.object({
   // Optional at creation; may be assigned later in the lifecycle
   game_platform_id: z.string().min(1).optional(),
   division: z.enum(['middle_school','high_school','college']).optional(),
+  program_track: z.enum(['traditional','adult_ed']).optional().or(z.literal('')).or(z.null()),
 });
 
 export async function POST(request: NextRequest) {
@@ -79,6 +80,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Create competitor record
+    const division = validatedData.division || null;
+    let programTrack: string | null = null;
+    if (division === 'college') {
+      const incoming = (validatedData.program_track || '').trim().toLowerCase();
+      programTrack = incoming === 'adult_ed' ? 'adult_ed' : 'traditional';
+    }
+
     const insertData = {
       coach_id: isAdmin ? (actingCoachId as string) : user.id,
       first_name: validatedData.first_name,
@@ -88,7 +96,8 @@ export async function POST(request: NextRequest) {
       email_personal: validatedData.email_personal || null,
       email_school: validatedData.email_school,
       game_platform_id: validatedData.game_platform_id || null,
-      division: validatedData.division || null,
+      division,
+      program_track: programTrack,
       status: 'pending'
     } as any;
 

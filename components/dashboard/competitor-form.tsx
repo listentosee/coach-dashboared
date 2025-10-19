@@ -37,7 +37,14 @@ const formSchema = z.object({
   // School email required for all participants
   email_school: z.string({ required_error: 'School email is required' }).email('Invalid email'),
   division: z.enum(['middle_school','high_school','college'], { required_error: 'Division is required' }),
-});
+  program_track: z.enum(['traditional','adult_ed']).optional().or(z.literal('')).or(z.null()),
+}).refine(
+  (data) => data.division !== 'college' || !!(data.program_track ?? '').trim(),
+  {
+    message: 'Select College track',
+    path: ['program_track'],
+  }
+);
 
 export function CompetitorForm({ onSuccess, variant = 'default', disabled = false, disabledTooltip }: { onSuccess?: () => void; variant?: 'default' | 'compact'; disabled?: boolean; disabledTooltip?: string }) {
   const [open, setOpen] = useState(false);
@@ -58,6 +65,7 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
       email_personal: '',
       email_school: '',
       division: 'high_school',
+      program_track: null,
     },
   });
 
@@ -66,6 +74,25 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
   const lastNameWatch = form.watch('last_name');
   const emailSchoolWatch = form.watch('email_school');
   const emailPersonalWatch = form.watch('email_personal');
+  const divisionWatch = form.watch('division');
+  const programTrackWatch = form.watch('program_track');
+  const gradeWatch = form.watch('grade');
+
+  useEffect(() => {
+    if (divisionWatch === 'college') {
+      if (!programTrackWatch || programTrackWatch === '') {
+        form.setValue('program_track', 'traditional', { shouldDirty: false });
+      }
+      if (gradeWatch !== 'college') {
+        form.setValue('grade', 'college', { shouldDirty: false });
+      }
+    } else if (programTrackWatch) {
+      form.setValue('program_track', null, { shouldDirty: false });
+      if (gradeWatch === 'college') {
+        form.setValue('grade', '', { shouldDirty: false });
+      }
+    }
+  }, [divisionWatch, programTrackWatch, gradeWatch, form]);
   useEffect(() => {
     const checkDuplicates = async () => {
       const first_name = (firstNameWatch || '').trim();
@@ -170,10 +197,17 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
     try {
+      const payload = {
+        ...values,
+        program_track: values.division === 'college'
+          ? ((values.program_track || 'traditional') as 'traditional' | 'adult_ed')
+          : null,
+      };
+
       const response = await fetch('/api/competitors/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -339,9 +373,9 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
                       </FormControl>
                       <FormMessage />
                     </FormItem>
-                  )}
-                />
-                
+              )}
+            />
+
                 <FormField
                   control={form.control}
                   name="last_name"
@@ -403,33 +437,68 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="grade"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-gray-700">Grade (Required)</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="bg-white border-gray-300 text-gray-900">
-                          <SelectValue placeholder="Select grade level" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent className="bg-white border-gray-300 text-gray-900">
-                        <SelectItem value="6">6th Grade</SelectItem>
-                        <SelectItem value="7">7th Grade</SelectItem>
-                        <SelectItem value="8">8th Grade</SelectItem>
-                        <SelectItem value="9">9th Grade</SelectItem>
-                        <SelectItem value="10">10th Grade</SelectItem>
-                        <SelectItem value="11">11th Grade</SelectItem>
-                        <SelectItem value="12">12th Grade</SelectItem>
-                        <SelectItem value="college">College</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {divisionWatch === 'college' && (
+                <FormField
+                  control={form.control}
+                  name="program_track"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-gray-700">College Track</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || 'traditional'}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                            <SelectValue placeholder="Select track" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent className="bg-white border-gray-300 text-gray-900">
+                          <SelectItem value="traditional">Traditional College</SelectItem>
+                          <SelectItem value="adult_ed">Adult Ed/Continuing Ed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription className="text-xs text-gray-600">
+                        Use Adult Ed/Continuing Ed for continuing or returning learners; Traditional for current college students.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {divisionWatch !== 'college' ? (
+                <FormField
+                  control={form.control}
+                  name="grade"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-gray-700">Grade (Required)</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                            <SelectValue placeholder="Select grade level" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent className="bg-white border-gray-300 text-gray-900">
+                          <SelectItem value="6">6th Grade</SelectItem>
+                          <SelectItem value="7">7th Grade</SelectItem>
+                          <SelectItem value="8">8th Grade</SelectItem>
+                          <SelectItem value="9">9th Grade</SelectItem>
+                          <SelectItem value="10">10th Grade</SelectItem>
+                          <SelectItem value="11">11th Grade</SelectItem>
+                          <SelectItem value="12">12th Grade</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : (
+                <div className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600">
+                  Grade automatically set to <span className="font-semibold">College</span> for this division.
+                </div>
+              )}
 
               <FormField
                 control={form.control}

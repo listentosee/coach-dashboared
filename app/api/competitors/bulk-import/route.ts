@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
-import { ALLOWED_DIVISIONS, ALLOWED_ETHNICITIES, ALLOWED_GENDERS, ALLOWED_GRADES, ALLOWED_LEVELS_OF_TECHNOLOGY, ALLOWED_RACES } from '@/lib/constants/enums'
-import { normalizeEnumValue, normalizeGrade } from '@/lib/utils/import-normalize'
+import { ALLOWED_DIVISIONS, ALLOWED_ETHNICITIES, ALLOWED_GENDERS, ALLOWED_GRADES, ALLOWED_LEVELS_OF_TECHNOLOGY, ALLOWED_RACES, ALLOWED_PROGRAM_TRACKS } from '@/lib/constants/enums'
+import { normalizeEnumValue, normalizeGrade, normalizeProgramTrack } from '@/lib/utils/import-normalize'
 import { AuditLogger } from '@/lib/audit/audit-logger';
 import { logger } from '@/lib/logging/safe-logger';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
@@ -22,6 +22,7 @@ type IncomingRow = {
   ethnicity?: string
   level_of_technology?: string
   years_competing?: string | number
+  program_track?: string
 }
 
 function parseBoolean(input: any): boolean | null {
@@ -88,6 +89,22 @@ export async function POST(req: NextRequest) {
         const level_of_technology = normalizeEnumValue(raw.level_of_technology)
         const years_competing_raw = typeof raw.years_competing === 'number' ? raw.years_competing : (raw.years_competing || '').toString().trim()
         const years_competing = years_competing_raw === '' ? null : Number.parseInt(String(years_competing_raw), 10)
+        const rawProgramTrack = normalizeProgramTrack(raw.program_track)
+        let program_track: string | null = null
+        if (division === 'college') {
+          if (rawProgramTrack === 'adult_ed') {
+            program_track = 'adult_ed'
+          } else if (rawProgramTrack === 'traditional') {
+            program_track = 'traditional'
+          } else if ((raw.program_track || '').trim() === '') {
+            program_track = 'traditional'
+          } else {
+            throw new Error('Invalid program track for college competitor')
+          }
+        }
+        if (division !== 'college' && rawProgramTrack) {
+          program_track = null
+        }
 
         // Validate
         if (!first_name || !last_name || !grade || isAdult === null) throw new Error('Missing required fields')
@@ -100,6 +117,7 @@ export async function POST(req: NextRequest) {
           if (!parent_name && parent_email && !isValidEmail(parent_email)) throw new Error('Parent email is invalid')
         }
         if (division && !allowedDivisions.includes(division)) throw new Error('Invalid division')
+        if (program_track && !ALLOWED_PROGRAM_TRACKS.includes(program_track as any)) throw new Error('Invalid program_track')
         if (gender && !allowedGenders.includes(gender)) throw new Error('Invalid gender')
         if (race && !allowedRaces.includes(race)) throw new Error('Invalid race')
         if (ethnicity && !allowedEthnicities.includes(ethnicity)) throw new Error('Invalid ethnicity')
@@ -147,6 +165,7 @@ export async function POST(req: NextRequest) {
               parent_name: parent_name || null,
               parent_email: parent_email || null,
               division: division || null,
+              program_track: program_track,
               gender: gender || null,
               race: race || null,
               ethnicity: ethnicity || null,
@@ -170,6 +189,7 @@ export async function POST(req: NextRequest) {
             parent_name: parent_name || null,
             parent_email: parent_email || null,
             division: division || null,
+            program_track: program_track,
             gender: gender || null,
             race: race || null,
             ethnicity: ethnicity || null,

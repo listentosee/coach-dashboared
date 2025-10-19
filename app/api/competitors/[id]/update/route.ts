@@ -17,6 +17,7 @@ const UpdateCompetitorSchema = z.object({
   is_18_or_over: z.coerce.boolean().optional(),
   grade: z.string().optional().or(z.null()),
   division: z.enum(['middle_school','high_school','college']).optional(),
+  program_track: z.enum(['traditional','adult_ed']).optional().or(z.literal('')).or(z.null()),
 });
 
 export async function PUT(
@@ -46,7 +47,7 @@ export async function PUT(
     }
     let verifyQuery = supabase
       .from('competitors')
-      .select('id')
+      .select('id, division, program_track')
       .eq('id', id);
     if (!isAdmin) verifyQuery = verifyQuery.eq('coach_id', user.id);
     else verifyQuery = verifyQuery.eq('coach_id', actingCoachId as string);
@@ -87,8 +88,36 @@ export async function PUT(
     if (typeof validatedData.grade !== 'undefined') {
       updatePayload.grade = validatedData.grade || null
     }
+
+    let programTrackUpdate: string | null | undefined = undefined
+    const existingDivision = (existingCompetitor as any)?.division || null
+    const existingProgramTrack = (existingCompetitor as any)?.program_track || null
+
+    if (typeof validatedData.program_track !== 'undefined') {
+      const incoming = (validatedData.program_track || '').trim().toLowerCase()
+      if (!incoming) {
+        programTrackUpdate = null
+      } else if (incoming === 'adult_ed') {
+        programTrackUpdate = 'adult_ed'
+      } else {
+        programTrackUpdate = 'traditional'
+      }
+    }
+
     if (typeof validatedData.division !== 'undefined') {
       updatePayload.division = validatedData.division
+      if (validatedData.division !== 'college') {
+        programTrackUpdate = null
+      } else if (typeof programTrackUpdate === 'undefined') {
+        programTrackUpdate = existingProgramTrack ?? 'traditional'
+      }
+    } else if (typeof programTrackUpdate !== 'undefined' && existingDivision !== 'college') {
+      // Safety: if competitor is not college, ignore incoming program track
+      programTrackUpdate = null
+    }
+
+    if (typeof programTrackUpdate !== 'undefined') {
+      updatePayload.program_track = programTrackUpdate
     }
 
     // Update competitor record (no returning row to avoid any RLS return friction)

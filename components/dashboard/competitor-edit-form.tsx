@@ -36,6 +36,7 @@ const editFormSchema = z.object({
   is_18_or_over: z.boolean(),
   grade: z.string().optional(),
   division: z.enum(['middle_school','high_school','college']).optional(),
+  program_track: z.enum(['traditional','adult_ed']).optional().or(z.literal('')).or(z.null()),
 });
 
 interface CompetitorEditFormProps {
@@ -59,13 +60,33 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
       first_name: competitor?.first_name || '',
       last_name: competitor?.last_name || '',
       is_18_or_over: competitor?.is_18_or_over || false,
-      grade: competitor?.grade || '',
+      grade: competitor?.grade || ((competitor as any)?.division === 'college' ? 'college' : ''),
       division: (competitor as any)?.division || 'high_school',
+      program_track: (competitor as any)?.program_track || ((competitor as any)?.division === 'college' ? 'traditional' : null),
     },
   });
 
   const emailSchoolWatch = form.watch('email_school');
   const emailPersonalWatch = form.watch('email_personal');
+  const divisionWatch = form.watch('division');
+  const programTrackWatch = form.watch('program_track');
+  const gradeWatch = form.watch('grade');
+
+  useEffect(() => {
+    if (divisionWatch === 'college') {
+      if (!programTrackWatch || programTrackWatch === '') {
+        form.setValue('program_track', 'traditional', { shouldDirty: false });
+      }
+      if (gradeWatch !== 'college') {
+        form.setValue('grade', 'college', { shouldDirty: false });
+      }
+    } else if (programTrackWatch) {
+      form.setValue('program_track', null, { shouldDirty: false });
+      if (gradeWatch === 'college') {
+        form.setValue('grade', '', { shouldDirty: false });
+      }
+    }
+  }, [divisionWatch, programTrackWatch, gradeWatch, form]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -146,8 +167,9 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
         first_name: competitor.first_name || '',
         last_name: competitor.last_name || '',
         is_18_or_over: competitor.is_18_or_over || false,
-        grade: competitor.grade || '',
+        grade: competitor.grade || (competitor.division === 'college' ? 'college' : ''),
         division: (competitor as any).division || 'high_school',
+        program_track: (competitor as any).program_track || ((competitor as any).division === 'college' ? 'traditional' : null),
       });
       setEmailValidation({});
     }
@@ -170,10 +192,18 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
       // Hard timeout to avoid UI hanging if a request stalls
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), 15000);
+      const selectedDivision = values.division ?? (competitor?.division as string | null) ?? null
+      const payload = {
+        ...values,
+        program_track: selectedDivision === 'college'
+          ? ((values.program_track || competitor?.program_track || 'traditional') as 'traditional' | 'adult_ed')
+          : null,
+      }
+
       const response = await fetch(`/api/competitors/${competitor.id}/update`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+        body: JSON.stringify(payload),
         signal: controller.signal,
       });
       clearTimeout(t);
@@ -357,34 +387,66 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
                     </FormItem>
                   )}
                 />
-                
-                <FormField
-                  control={form.control}
-                  name="grade"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-gray-700">Grade</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger className="bg-white border-gray-300 text-gray-900">
-                            <SelectValue placeholder="Select grade level" />
-                          </SelectTrigger>
-                        </FormControl>
+
+                {divisionWatch === 'college' && (
+                  <FormField
+                    control={form.control}
+                    name="program_track"
+                    render={({ field }) => (
+                      <FormItem className="col-span-2">
+                        <FormLabel className="text-gray-700">College Track</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || 'traditional'}>
+                          <FormControl>
+                            <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                              <SelectValue placeholder="Select track" />
+                            </SelectTrigger>
+                          </FormControl>
                         <SelectContent className="bg-white border-gray-300 text-gray-900">
-                          <SelectItem value="6">6th Grade</SelectItem>
-                          <SelectItem value="7">7th Grade</SelectItem>
-                          <SelectItem value="8">8th Grade</SelectItem>
-                          <SelectItem value="9">9th Grade</SelectItem>
-                          <SelectItem value="10">10th Grade</SelectItem>
-                          <SelectItem value="11">11th Grade</SelectItem>
-                          <SelectItem value="12">12th Grade</SelectItem>
-                          <SelectItem value="college">College</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                          <SelectItem value="traditional">Traditional College</SelectItem>
+                          <SelectItem value="adult_ed">Adult Ed/Continuing Ed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormDescription className="text-xs text-gray-600">
+                          Use Adult Ed/Continuing Ed for continuing or returning learners; Traditional for current college students.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                {divisionWatch !== 'college' ? (
+                  <FormField
+                    control={form.control}
+                    name="grade"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-700">Grade</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                              <SelectValue placeholder="Select grade level" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="bg-white border-gray-300 text-gray-900">
+                            <SelectItem value="6">6th Grade</SelectItem>
+                            <SelectItem value="7">7th Grade</SelectItem>
+                            <SelectItem value="8">8th Grade</SelectItem>
+                            <SelectItem value="9">9th Grade</SelectItem>
+                            <SelectItem value="10">10th Grade</SelectItem>
+                            <SelectItem value="11">11th Grade</SelectItem>
+                            <SelectItem value="12">12th Grade</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : (
+                  <div className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600">
+                    Grade automatically set to <span className="font-semibold">College</span> for this division.
+                  </div>
+                )}
               </div>
 
 

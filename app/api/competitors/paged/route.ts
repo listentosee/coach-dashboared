@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
       .from('competitors')
       .select(`
         id, first_name, last_name, email_personal, email_school,
-        is_18_or_over, grade, division, parent_email,
+        is_18_or_over, grade, division, program_track, parent_email,
         gender, race, ethnicity, level_of_technology, years_competing,
         status, media_release_date, participation_agreement_date,
         game_platform_id, game_platform_synced_at,
@@ -85,6 +85,7 @@ export async function GET(req: NextRequest) {
       const mapping = mappingByCompetitorId.get(c.id) ?? null
       return {
         ...c,
+        program_track: c.program_track || null,
         game_platform_id: c.game_platform_id || mapping?.synced_user_id || null,
         game_platform_synced_at: c.game_platform_synced_at ?? mapping?.last_synced_at ?? null,
         game_platform_sync_error: c.game_platform_sync_error ?? mapping?.sync_error ?? null,

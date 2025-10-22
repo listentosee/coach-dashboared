@@ -108,8 +108,8 @@ export function CoachMessagingWorkspace() {
   }, [markMessagesRead])
 
   const handleComposerSend = useCallback(async (payload: ComposerPayload) => {
-    // Reply or Forward: ALWAYS send to existing conversation (no new conversation created)
-    if (payload.mode === 'reply' || payload.mode === 'forward') {
+    // Replies always stay within the same conversation/thread
+    if (payload.mode === 'reply') {
       if (!payload.context) return
 
       // Simple: just send to the existing conversation
@@ -152,11 +152,16 @@ export function CoachMessagingWorkspace() {
           ? (payload.dmRecipientId ? [payload.dmRecipientId] : [])
           : payload.groupRecipientIds || []
         if (recipientIds.length === 0) throw new Error('Select at least one recipient')
-        if (payload.mode === 'dm') {
+        const isDirect =
+          payload.mode === 'dm' ||
+          (payload.mode === 'forward' && recipientIds.length === 1)
+
+        if (isDirect) {
+          const targetUserId = recipientIds[0]
           const createRes = await fetch('/api/messaging/conversations/dm', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: recipientIds[0], title: payload.subject || null }),
+            body: JSON.stringify({ userId: targetUserId, title: payload.subject || null }),
           })
           if (!createRes.ok) throw new Error('Failed to start direct message')
           const { conversationId } = await createRes.json()
@@ -173,10 +178,14 @@ export function CoachMessagingWorkspace() {
             await markMessagesRead([messageId], { refresh: false })
           }
         } else {
+          // Group send (new group or forward to multiple recipients)
           const createRes = await fetch('/api/messaging/conversations/group', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userIds: recipientIds, title: payload.subject || undefined }),
+            body: JSON.stringify({
+              userIds: recipientIds,
+              title: payload.subject || undefined,
+            }),
           })
           if (!createRes.ok) throw new Error('Failed to start group message')
           const { conversationId } = await createRes.json()
@@ -301,9 +310,11 @@ export function CoachMessagingWorkspace() {
               if (selection.conversation.type === 'announcement') {
                 const senderId = selection.conversation.created_by
                 if (senderId) {
-                  composer.openDm()
-                  composer.setDmRecipient(senderId)
-                  composer.setSubject(`Re: ${selection.conversation.title || 'Announcement'}`)
+                  composer.openDm({
+                    recipientId: senderId,
+                    subject: `Re: ${selection.conversation.title || 'Announcement'}`,
+                    lockRecipient: true,
+                  })
                 }
               } else {
                 // Normal reply to DM/Group

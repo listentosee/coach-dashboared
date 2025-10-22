@@ -37,6 +37,7 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
     preview,
     togglePreview,
     dmRecipientId,
+    lockDmRecipient,
     setDmRecipient,
     groupRecipients,
     toggleGroupRecipient,
@@ -48,6 +49,11 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
 
   const selectedGroupCount = useMemo(() => Object.values(groupRecipients).filter(Boolean).length, [groupRecipients])
 
+  const lockedRecipient = useMemo(() => {
+    if (!lockDmRecipient || !dmRecipientId) return null
+    return directory.find((user) => user.id === dmRecipientId) || null
+  }, [lockDmRecipient, dmRecipientId, directory])
+
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) close() }}>
       <DialogContent className="max-w-2xl overflow-y-auto">
@@ -55,7 +61,7 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
           <DialogTitle>{modeTitle[mode]}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          {mode === 'dm' ? (
+          {mode === 'dm' && !lockDmRecipient ? (
             <div>
               <div className="mb-2 text-xs uppercase text-meta-muted">Recipient</div>
               <div className="max-h-60 overflow-y-auto rounded-md border border-meta-border">
@@ -83,6 +89,16 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
                   <div className="px-3 py-2 text-sm text-meta-muted">No recipients available.</div>
                 ) : null}
               </div>
+            </div>
+          ) : null}
+
+          {mode === 'dm' && lockDmRecipient ? (
+            <div className="rounded-md border border-meta-border bg-meta-dark/50 px-3 py-2 text-sm text-meta-light">
+              {lockedRecipient ? (
+                <span>Replying to <strong>{lockedRecipient.displayName}</strong></span>
+              ) : (
+                <span>Replying to selected recipient.</span>
+              )}
             </div>
           ) : null}
 

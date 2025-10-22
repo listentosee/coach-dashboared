@@ -26,10 +26,11 @@ export type CoachComposerController = {
   subject: string
   preview: boolean
   dmRecipientId: string | null
+  lockDmRecipient: boolean
   groupRecipients: Record<string, boolean>
   context: CoachInboxSelection | null
   attachments: { name: string; url: string; markdown: string }[]
-  openDm: () => void
+  openDm: (options?: { recipientId?: string; subject?: string | null; lockRecipient?: boolean }) => void
   openGroup: () => void
   openAnnouncement: () => void
   openReply: (selection: CoachInboxSelection) => void
@@ -55,6 +56,7 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
   const [subject, setSubject] = useState('')
   const [preview, setPreview] = useState(false)
   const [dmRecipientId, setDmRecipientId] = useState<string | null>(null)
+  const [lockDmRecipient, setLockDmRecipient] = useState(false)
   const [groupRecipients, setGroupRecipients] = useState<Record<string, boolean>>({})
   const [context, setContext] = useState<CoachInboxSelection | null>(null)
   const [attachments, setAttachments] = useState<{ name: string; url: string; markdown: string }[]>([])
@@ -62,18 +64,21 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
   const resetRecipients = useCallback(() => {
     setDmRecipientId(null)
     setGroupRecipients({})
+    setLockDmRecipient(false)
   }, [])
 
-  const openDm = useCallback(() => {
+  const openDm = useCallback((options?: { recipientId?: string; subject?: string | null; lockRecipient?: boolean }) => {
     setMode('dm')
     setContext(null)
     setBody('')
-    setSubject('')
-    resetRecipients()
     setPreview(false)
     setAttachments([])
+    setGroupRecipients({})
+    setLockDmRecipient(!!options?.lockRecipient)
+    setDmRecipientId(options?.recipientId ?? null)
+    setSubject(options?.subject ?? '')
     setOpen(true)
-  }, [resetRecipients])
+  }, [])
 
   const openGroup = useCallback(() => {
     setMode('group')
@@ -201,6 +206,7 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
     subject,
     preview,
     dmRecipientId,
+    lockDmRecipient,
     groupRecipients,
     context,
     attachments,

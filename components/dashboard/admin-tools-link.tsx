@@ -83,6 +83,11 @@ export default function AdminToolsLink() {
               NICE Framework
             </Button>
           </Link>
+          <Link href="/dashboard/admin-tools/coach-library">
+            <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
+              Coach Library
+            </Button>
+          </Link>
           <Link href="/dashboard/admin-tools/assist-coach">
             <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
               Assist Coach

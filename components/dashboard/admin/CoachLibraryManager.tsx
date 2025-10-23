@@ -124,6 +124,12 @@ export function CoachLibraryManager() {
     }
   }
 
+  const handleOpen = (doc: CoachLibraryDocument) => {
+    if (doc.downloadUrl) {
+      window.open(doc.downloadUrl, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   const handleDescriptionChange = async (doc: CoachLibraryDocument, next: string) => {
     setUploading(true)
     setError(null)
@@ -222,6 +228,9 @@ export function CoachLibraryManager() {
                     </div>
                   </div>
                   <div className="flex flex-col gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => handleOpen(doc)}>
+                      Open
+                    </Button>
                     <Button variant="secondary" size="sm" onClick={() => triggerReplace(doc.id)} disabled={uploading}>
                       <FilePenLine className="mr-2 h-4 w-4" />Replace
                     </Button>

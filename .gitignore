@@ -22,6 +22,15 @@ yarn-error.log*
 # vercel
 .vercel
 
+# dotenvx
+.env.keys
+.env.local
+.env.*.local
+
+# supabase
+supabase/.branches
+supabase/.temp
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

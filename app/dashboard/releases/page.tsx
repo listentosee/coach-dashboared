@@ -400,7 +400,21 @@ export default function ReleaseManagementPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to upload file');
+        let message = 'Failed to upload file';
+        try {
+          const payload = await response.json();
+          if (payload?.error) {
+            message = payload.error;
+            if (payload?.details) {
+              message = `${message}: ${payload.details}`;
+            }
+          } else if (payload?.message) {
+            message = payload.message;
+          }
+        } catch (parseError) {
+          console.warn('Failed to parse upload error payload', parseError);
+        }
+        throw new Error(message);
       }
 
       // Refresh data and close modal
@@ -409,7 +423,8 @@ export default function ReleaseManagementPage() {
       setSelectedAgreement(null);
     } catch (error) {
       console.error('Error uploading file:', error);
-      alert('Failed to upload file. Please try again.');
+      const message = error instanceof Error ? error.message : 'Failed to upload file. Please try again.';
+      alert(message);
     } finally {
       setUploading(false);
     }

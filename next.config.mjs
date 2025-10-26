@@ -1,3 +1,14 @@
+console.log('[env-check] Loaded next.config.mjs from:', new URL('', import.meta.url).pathname)
+console.log('[env-check] CWD =', process.cwd())
+console.log('[env-check] SUPABASE_URL =', process.env.SUPABASE_URL ?? '(missing)')
+console.log('[env-check] SERVICE KEY =', process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? `${process.env.SUPABASE_SERVICE_ROLE_KEY.slice(0,6)}...${process.env.SUPABASE_SERVICE_ROLE_KEY.slice(-6)}`
+  : '(missing)'
+)
+console.log('[env-check] ANON KEY =', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  ? `${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.slice(0,6)}...${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.slice(-6)}`
+  : '(missing)'
+)
 let userConfig = undefined
 
 if (!process.env.NEXT_DISABLE_DEVTOOLS) {

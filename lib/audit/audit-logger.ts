@@ -48,7 +48,7 @@ export type AuditAction =
   | 'password_reset';
 
 export interface AuditLogParams {
-  user_id: string;
+  user_id?: string | null;
   action: AuditAction;
   entity_type?: string;
   entity_id?: string;
@@ -85,7 +85,7 @@ export class AuditLogger {
   ): Promise<void> {
     try {
       const { error } = await supabase.from('activity_logs').insert({
-        user_id: params.user_id,
+        user_id: params.user_id ?? null,
         action: params.action,
         entity_type: params.entity_type,
         entity_id: params.entity_id,
@@ -205,7 +205,7 @@ export class AuditLogger {
    * @param agreementId - ID of the agreement
    * @param competitorId - ID of the competitor
    * @param action - Type of agreement action
-   * @param userId - ID of the user (may be system for webhooks)
+   * @param userId - ID of the user (optional for system/webhook actions)
    * @param metadata - Additional context
    *
    * @example
@@ -223,12 +223,12 @@ export class AuditLogger {
       agreementId: string;
       competitorId: string;
       action: Extract<AuditAction, 'agreement_sent' | 'agreement_signed' | 'agreement_viewed' | 'consent_revoked'>;
-      userId: string;
+      userId?: string | null;
       metadata?: Record<string, any>;
     }
   ): Promise<void> {
     await this.logAction(supabase, {
-      user_id: params.userId,
+      user_id: params.userId ?? null,
       action: params.action,
       entity_type: 'agreement',
       entity_id: params.agreementId,

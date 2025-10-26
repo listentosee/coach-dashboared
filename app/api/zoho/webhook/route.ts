@@ -121,13 +121,14 @@ export async function POST(req: NextRequest) {
           agreementId: existing.id,
           competitorId: existing.competitor_id,
           action: 'agreement_signed',
-          userId: existing.competitor_id, // System action, but track to competitor
+          userId: null,
           metadata: {
             provider: 'zoho',
             template_kind: existing.template_kind,
             request_id: requestId,
             signed_via: 'zoho_webhook',
-            signed_at: new Date().toISOString()
+            signed_at: new Date().toISOString(),
+            system_actor: 'zoho_webhook'
           }
         });
       } catch (e) {

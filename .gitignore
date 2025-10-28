@@ -22,6 +22,12 @@ yarn-error.log*
 # vercel
 .vercel
 
+#vscode
+.vscode/
+
+# cursor
+.cursor/
+
 # dotenvx
 .env.keys
 .env.local
@@ -39,12 +45,12 @@ next-env.d.ts
 docs/Admin\ Setup.md
 
 # testing outputs (not the test files themselves)
-/test-results/
-/playwright-report/
-/playwright/.cache/
+test-results/
+playwright-report/
+playwright/.cache/
 *.spec.ts-snapshots/
-/coverage/
-/.nyc_output/
+coverage/
+.nyc_output/
 trace.zip
 
 # mock environment and test infrastructure
@@ -67,13 +73,13 @@ lib/**/*.spec.ts
 # temporary test documentation
 SECURITY_TESTING.md
 TEST_RUN_FIXES.md
-/docs/testing/
+docs/testing/
 
 # garbage collection for refactors
-/.deleted/
+.deleted/
 
 # sandbox server package (local testing only)
-/sandbox-server-package/
+sandbox-server-package/
 
 # scratch/debug scripts and files
 debug_*.sql

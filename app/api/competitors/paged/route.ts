@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { isUserAdmin } from '@/lib/utils/admin-check'
-import { calculateCompetitorStatus } from '@/lib/utils/competitor-status'
 import type { GamePlatformProfileRecord } from '@/lib/integrations/game-platform/repository'
 
 // Admin-only, server-paginated competitors listing with latest agreement info
@@ -82,7 +81,6 @@ export async function GET(req: NextRequest) {
     const mapped = (rows || []).map((c: any) => {
       const mapping = mappingByCompetitorId.get(c.id) ?? null
       const syncedUserId = c.game_platform_id || mapping?.synced_user_id || null
-      const status = calculateCompetitorStatus({ ...c, game_platform_id: syncedUserId })
       const latest = latestAgreements.find(a => a.competitor_id === c.id) || null
       return {
         ...c,
@@ -92,7 +90,7 @@ export async function GET(req: NextRequest) {
         game_platform_synced_at: c.game_platform_synced_at ?? mapping?.last_synced_at ?? null,
         game_platform_sync_error: c.game_platform_sync_error ?? mapping?.sync_error ?? null,
         game_platform_status: mapping?.status ?? null,
-        status,
+        status: c.status,
         agreement_status: latest?.status || null,
         agreement_mode: latest?.metadata?.mode || null,
       }

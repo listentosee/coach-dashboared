@@ -80,13 +80,14 @@ export async function GET(req: NextRequest) {
     }
 
     const mapped = (rows || []).map((c: any) => {
-      const status = calculateCompetitorStatus(c)
-      const latest = latestAgreements.find(a => a.competitor_id === c.id) || null
       const mapping = mappingByCompetitorId.get(c.id) ?? null
+      const syncedUserId = c.game_platform_id || mapping?.synced_user_id || null
+      const status = calculateCompetitorStatus({ ...c, game_platform_id: syncedUserId })
+      const latest = latestAgreements.find(a => a.competitor_id === c.id) || null
       return {
         ...c,
         program_track: c.program_track || null,
-        game_platform_id: c.game_platform_id || mapping?.synced_user_id || null,
+        game_platform_id: syncedUserId,
         game_platform_synced_at: c.game_platform_synced_at ?? mapping?.last_synced_at ?? null,
         game_platform_sync_error: c.game_platform_sync_error ?? mapping?.sync_error ?? null,
         game_platform_status: mapping?.status ?? null,

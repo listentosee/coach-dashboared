@@ -14,7 +14,6 @@ import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 
 interface Competitor {
   id: string;
@@ -72,20 +71,12 @@ interface DashboardStats {
   complianceCompetitors?: number;
 }
 
-const normalizeCompetitor = (comp: any): Competitor => {
-  const normalizedStatus = calculateCompetitorStatus({
-    ...comp,
-    game_platform_id: comp.game_platform_id ?? null,
-  });
-
-  return {
-    ...comp,
-    status: normalizedStatus,
-    media_release_signed: comp.media_release_signed || false,
-    participation_agreement_signed: comp.participation_agreement_signed || false,
-    is_active: comp.is_active !== undefined ? comp.is_active : true,
-  };
-};
+const decorateCompetitor = (comp: any): Competitor => ({
+  ...comp,
+  media_release_signed: comp.media_release_signed || false,
+  participation_agreement_signed: comp.participation_agreement_signed || false,
+  is_active: comp.is_active !== undefined ? comp.is_active : true,
+});
 
 export const dynamic = 'force-dynamic';
 
@@ -165,7 +156,7 @@ export default function DashboardPage() {
           const r = await fetch(`/api/competitors/paged?offset=0&limit=${firstLimit}`)
           if (r.ok) {
             const j = await r.json()
-            const normalizedRows = (j.rows || []).map(normalizeCompetitor)
+            const normalizedRows = (j.rows || []).map(decorateCompetitor)
             setCompetitors(normalizedRows)
             setAdminTotal(j.total || 0)
             setAdminOffset((j.rows || []).length)
@@ -186,7 +177,7 @@ export default function DashboardPage() {
           throw new Error('Failed to fetch competitors');
         }
         const competitorsData = await competitorsResponse.json();
-        const transformedCompetitors = (competitorsData.competitors || []).map(normalizeCompetitor);
+        const transformedCompetitors = (competitorsData.competitors || []).map(decorateCompetitor);
         let scopedCompetitors = transformedCompetitors as any[]
         if (isAdminNow && !ctxLoading && coachId) {
           scopedCompetitors = scopedCompetitors.filter((c: any) => c.coach_id === coachId)
@@ -441,7 +432,7 @@ export default function DashboardPage() {
       const r = await fetch(`/api/competitors/paged?offset=${offset}&limit=${limit}`)
       if (r.ok) {
         const j = await r.json()
-        const rows = (j.rows || []).map(normalizeCompetitor) as Competitor[]
+        const rows = (j.rows || []).map(decorateCompetitor) as Competitor[]
         if (rows.length) {
           setCompetitors(prev => {
             const seen = new Set(prev.map(item => item.id))

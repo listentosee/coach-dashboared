@@ -338,6 +338,9 @@ export async function POST(req: NextRequest) {
 
 - **Kiosk/in‑person**: pass `mode: 'inperson'` to `/api/zoho/send` — the first signer is marked `INPERSONSIGN` and can sign on a tablet/phone at check‑in.
 - **Print & physically sign**: Signers can choose **More actions → Print and physically sign**; the same request completes after the upload, and your webhook still fires. No manual syncing needed.
+- **Cancel & reset**: If a coach needs to abandon the digital flow (wrong email, family requests paper, etc.), they can click **Cancel & Reset** on the Releases dashboard. This sends `POST /api/zoho/cancel` which recalls and deletes the Zoho request, removes the active agreement row, and records an `agreement_voided` entry in `activity_logs`. Once the button finishes, the coach can immediately choose **Print Pre-filled** or upload a signed scan.
+
+> Reporting: filter `activity_logs` where `action = 'agreement_voided'` to see every cancellation, including the competitor, prior status, Zoho cleanup result, and who initiated it.
 
 ---
 

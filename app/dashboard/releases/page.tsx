@@ -22,6 +22,7 @@ import {
   Download,
   RefreshCw,
   Upload,
+  Ban,
   ChevronUp,
   ChevronDown,
   ChevronsUpDown
@@ -75,6 +76,7 @@ export default function ReleaseManagementPage() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [selectedAgreement, setSelectedAgreement] = useState<Agreement | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [canceling, setCanceling] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [visibleCount, setVisibleCount] = useState(40)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
@@ -429,6 +431,56 @@ export default function ReleaseManagementPage() {
       setUploading(false);
     }
   };
+
+  const cancelAgreement = useCallback(
+    async (agreement: Agreement, competitor: Competitor) => {
+      const displayName = `${competitor.first_name} ${competitor.last_name}`;
+      const confirmMessage = `Cancel the Zoho request for ${displayName}? This stops the digital signing flow and removes it from the queue so you can use the manual override.`;
+
+      if (typeof window !== 'undefined' && !window.confirm(confirmMessage)) {
+        return;
+      }
+
+      try {
+        setCanceling(agreement.id);
+
+        const response = await fetch('/api/zoho/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agreementId: agreement.id }),
+        });
+
+        if (!response.ok) {
+          let message = 'Failed to cancel agreement';
+          try {
+            const payload = await response.json();
+            if (payload?.error) {
+              message = payload.details ? `${payload.error}: ${payload.details}` : payload.error;
+            }
+          } catch {
+            // ignore parse errors
+          }
+          throw new Error(message);
+        }
+
+        const payload = await response.json();
+        const cleanup = payload?.zohoCleanup;
+
+        if (cleanup && (cleanup.recallSuccess === false || cleanup.deleteSuccess === false)) {
+          alert('Agreement cancelled locally, but Zoho cleanup is pending. Please retry later or follow up with support.');
+        }
+
+        await fetchData({ reset: true });
+      } catch (error) {
+        console.error('Error cancelling agreement:', error);
+        const message = error instanceof Error ? error.message : 'Failed to cancel agreement. Please try again.';
+        alert(message);
+      } finally {
+        setCanceling(null);
+      }
+    },
+    [fetchData],
+  );
 
   const downloadPDF = async (signedPdfPath: string, competitorName: string) => {
     try {
@@ -833,6 +885,24 @@ export default function ReleaseManagementPage() {
               >
                 <Upload className="h-4 w-4 mr-1" />
                 Upload Signed
+              </Button>
+            )}
+
+            {agreement && ['sent', 'viewed', 'print_ready'].includes(agreement.status) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => cancelAgreement(agreement, competitor)}
+                disabled={disableAdminAll || canceling === agreement.id}
+                className="text-meta-light border-meta-border hover:bg-meta-accent"
+                title={disableAdminAll ? 'Select a coach to edit' : 'Cancel digital flow and reset'}
+              >
+                {canceling === agreement.id ? (
+                  <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Ban className="h-4 w-4 mr-1" />
+                )}
+                Cancel & Reset
               </Button>
             )}
             

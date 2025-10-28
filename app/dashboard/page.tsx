@@ -72,6 +72,21 @@ interface DashboardStats {
   complianceCompetitors?: number;
 }
 
+const normalizeCompetitor = (comp: any): Competitor => {
+  const normalizedStatus = calculateCompetitorStatus({
+    ...comp,
+    game_platform_id: comp.game_platform_id ?? null,
+  });
+
+  return {
+    ...comp,
+    status: normalizedStatus,
+    media_release_signed: comp.media_release_signed || false,
+    participation_agreement_signed: comp.participation_agreement_signed || false,
+    is_active: comp.is_active !== undefined ? comp.is_active : true,
+  };
+};
+
 export const dynamic = 'force-dynamic';
 
 export default function DashboardPage() {
@@ -287,7 +302,7 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [ctxLoading, coachId, isAdmin, adminOffset, normalizeCompetitor])
+  }, [ctxLoading, coachId, isAdmin, adminOffset])
 
   // Initial and context-based fetch
   useEffect(() => {
@@ -445,7 +460,7 @@ export default function DashboardPage() {
       adminLoadingRef.current = false
       setAdminLoading(false)
     }
-  }, [adminOffset, adminTotal, normalizeCompetitor])
+  }, [adminOffset, adminTotal])
 
   useEffect(() => {
     if (!isAdmin) {
@@ -1061,17 +1076,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-  const normalizeCompetitor = useCallback((comp: any): Competitor => {
-    const normalizedStatus = calculateCompetitorStatus({
-      ...comp,
-      game_platform_id: comp.game_platform_id ?? null,
-    });
-
-    return {
-      ...comp,
-      status: normalizedStatus,
-      media_release_signed: comp.media_release_signed || false,
-      participation_agreement_signed: comp.participation_agreement_signed || false,
-      is_active: comp.is_active !== undefined ? comp.is_active : true,
-    };
-  }, []);

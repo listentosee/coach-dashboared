@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { logger } from '@/lib/logging/safe-logger';
 import type { GamePlatformProfileRecord } from '@/lib/integrations/game-platform/repository';
+import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 
 export async function GET(request: NextRequest) {
   try {
@@ -145,7 +146,11 @@ export async function GET(request: NextRequest) {
       const coachFullName = coachProfile?.full_name?.trim() || joinedName
       const coachLabel = coachFullName || coachProfile?.email || null
       const mapping = mappingByCompetitorId.get(competitor.id) ?? null
-      const syncedUserId = competitor.game_platform_id || mapping?.synced_user_id || null
+      const syncedUserId = competitor.game_platform_id || mapping?.synced_user_id || null;
+      const computedStatus = calculateCompetitorStatus({
+        ...competitor,
+        game_platform_id: syncedUserId,
+      });
 
       return {
         id: competitor.id,
@@ -156,7 +161,7 @@ export async function GET(request: NextRequest) {
         parent_email: (competitor as any).parent_email || null,
         is_18_or_over: competitor.is_18_or_over,
         grade: competitor.grade,
-        status: competitor.status,
+        status: computedStatus,
         division: (competitor as any).division || null,
         program_track: (competitor as any).program_track || null,
         media_release_date: competitor.media_release_date,

@@ -40,6 +40,7 @@ export type AuditAction =
   | 'agreement_sent'
   | 'agreement_signed'
   | 'agreement_viewed'
+  | 'agreement_voided'
   | 'consent_revoked'
 
   // Administrative operations
@@ -222,7 +223,7 @@ export class AuditLogger {
     params: {
       agreementId: string;
       competitorId: string;
-      action: Extract<AuditAction, 'agreement_sent' | 'agreement_signed' | 'agreement_viewed' | 'consent_revoked'>;
+      action: Extract<AuditAction, 'agreement_sent' | 'agreement_signed' | 'agreement_viewed' | 'agreement_voided' | 'consent_revoked'>;
       userId?: string | null;
       metadata?: Record<string, any>;
     }

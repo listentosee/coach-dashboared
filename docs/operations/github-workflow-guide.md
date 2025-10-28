@@ -30,52 +30,34 @@ supabase db pull
 This creates migration files from your current production state
 
 **5. Create `.env.local` file** (add to `.gitignore`)
+Use the output from `supabase -status -o env` to get the values for the local environment variables.
 ```bash
-POSTGRES_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
-SUPABASE_URL=http://127.0.0.1:54321
-NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-POSTGRES_USER=postgres
-POSTGRES_DATABASE=postgres
-SUPABASE_SERVICE_ROLE_KEY=sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH
+supabase -status -o env
 
-MONDAY_API_TOKEN=eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjQ1NDgwNzcwNywiYWFpIjoxMSwidWlkIjo2OTg5MjQ2OCwiaWFkIjoiMjAyNS0wMS0wN1QxOTozNzowNS4wMDBaIiwicGVyIjoibWU6d3JpdGUiLCJhY3RpZCI6MjcwNjI4ODcsInJnbiI6InVzZTEifQ.FKJIlRdrdtR987Asl05Z7FDP2gSbDGQiIfm06gudM6g
-
-MONDAY_BOARD_ID=9846525471
-
-GAME_PLATFORM_API_BASE_URL=https://api.metactf.com/integrations/syned/v1/
-GAME_PLATFORM_API_TOKEN=f2b216eb114e5468ef15f6b192e22b33
-GAME_PLATFORM_INTEGRATION_ENABLED=true
-
-ADMIN_CREATION_KEY_HASH=c6c2ece3f906a0a4c6b70f95bdd8e91d710217e0e17e9af7e7208395c14a62ca
-
-CYBERNUGGETS_PARTNER_APP_ID=iemc
-CYBERNUGGETS_PARTNER_SECRET=9haibX6JVO5CWyRBzn_XiCQjLBeA8lmNrR-ig3uxkKM
-CYBERNUGGETS_SSO_BASE_URL=nuggets.cyber-guild.org
-
-# Zoho OAuth & API
-ZOHO_ACCOUNTS_URL=https://accounts.zoho.com # use .eu, .in, etc. if applicable
-ZOHO_SIGN_BASE_URL=https://sign.zoho.com # use regional base if applicable
-ZOHO_CLIENT_ID=1000.5GZ6HTY78FH9T855UGTW9YRJUM9K6Y
-ZOHO_CLIENT_SECRET=2588456688debedd5717e4b73323b4d4360aeb1a05
-ZOHO_REFRESH_TOKEN=1000.d5d6a4cc83f3bfba05f8047b959c4bc9.3f300b2741f87af2d23a43a74f017436
-
-# Templates (adult vs minor)
-ZOHO_SIGN_TEMPLATE_ID_ADULT=505002000000045177
-ZOHO_SIGN_TEMPLATE_ID_MINOR=505002000000045127
-# the template to reuse
-
-SUPABASE_MESSAGES_BUCKET=messages
-
-JOB_QUEUE_RUNNER_SECRET=3d51f7c69e4c41c08bb5ebd19d4d2f60
-CRON_SECRET=mfjvDLmME0QyS3koDuGJLrkxLzjLDXTAsrK+3LRn7xQ=
-INTERNAL_SYNC_SECRET=test-internal-secret
+Stopped services: [supabase_imgproxy_coach-dashboared supabase_pooler_coach-dashboared]
+ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0"
+API_URL="http://127.0.0.1:54321"
+DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+GRAPHQL_URL="http://127.0.0.1:54321/graphql/v1"
+INBUCKET_URL="http://127.0.0.1:54324"
+JWT_SECRET="super-secret-jwt-token-with-at-least-32-characters-long"
+MAILPIT_URL="http://127.0.0.1:54324"
+MCP_URL="http://127.0.0.1:54321/mcp"
+PUBLISHABLE_KEY="sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH"
+S3_PROTOCOL_ACCESS_KEY_ID="625729a08b95bf1b7ff351a663f3a23c"
+S3_PROTOCOL_ACCESS_KEY_SECRET="850181e4652dd023b7a98c58ae0d2d34bd487ee0cc3254aed6eda37307425907"
+S3_PROTOCOL_REGION="local"
+SECRET_KEY="sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz"
+SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU"
+STORAGE_S3_URL="http://127.0.0.1:54321/storage/v1/s3"
+STUDIO_URL="http://127.0.0.1:54323"
 ```
 
 **6. Keep `.env` file for production** (committed to Git, used by Vercel)
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<production-key>
+SUPABASE_SERVICE_ROLE_KEY=<production-key>
 ```
 
 ### B. GitHub/Vercel/Supabase Integrations
@@ -91,7 +73,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<production-key>
 ```bash
 supabase start
 ```
-Spins up local Postgres in Docker. Copy the `anon key` and `API URL` to `.env.local` (first time only)
+Spins up local Postgres in Docker. Copy the `anon key` and `API URL` to `.env.local` (first time only. See instructions above.)
 
 ### 2. Create Feature Branch
 ```bash

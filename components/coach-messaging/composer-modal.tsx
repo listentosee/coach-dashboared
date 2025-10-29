@@ -29,6 +29,7 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
     close,
     loading,
     error,
+    sendState,
     resetError,
     body,
     setBody,
@@ -44,6 +45,7 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
     handleFiles,
     send,
   } = controller
+  const isSuccess = sendState === 'success'
 
   const fileInputId = useMemo(() => `coach-composer-files-${Math.random().toString(36).slice(2)}`, [])
 
@@ -56,10 +58,20 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) close() }}>
-      <DialogContent className="max-w-2xl overflow-y-auto">
+      <DialogContent className={isSuccess ? 'max-w-2xl' : 'max-w-2xl overflow-y-auto'}>
         <DialogHeader>
-          <DialogTitle>{modeTitle[mode]}</DialogTitle>
+          <DialogTitle>{isSuccess ? 'Message Sent' : modeTitle[mode]}</DialogTitle>
         </DialogHeader>
+        {isSuccess ? (
+          <div className="space-y-6">
+            <div className="rounded-md border border-meta-border bg-meta-dark/60 px-4 py-3 text-sm text-meta-light">
+              Your message was delivered successfully. You can return to the inbox when you are ready.
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button onClick={close}>OK</Button>
+            </div>
+          </div>
+        ) : (
         <div className="space-y-4">
           {mode === 'dm' && !lockDmRecipient ? (
             <div>
@@ -191,6 +203,7 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
             </Button>
           </div>
         </div>
+        )}
       </DialogContent>
     </Dialog>
   )

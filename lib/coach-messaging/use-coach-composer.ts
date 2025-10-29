@@ -186,13 +186,14 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
         context,
       }
       await onSend(payload)
-      close()
     } catch (err) {
       console.error(err)
       setError(err instanceof Error ? err.message : 'Failed to send message')
+      return
     } finally {
       setLoading(false)
     }
+    close()
   }, [body, close, dmRecipientId, groupRecipients, mode, onSend, context, subject])
 
   const resetError = useCallback(() => setError(null), [])

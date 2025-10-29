@@ -57,7 +57,7 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
   }, [lockDmRecipient, dmRecipientId, directory])
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) close() }}>
+    <Dialog open={open} modal={sendState !== 'success'} onOpenChange={(next) => { if (!next) close() }}>
       <DialogContent className={isSuccess ? 'max-w-2xl' : 'max-w-2xl overflow-y-auto'}>
         <DialogHeader>
           <DialogTitle>{isSuccess ? 'Message Sent' : modeTitle[mode]}</DialogTitle>
@@ -68,7 +68,7 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
               Your message was delivered successfully. You can return to the inbox when you are ready.
             </div>
             <div className="flex justify-end gap-2">
-              <Button onClick={close}>OK</Button>
+              <Button onClick={() => close()}>OK</Button>
             </div>
           </div>
         ) : (

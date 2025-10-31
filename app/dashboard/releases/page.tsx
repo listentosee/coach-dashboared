@@ -716,14 +716,34 @@ export default function ReleaseManagementPage() {
       },
     },
     {
-      accessorKey: "agreement.created_at",
+      id: "lastActivity",
+      accessorFn: (row) => {
+        const { agreement } = row
+        if (!agreement) return null
+        const isSigned = agreement.status === 'completed' || agreement.status === 'completed_manual'
+        const signedAt = isSigned ? agreement.updated_at : null
+        return signedAt ?? agreement.created_at ?? null
+      },
+      sortingFn: (a, b) => {
+        const aValue = a.getValue<string | null>("lastActivity")
+        const bValue = b.getValue<string | null>("lastActivity")
+        if (!aValue && !bValue) return 0
+        if (!aValue) return 1
+        if (!bValue) return -1
+        const aTime = new Date(aValue).getTime()
+        const bTime = new Date(bValue).getTime()
+        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0
+        if (Number.isNaN(aTime)) return 1
+        if (Number.isNaN(bTime)) return -1
+        return aTime - bTime
+      },
       header: ({ column }) => (
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           className="h-auto p-0 font-medium text-left hover:bg-transparent"
         >
-          Sent Date
+          Last Activity
           {column.getIsSorted() === "asc" ? (
             <ChevronUp className="ml-2 h-4 w-4" />
           ) : column.getIsSorted() === "desc" ? (
@@ -734,14 +754,28 @@ export default function ReleaseManagementPage() {
         </Button>
       ),
       cell: ({ row }) => {
-        const { agreement } = row.original;
-        if (!agreement) return <span className="text-meta-muted">-</span>;
-        
-        return (
-          <div className="text-sm text-meta-light">
-            {new Date(agreement.created_at).toLocaleDateString()}
-          </div>
-        );
+        const { agreement } = row.original
+        if (!agreement) return <span className="text-meta-muted">-</span>
+
+        const sentDate = agreement.created_at ? new Date(agreement.created_at) : null
+        const isSigned = agreement.status === 'completed' || agreement.status === 'completed_manual'
+        const signedDate = isSigned && agreement.updated_at ? new Date(agreement.updated_at) : null
+
+        const formatDate = (date: Date | null) => {
+          if (!date || Number.isNaN(date.getTime())) return null
+          return date.toLocaleDateString()
+        }
+
+        const signedLabel = formatDate(signedDate)
+        const sentLabel = formatDate(sentDate)
+        const displayLabel = signedLabel ? 'Signed' : 'Sent'
+        const displayDate = signedLabel ?? sentLabel
+
+        if (!displayDate) {
+          return <span className="text-meta-muted">-</span>
+        }
+
+        return <div className="text-sm text-meta-light">{`${displayLabel} ${displayDate}`}</div>
       },
     },
     {
@@ -750,10 +784,11 @@ export default function ReleaseManagementPage() {
       cell: ({ row }) => {
         const { competitor, agreement, hasLegacySigned } = row.original;
         const disableAdminAll = isAdmin && !ctxLoading && coachId === null // admin in All-coaches → disable
+        const isSignedStatus = agreement?.status === 'completed' || agreement?.status === 'completed_manual'
         
         return (
           <div className="flex items-center space-x-2">
-            {agreement?.signed_pdf_path && (
+            {agreement?.signed_pdf_path && isSignedStatus && (
               <Button
                 size="sm"
                 variant="outline"

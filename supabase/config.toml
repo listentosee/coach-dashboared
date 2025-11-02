@@ -1,8 +1,7 @@
-project_id = "ejoplrkrqvddiklwsfoj"
+# Remote dev branch configuration
+[remotes.develop]
+project_id = "hwitxyvjzttpppesgjmc"
 
-[db]
-  major_version = 17
-
-[functions]
-  [functions.sync]
-    verify_jwt = false
+[remotes.develop.db.seed]
+enabled = true
+sql_paths = ['./seed.sql']

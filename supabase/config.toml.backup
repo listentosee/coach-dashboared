@@ -1,0 +1,31 @@
+# Base config for all environments
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+
+[db]
+port = 54322
+major_version = 15
+
+[db.pooler]
+enabled = true
+port = 54329
+pool_mode = "transaction"
+
+[db.seed]
+enabled = true
+sql_paths = ['./supabase/seed.sql']
+
+# Auth configuration
+[auth]
+site_url = "http://localhost:3000"
+enable_signup = true
+
+# Persistent dev branch config
+[remotes.develop]
+project_id = "hwitxyvjzttpppesgjmc"
+
+[remotes.develop.db.seed]
+enabled = true
+sql_paths = ['./supabase/seed.sql']

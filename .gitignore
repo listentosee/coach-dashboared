@@ -18,6 +18,7 @@ yarn-error.log*
 
 # env files
 .env*
+.DS_Store
 
 # vercel
 .vercel
@@ -87,3 +88,6 @@ CLAUDE.md
 
 # print styles (development only)
 app/print.css
+
+# supabase local cache
+supabase/.temp/

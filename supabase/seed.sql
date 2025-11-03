@@ -33,18 +33,44 @@ DELETE FROM public.profiles WHERE id NOT IN (SELECT id FROM auth.users);
 -- Temporarily disable user creation triggers (e.g., handle_new_user) to avoid enum casting issues
 SET session_replication_role = 'replica';
 
+-- Ensure auth.instances matches hosted Supabase (zero UUID instance)
+INSERT INTO auth.instances (id, uuid, raw_base_config, created_at, updated_at)
+VALUES (
+  '00000000-0000-0000-0000-000000000000'::uuid,
+  '00000000-0000-0000-0000-000000000000',
+  '{}'::jsonb,
+  now(),
+  now()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Ensure any existing instance records have consistent timestamps
+UPDATE auth.instances
+SET created_at = COALESCE(created_at, now()),
+    updated_at = now(),
+    raw_base_config = COALESCE(raw_base_config::jsonb, '{}'::jsonb);
+
 -- =============================================================================
 -- AUTH USERS & PROFILES
 -- =============================================================================
 -- Create test auth users with predictable passwords for local dev
 -- Password for all test users: "TestPassword123!"
--- Hash generated with: SELECT crypt('TestPassword123!', gen_salt('bf'))
+-- Hash generated with: SELECT extensions.crypt('TestPassword123!', extensions.gen_salt('bf'))
+
+/* Auth users are now seeded via scripts/seed-users.js (Supabase Admin API).
+   The SQL statements below are disabled to avoid double-loading auth data.
 
 -- Admin user
+WITH hashed_admin AS (
+  SELECT 
+    extensions.crypt('TestPassword123!', extensions.gen_salt('bf', 10)) AS hash,
+    '00000000-0000-0000-0000-000000000000'::uuid AS instance_id
+)
 INSERT INTO auth.users (
-  id, 
-  email, 
+  id,
+  email,
   encrypted_password,
+  instance_id,
   email_confirmed_at,
   raw_user_meta_data,
   raw_app_meta_data,
@@ -52,10 +78,12 @@ INSERT INTO auth.users (
   role,
   created_at,
   updated_at
-) VALUES (
+)
+SELECT
   '00000000-0000-0000-0000-000000000001'::uuid,
   'admin@test.com',
-  crypt('TestPassword123!', gen_salt('bf')),
+  hashed_admin.hash,
+  hashed_admin.instance_id,
   now(),
   '{"role": "admin", "first_name": "Admin", "last_name": "User", "school_name": "IE Mayors Cup HQ"}'::jsonb,
   jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
@@ -63,9 +91,11 @@ INSERT INTO auth.users (
   'authenticated',
   now(),
   now()
-) ON CONFLICT (id) DO UPDATE SET
+FROM hashed_admin
+ON CONFLICT (id) DO UPDATE SET
   email = EXCLUDED.email,
   encrypted_password = EXCLUDED.encrypted_password,
+  instance_id = EXCLUDED.instance_id,
   email_confirmed_at = EXCLUDED.email_confirmed_at,
   raw_user_meta_data = EXCLUDED.raw_user_meta_data,
   raw_app_meta_data = EXCLUDED.raw_app_meta_data,
@@ -74,10 +104,16 @@ INSERT INTO auth.users (
   updated_at = EXCLUDED.updated_at;
 
 -- Approved coach with active students
+WITH hashed_active AS (
+  SELECT 
+    extensions.crypt('TestPassword123!', extensions.gen_salt('bf', 10)) AS hash,
+    '00000000-0000-0000-0000-000000000000'::uuid AS instance_id
+)
 INSERT INTO auth.users (
-  id, 
-  email, 
+  id,
+  email,
   encrypted_password,
+  instance_id,
   email_confirmed_at,
   raw_user_meta_data,
   raw_app_meta_data,
@@ -85,10 +121,12 @@ INSERT INTO auth.users (
   role,
   created_at,
   updated_at
-) VALUES (
+)
+SELECT
   '00000000-0000-0000-0000-000000000002'::uuid,
   'coach.active@test.com',
-  crypt('TestPassword123!', gen_salt('bf')),
+  hashed_active.hash,
+  hashed_active.instance_id,
   now(),
   '{"role": "coach", "first_name": "Sarah", "last_name": "Johnson", "school_name": "Valley High School", "division": "high_school", "region": "Riverside", "is_approved": true, "live_scan_completed": true, "mandated_reporter_completed": true}'::jsonb,
   jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
@@ -96,9 +134,11 @@ INSERT INTO auth.users (
   'authenticated',
   now(),
   now()
-) ON CONFLICT (id) DO UPDATE SET
+FROM hashed_active
+ON CONFLICT (id) DO UPDATE SET
   email = EXCLUDED.email,
   encrypted_password = EXCLUDED.encrypted_password,
+  instance_id = EXCLUDED.instance_id,
   email_confirmed_at = EXCLUDED.email_confirmed_at,
   raw_user_meta_data = EXCLUDED.raw_user_meta_data,
   raw_app_meta_data = EXCLUDED.raw_app_meta_data,
@@ -107,10 +147,16 @@ INSERT INTO auth.users (
   updated_at = EXCLUDED.updated_at;
 
 -- Pending approval coach
+WITH hashed_pending AS (
+  SELECT 
+    extensions.crypt('TestPassword123!', extensions.gen_salt('bf', 10)) AS hash,
+    '00000000-0000-0000-0000-000000000000'::uuid AS instance_id
+)
 INSERT INTO auth.users (
-  id, 
-  email, 
+  id,
+  email,
   encrypted_password,
+  instance_id,
   email_confirmed_at,
   raw_user_meta_data,
   raw_app_meta_data,
@@ -118,10 +164,12 @@ INSERT INTO auth.users (
   role,
   created_at,
   updated_at
-) VALUES (
+)
+SELECT
   '00000000-0000-0000-0000-000000000003'::uuid,
   'coach.pending@test.com',
-  crypt('TestPassword123!', gen_salt('bf')),
+  hashed_pending.hash,
+  hashed_pending.instance_id,
   now(),
   '{"role": "coach", "first_name": "Mike", "last_name": "Chen", "school_name": "Desert View Middle School", "division": "middle_school", "region": "San Bernardino", "is_approved": false, "live_scan_completed": false, "mandated_reporter_completed": false}'::jsonb,
   jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
@@ -129,9 +177,11 @@ INSERT INTO auth.users (
   'authenticated',
   now(),
   now()
-) ON CONFLICT (id) DO UPDATE SET
+FROM hashed_pending
+ON CONFLICT (id) DO UPDATE SET
   email = EXCLUDED.email,
   encrypted_password = EXCLUDED.encrypted_password,
+  instance_id = EXCLUDED.instance_id,
   email_confirmed_at = EXCLUDED.email_confirmed_at,
   raw_user_meta_data = EXCLUDED.raw_user_meta_data,
   raw_app_meta_data = EXCLUDED.raw_app_meta_data,
@@ -140,10 +190,16 @@ INSERT INTO auth.users (
   updated_at = EXCLUDED.updated_at;
 
 -- Coach with college students
+WITH hashed_college AS (
+  SELECT 
+    extensions.crypt('TestPassword123!', extensions.gen_salt('bf', 10)) AS hash,
+    '00000000-0000-0000-0000-000000000000'::uuid AS instance_id
+)
 INSERT INTO auth.users (
-  id, 
-  email, 
+  id,
+  email,
   encrypted_password,
+  instance_id,
   email_confirmed_at,
   raw_user_meta_data,
   raw_app_meta_data,
@@ -151,10 +207,12 @@ INSERT INTO auth.users (
   role,
   created_at,
   updated_at
-) VALUES (
+)
+SELECT
   '00000000-0000-0000-0000-000000000004'::uuid,
   'coach.college@test.com',
-  crypt('TestPassword123!', gen_salt('bf')),
+  hashed_college.hash,
+  hashed_college.instance_id,
   now(),
   '{"role": "coach", "first_name": "Dr. Elena", "last_name": "Martinez", "school_name": "California State University SB", "division": "college", "region": "San Bernardino", "is_approved": true, "live_scan_completed": true, "mandated_reporter_completed": true}'::jsonb,
   jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
@@ -162,18 +220,17 @@ INSERT INTO auth.users (
   'authenticated',
   now(),
   now()
-) ON CONFLICT (id) DO UPDATE SET
+FROM hashed_college
+ON CONFLICT (id) DO UPDATE SET
   email = EXCLUDED.email,
   encrypted_password = EXCLUDED.encrypted_password,
+  instance_id = EXCLUDED.instance_id,
   email_confirmed_at = EXCLUDED.email_confirmed_at,
   raw_user_meta_data = EXCLUDED.raw_user_meta_data,
   raw_app_meta_data = EXCLUDED.raw_app_meta_data,
   aud = EXCLUDED.aud,
   role = EXCLUDED.role,
   updated_at = EXCLUDED.updated_at;
-
--- Re-enable triggers now that auth users are seeded
-SET session_replication_role = 'origin';
 
 -- Ensure corresponding profiles exist with correct enum casting
 INSERT INTO public.profiles (
@@ -285,7 +342,7 @@ INSERT INTO auth.identities (
 )
 VALUES
   (
-    gen_random_uuid(),
+    extensions.gen_random_uuid(),
     '00000000-0000-0000-0000-000000000001'::uuid,
     jsonb_build_object('sub', '00000000-0000-0000-0000-000000000001', 'email', 'admin@test.com'),
     'email',
@@ -295,7 +352,7 @@ VALUES
     now()
   ),
   (
-    gen_random_uuid(),
+    extensions.gen_random_uuid(),
     '00000000-0000-0000-0000-000000000002'::uuid,
     jsonb_build_object('sub', '00000000-0000-0000-0000-000000000002', 'email', 'coach.active@test.com'),
     'email',
@@ -305,7 +362,7 @@ VALUES
     now()
   ),
   (
-    gen_random_uuid(),
+    extensions.gen_random_uuid(),
     '00000000-0000-0000-0000-000000000003'::uuid,
     jsonb_build_object('sub', '00000000-0000-0000-0000-000000000003', 'email', 'coach.pending@test.com'),
     'email',
@@ -315,7 +372,7 @@ VALUES
     now()
   ),
   (
-    gen_random_uuid(),
+    extensions.gen_random_uuid(),
     '00000000-0000-0000-0000-000000000004'::uuid,
     jsonb_build_object('sub', '00000000-0000-0000-0000-000000000004', 'email', 'coach.college@test.com'),
     'email',
@@ -330,6 +387,16 @@ SET
   identity_data = EXCLUDED.identity_data,
   provider_id = EXCLUDED.provider_id,
   updated_at = now();
+
+-- Guarantee instance_id assigned for all users (handles legacy rows)
+UPDATE auth.users
+SET instance_id = inst.id
+FROM (
+  SELECT id FROM auth.instances ORDER BY created_at LIMIT 1
+) AS inst
+WHERE auth.users.instance_id IS NULL;
+
+*/
 
 -- Profiles are auto-created by trigger, but update them with full data
 UPDATE public.profiles SET
@@ -880,3 +947,6 @@ BEGIN
   RAISE NOTICE '  - Conversations (announcement, DM, group)';
   RAISE NOTICE '=================================================================';
 END $$;
+
+-- Restore trigger behavior
+SET session_replication_role = 'origin';

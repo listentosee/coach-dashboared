@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { getFileIcon } from '@/lib/utils/file-icons'
 import { cn } from '@/lib/utils'
 import type { CoachLibraryDocument } from '@/components/coach-library/CoachLibraryModal'
+import { supabase } from '@/lib/supabase/client'
 import { Loader2, Upload, RefreshCcw, Trash2, FilePenLine } from 'lucide-react'
 
 export function CoachLibraryManager() {
@@ -53,17 +54,53 @@ export function CoachLibraryManager() {
     setUploading(true)
     setError(null)
     try {
-      const formData = new FormData()
-      formData.append('file', fileInputRef.current.files[0])
-      formData.append('description', description.trim())
-      const res = await fetch('/api/admin/coach-library', {
+      const file = fileInputRef.current.files[0]
+      const descriptionValue = description.trim()
+
+      const prepareRes = await fetch('/api/admin/coach-library', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phase: 'prepare',
+          fileName: file.name,
+          contentType: file.type || null,
+          description: descriptionValue,
+        }),
       })
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        throw new Error(json?.error || 'Upload failed')
+      if (!prepareRes.ok) {
+        const json = await prepareRes.json().catch(() => ({}))
+        throw new Error(json?.error || 'Unable to prepare upload')
       }
+
+      const prepare = await prepareRes.json() as { path: string }
+      const path = prepare.path
+
+      const { error: uploadError } = await supabase.storage.from('coach-library').upload(path, file, {
+        upsert: false,
+        cacheControl: '3600',
+      })
+      if (uploadError) {
+        throw new Error(uploadError.message)
+      }
+
+      const finalizeRes = await fetch('/api/admin/coach-library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phase: 'finalize',
+          path,
+          description: descriptionValue,
+          fileName: file.name,
+          contentType: file.type || null,
+        }),
+      })
+
+      if (!finalizeRes.ok) {
+        const json = await finalizeRes.json().catch(() => ({}))
+        await supabase.storage.from('coach-library').remove([path])
+        throw new Error(json?.error || 'Failed to finalize document')
+      }
+
       setDescription('')
       if (fileInputRef.current) fileInputRef.current.value = ''
       await fetchDocuments()
@@ -78,12 +115,22 @@ export function CoachLibraryManager() {
     setUploading(true)
     setError(null)
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('description', doc.description)
+      const { error: uploadError } = await supabase.storage.from('coach-library').upload(doc.file_path, file, {
+        upsert: true,
+        cacheControl: '3600',
+      })
+      if (uploadError) {
+        throw new Error(uploadError.message)
+      }
+
       const res = await fetch(`/api/admin/coach-library/${doc.id}`, {
         method: 'PUT',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          replace: true,
+          fileName: file.name,
+          contentType: file.type || null,
+        }),
       })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
@@ -134,11 +181,10 @@ export function CoachLibraryManager() {
     setUploading(true)
     setError(null)
     try {
-      const formData = new FormData()
-      formData.append('description', next.trim())
       const res = await fetch(`/api/admin/coach-library/${doc.id}`, {
         method: 'PUT',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: next.trim() }),
       })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))

@@ -35,6 +35,7 @@ export async function GET() {
         description: row.description,
         file_name: row.file_name,
         content_type: row.content_type,
+        file_path: row.file_path,
         downloadUrl,
         updated_at: row.updated_at,
       }

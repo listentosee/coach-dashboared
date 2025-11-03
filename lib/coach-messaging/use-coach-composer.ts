@@ -22,6 +22,7 @@ export type CoachComposerController = {
   mode: ComposerMode
   loading: boolean
   error: string | null
+  sendState: 'idle' | 'success'
   body: string
   subject: string
   preview: boolean
@@ -52,6 +53,7 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
   const [mode, setMode] = useState<ComposerMode>('dm')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sendState, setSendState] = useState<'idle' | 'success'>('idle')
   const [body, setBody] = useState('')
   const [subject, setSubject] = useState('')
   const [preview, setPreview] = useState(false)
@@ -78,6 +80,7 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
     setDmRecipientId(options?.recipientId ?? null)
     setSubject(options?.subject ?? '')
     setOpen(true)
+    setSendState('idle')
   }, [])
 
   const openGroup = useCallback(() => {
@@ -89,6 +92,7 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
     setPreview(false)
     setAttachments([])
     setOpen(true)
+    setSendState('idle')
   }, [resetRecipients])
 
   const openAnnouncement = useCallback(() => {
@@ -100,6 +104,7 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
     setPreview(false)
     setAttachments([])
     setOpen(true)
+    setSendState('idle')
   }, [])
 
   const openReply = useCallback((selection: CoachInboxSelection) => {
@@ -111,6 +116,7 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
     setPreview(false)
     setAttachments([])
     setOpen(true)
+    setSendState('idle')
   }, [resetRecipients])
 
   const openForward = useCallback((selection: CoachInboxSelection) => {
@@ -123,6 +129,7 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
     setPreview(false)
     setAttachments([])
     setOpen(true)
+    setSendState('idle')
   }, [resetRecipients])
 
   const close = useCallback(() => {
@@ -135,6 +142,7 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
     setContext(null)
     setAttachments([])
     resetRecipients()
+    setSendState('idle')
   }, [resetRecipients])
 
   const togglePreview = useCallback(() => {
@@ -186,14 +194,15 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
         context,
       }
       await onSend(payload)
-      close()
+      setSendState('success')
     } catch (err) {
       console.error(err)
       setError(err instanceof Error ? err.message : 'Failed to send message')
+      return
     } finally {
       setLoading(false)
     }
-  }, [body, close, dmRecipientId, groupRecipients, mode, onSend, context, subject])
+  }, [body, dmRecipientId, groupRecipients, mode, onSend, context, subject])
 
   const resetError = useCallback(() => setError(null), [])
 
@@ -202,6 +211,7 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
     mode,
     loading,
     error,
+    sendState,
     body,
     subject,
     preview,
@@ -230,6 +240,7 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
     mode,
     loading,
     error,
+    sendState,
     body,
     subject,
     preview,

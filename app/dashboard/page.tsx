@@ -44,6 +44,13 @@ interface Competitor {
   coach_name?: string | null;
   coach_email?: string | null;
   coach_id?: string | null;
+  parent_name?: string | null;
+  parent_email?: string | null;
+  gender?: string | null;
+  race?: string | null;
+  ethnicity?: string | null;
+  level_of_technology?: string | null;
+  years_competing?: number | null;
 }
 
 interface ProfileLinkDialogState {
@@ -63,6 +70,13 @@ interface DashboardStats {
   profileCompetitors?: number;
   complianceCompetitors?: number;
 }
+
+const decorateCompetitor = (comp: any): Competitor => ({
+  ...comp,
+  media_release_signed: comp.media_release_signed || false,
+  participation_agreement_signed: comp.participation_agreement_signed || false,
+  is_active: comp.is_active !== undefined ? comp.is_active : true,
+});
 
 export const dynamic = 'force-dynamic';
 
@@ -142,10 +156,11 @@ export default function DashboardPage() {
           const r = await fetch(`/api/competitors/paged?offset=0&limit=${firstLimit}`)
           if (r.ok) {
             const j = await r.json()
-            setCompetitors(j.rows || [])
+            const normalizedRows = (j.rows || []).map(decorateCompetitor)
+            setCompetitors(normalizedRows)
             setAdminTotal(j.total || 0)
             setAdminOffset((j.rows || []).length)
-            statList = j.rows || []
+            statList = normalizedRows
           } else {
             setCompetitors([])
             setAdminTotal(0)
@@ -162,12 +177,7 @@ export default function DashboardPage() {
           throw new Error('Failed to fetch competitors');
         }
         const competitorsData = await competitorsResponse.json();
-        const transformedCompetitors = (competitorsData.competitors || []).map((comp: any) => ({
-          ...comp,
-          media_release_signed: comp.media_release_signed || false,
-          participation_agreement_signed: comp.participation_agreement_signed || false,
-          is_active: comp.is_active !== undefined ? comp.is_active : true,
-        }));
+        const transformedCompetitors = (competitorsData.competitors || []).map(decorateCompetitor);
         let scopedCompetitors = transformedCompetitors as any[]
         if (isAdminNow && !ctxLoading && coachId) {
           scopedCompetitors = scopedCompetitors.filter((c: any) => c.coach_id === coachId)
@@ -422,7 +432,7 @@ export default function DashboardPage() {
       const r = await fetch(`/api/competitors/paged?offset=${offset}&limit=${limit}`)
       if (r.ok) {
         const j = await r.json()
-        const rows = (j.rows || []) as Competitor[]
+        const rows = (j.rows || []).map(decorateCompetitor) as Competitor[]
         if (rows.length) {
           setCompetitors(prev => {
             const seen = new Set(prev.map(item => item.id))

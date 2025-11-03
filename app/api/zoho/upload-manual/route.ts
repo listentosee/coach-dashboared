@@ -11,7 +11,10 @@ export async function POST(req: NextRequest) {
     const agreementId = formData.get('agreementId') as string;
 
     if (!file || !agreementId) {
-      return NextResponse.json({ error: 'Missing file or agreement ID' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Missing file or agreement ID', error_code: 'missing_parameters' },
+        { status: 400 }
+      );
     }
 
     const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -20,11 +23,21 @@ export async function POST(req: NextRequest) {
     const cookieStore = await cookies()
     const authed = createRouteHandlerClient({ cookies: () => cookieStore })
     const { data: { user } } = await authed.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized', error_code: 'unauthorized' },
+        { status: 401 }
+      )
+    }
     const { data: profile } = await authed.from('profiles').select('role').eq('id', user.id).single()
     const isAdmin = profile?.role === 'admin'
     const actingCoachId = isAdmin ? (cookieStore.get('admin_coach_id')?.value || null) : null
-    if (isAdmin && !actingCoachId) return NextResponse.json({ error: 'Select a coach context to edit' }, { status: 403 })
+    if (isAdmin && !actingCoachId) {
+      return NextResponse.json(
+        { error: 'Select a coach context to edit', error_code: 'missing_admin_context' },
+        { status: 403 }
+      )
+    }
 
     // Get the agreement details
     const { data: agreement, error: agreementError } = await supabase
@@ -34,21 +47,40 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (agreementError || !agreement) {
-      return NextResponse.json({ error: 'Agreement not found' }, { status: 404 });
+      return NextResponse.json(
+        {
+          error: 'Agreement not found',
+          error_code: 'agreement_not_found',
+          details: agreementError?.message
+        },
+        { status: 404 }
+      );
     }
 
     // Ownership check: ensure caller has rights to the agreement's competitor
     const { data: comp } = await supabase.from('competitors').select('coach_id').eq('id', agreement.competitor_id).single()
     if (!isAdmin && comp && comp.coach_id !== user.id) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      return NextResponse.json(
+        { error: 'Access denied', error_code: 'coach_mismatch' },
+        { status: 403 }
+      )
     }
     if (isAdmin && actingCoachId && comp && comp.coach_id !== actingCoachId) {
-      return NextResponse.json({ error: 'Target not owned by selected coach' }, { status: 403 })
+      return NextResponse.json(
+        {
+          error: 'Target not owned by selected coach',
+          error_code: 'admin_context_mismatch'
+        },
+        { status: 403 }
+      )
     }
 
     // Check if already completed
     if (agreement.status === 'completed' || agreement.status === 'completed_manual') {
-      return NextResponse.json({ error: 'Agreement already completed' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Agreement already completed', error_code: 'already_completed' },
+        { status: 400 }
+      );
     }
 
     // Step 1: Upload file to Supabase Storage
@@ -66,8 +98,20 @@ export async function POST(req: NextRequest) {
       });
 
     if (uploadError) {
-      logger.error('Storage upload failed', { error: uploadError.message });
-      return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 });
+      const detail = uploadError?.message || 'Unknown storage error';
+      logger.error('Storage upload failed', { error: detail });
+      const status =
+        typeof (uploadError as any)?.statusCode === 'number'
+          ? (uploadError as any).statusCode
+          : 502;
+      return NextResponse.json(
+        {
+          error: 'Unable to store file in signatures bucket',
+          error_code: 'storage_upload_failed',
+          details: detail
+        },
+        { status }
+      );
     }
 
     // Step 2: Recall Zoho request
@@ -145,7 +189,14 @@ export async function POST(req: NextRequest) {
 
     if (updateError) {
       logger.error('Agreement update failed', { error: updateError.message });
-      return NextResponse.json({ error: 'Failed to update agreement' }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: 'Failed to update agreement record',
+          error_code: 'agreement_update_failed',
+          details: updateError.message
+        },
+        { status: 500 }
+      );
     }
 
     // Step 5: Update competitor record with agreement date
@@ -157,7 +208,14 @@ export async function POST(req: NextRequest) {
 
     if (competitorError) {
       logger.error('Competitor update failed', { error: competitorError.message });
-      return NextResponse.json({ error: 'Failed to update competitor' }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: 'Failed to update competitor record',
+          error_code: 'competitor_update_failed',
+          details: competitorError.message
+        },
+        { status: 500 }
+      );
     }
 
     // Step 6: Recalculate and update competitor status
@@ -177,15 +235,23 @@ export async function POST(req: NextRequest) {
         .eq('id', agreement.competitor_id);
     }
 
-    return NextResponse.json({ 
-      ok: true, 
+    return NextResponse.json({
+      ok: true,
       message: 'Document uploaded and agreement marked as manually completed',
       filePath,
       zohoCleanup: { recallSuccess, deleteSuccess }
     });
 
   } catch (error) {
-    logger.error('Manual upload failed', { error: error instanceof Error ? error.message : 'Unknown error' });
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const detail = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Manual upload failed', { error: detail });
+    return NextResponse.json(
+      {
+        error: 'Manual upload failed due to an unexpected error',
+        error_code: 'manual_upload_unhandled',
+        details: detail
+      },
+      { status: 500 }
+    );
   }
 }

@@ -4652,5 +4652,3 @@ using ((bucket_id = 'messages'::text));
   to authenticated
 using ((bucket_id = 'messages'::text));
 
-
-

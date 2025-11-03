@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
       const coachFullName = coachProfile?.full_name?.trim() || joinedName
       const coachLabel = coachFullName || coachProfile?.email || null
       const mapping = mappingByCompetitorId.get(competitor.id) ?? null
-      const syncedUserId = competitor.game_platform_id || mapping?.synced_user_id || null
+      const syncedUserId = competitor.game_platform_id || mapping?.synced_user_id || null;
 
       return {
         id: competitor.id,

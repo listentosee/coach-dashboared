@@ -22,6 +22,7 @@ import {
   Download,
   RefreshCw,
   Upload,
+  Ban,
   ChevronUp,
   ChevronDown,
   ChevronsUpDown
@@ -75,6 +76,7 @@ export default function ReleaseManagementPage() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [selectedAgreement, setSelectedAgreement] = useState<Agreement | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [canceling, setCanceling] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [visibleCount, setVisibleCount] = useState(40)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
@@ -400,7 +402,21 @@ export default function ReleaseManagementPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to upload file');
+        let message = 'Failed to upload file';
+        try {
+          const payload = await response.json();
+          if (payload?.error) {
+            message = payload.error;
+            if (payload?.details) {
+              message = `${message}: ${payload.details}`;
+            }
+          } else if (payload?.message) {
+            message = payload.message;
+          }
+        } catch (parseError) {
+          console.warn('Failed to parse upload error payload', parseError);
+        }
+        throw new Error(message);
       }
 
       // Refresh data and close modal
@@ -409,11 +425,62 @@ export default function ReleaseManagementPage() {
       setSelectedAgreement(null);
     } catch (error) {
       console.error('Error uploading file:', error);
-      alert('Failed to upload file. Please try again.');
+      const message = error instanceof Error ? error.message : 'Failed to upload file. Please try again.';
+      alert(message);
     } finally {
       setUploading(false);
     }
   };
+
+  const cancelAgreement = useCallback(
+    async (agreement: Agreement, competitor: Competitor) => {
+      const displayName = `${competitor.first_name} ${competitor.last_name}`;
+      const confirmMessage = `Cancel the Zoho request for ${displayName}? This stops the digital signing flow and removes it from the queue so you can use the manual override.`;
+
+      if (typeof window !== 'undefined' && !window.confirm(confirmMessage)) {
+        return;
+      }
+
+      try {
+        setCanceling(agreement.id);
+
+        const response = await fetch('/api/zoho/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agreementId: agreement.id }),
+        });
+
+        if (!response.ok) {
+          let message = 'Failed to cancel agreement';
+          try {
+            const payload = await response.json();
+            if (payload?.error) {
+              message = payload.details ? `${payload.error}: ${payload.details}` : payload.error;
+            }
+          } catch {
+            // ignore parse errors
+          }
+          throw new Error(message);
+        }
+
+        const payload = await response.json();
+        const cleanup = payload?.zohoCleanup;
+
+        if (cleanup && (cleanup.recallSuccess === false || cleanup.deleteSuccess === false)) {
+          alert('Agreement cancelled locally, but Zoho cleanup is pending. Please retry later or follow up with support.');
+        }
+
+        await fetchData({ reset: true });
+      } catch (error) {
+        console.error('Error cancelling agreement:', error);
+        const message = error instanceof Error ? error.message : 'Failed to cancel agreement. Please try again.';
+        alert(message);
+      } finally {
+        setCanceling(null);
+      }
+    },
+    [fetchData],
+  );
 
   const downloadPDF = async (signedPdfPath: string, competitorName: string) => {
     try {
@@ -716,14 +783,34 @@ export default function ReleaseManagementPage() {
       },
     },
     {
-      accessorKey: "agreement.created_at",
+      id: "lastActivity",
+      accessorFn: (row) => {
+        const { agreement } = row
+        if (!agreement) return null
+        const isSigned = agreement.status === 'completed' || agreement.status === 'completed_manual'
+        const signedAt = isSigned ? agreement.updated_at : null
+        return signedAt ?? agreement.created_at ?? null
+      },
+      sortingFn: (a, b) => {
+        const aValue = a.getValue<string | null>("lastActivity")
+        const bValue = b.getValue<string | null>("lastActivity")
+        if (!aValue && !bValue) return 0
+        if (!aValue) return 1
+        if (!bValue) return -1
+        const aTime = new Date(aValue).getTime()
+        const bTime = new Date(bValue).getTime()
+        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0
+        if (Number.isNaN(aTime)) return 1
+        if (Number.isNaN(bTime)) return -1
+        return aTime - bTime
+      },
       header: ({ column }) => (
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           className="h-auto p-0 font-medium text-left hover:bg-transparent"
         >
-          Sent Date
+          Last Activity
           {column.getIsSorted() === "asc" ? (
             <ChevronUp className="ml-2 h-4 w-4" />
           ) : column.getIsSorted() === "desc" ? (
@@ -734,14 +821,28 @@ export default function ReleaseManagementPage() {
         </Button>
       ),
       cell: ({ row }) => {
-        const { agreement } = row.original;
-        if (!agreement) return <span className="text-meta-muted">-</span>;
-        
-        return (
-          <div className="text-sm text-meta-light">
-            {new Date(agreement.created_at).toLocaleDateString()}
-          </div>
-        );
+        const { agreement } = row.original
+        if (!agreement) return <span className="text-meta-muted">-</span>
+
+        const sentDate = agreement.created_at ? new Date(agreement.created_at) : null
+        const isSigned = agreement.status === 'completed' || agreement.status === 'completed_manual'
+        const signedDate = isSigned && agreement.updated_at ? new Date(agreement.updated_at) : null
+
+        const formatDate = (date: Date | null) => {
+          if (!date || Number.isNaN(date.getTime())) return null
+          return date.toLocaleDateString()
+        }
+
+        const signedLabel = formatDate(signedDate)
+        const sentLabel = formatDate(sentDate)
+        const displayLabel = signedLabel ? 'Signed' : 'Sent'
+        const displayDate = signedLabel ?? sentLabel
+
+        if (!displayDate) {
+          return <span className="text-meta-muted">-</span>
+        }
+
+        return <div className="text-sm text-meta-light">{`${displayLabel} ${displayDate}`}</div>
       },
     },
     {
@@ -750,10 +851,11 @@ export default function ReleaseManagementPage() {
       cell: ({ row }) => {
         const { competitor, agreement, hasLegacySigned } = row.original;
         const disableAdminAll = isAdmin && !ctxLoading && coachId === null // admin in All-coaches → disable
+        const isSignedStatus = agreement?.status === 'completed' || agreement?.status === 'completed_manual'
         
         return (
           <div className="flex items-center space-x-2">
-            {agreement?.signed_pdf_path && (
+            {agreement?.signed_pdf_path && isSignedStatus && (
               <Button
                 size="sm"
                 variant="outline"
@@ -818,6 +920,24 @@ export default function ReleaseManagementPage() {
               >
                 <Upload className="h-4 w-4 mr-1" />
                 Upload Signed
+              </Button>
+            )}
+
+            {agreement && ['sent', 'viewed', 'print_ready'].includes(agreement.status) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => cancelAgreement(agreement, competitor)}
+                disabled={disableAdminAll || canceling === agreement.id}
+                className="text-meta-light border-meta-border hover:bg-meta-accent"
+                title={disableAdminAll ? 'Select a coach to edit' : 'Cancel digital flow and reset'}
+              >
+                {canceling === agreement.id ? (
+                  <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Ban className="h-4 w-4 mr-1" />
+                )}
+                Cancel & Reset
               </Button>
             )}
             

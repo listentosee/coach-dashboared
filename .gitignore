@@ -91,3 +91,6 @@ app/print.css
 
 # supabase local cache
 supabase/.temp/
+ 
+# supabase backups
+supabase/*.backup

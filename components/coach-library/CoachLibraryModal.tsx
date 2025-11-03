@@ -12,7 +12,6 @@ export type CoachLibraryDocument = {
   description: string
   file_name: string
   content_type: string | null
-  file_path: string
   downloadUrl: string | null
   updated_at: string
 }

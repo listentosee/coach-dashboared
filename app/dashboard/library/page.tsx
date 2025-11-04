@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { CoachLibraryModal } from '@/components/coach-library/CoachLibraryModal'
 
 export default function CoachLibraryPage() {
@@ -10,14 +10,8 @@ export default function CoachLibraryPage() {
 
   const handleClose = useCallback(() => {
     setOpen(false)
-    router.back()
+    router.push('/dashboard')
   }, [router])
-
-  useEffect(() => {
-    if (!open) {
-      router.back()
-    }
-  }, [open, router])
 
   return <CoachLibraryModal open={open} onClose={handleClose} />
 }

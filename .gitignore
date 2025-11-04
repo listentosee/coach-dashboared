@@ -18,7 +18,6 @@ yarn-error.log*
 
 # env files
 .env*
-.DS_Store
 
 # Supabase
 /supabase/.branches/
@@ -107,12 +106,3 @@ CLAUDE.md
 
 # print styles (development only)
 app/print.css
-
-# supabase local cache
-supabase/.temp/
- 
-# supabase backups
-supabase/*.backup
-
-# ignore npm lockfile (use pnpm)
-package-lock.json

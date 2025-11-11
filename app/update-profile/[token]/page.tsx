@@ -264,7 +264,7 @@ export default function UpdateProfilePage() {
           <h1 className="text-3xl font-bold text-meta-light">
             {profile?.first_name?.toUpperCase()} {profile?.last_name?.toUpperCase()} UPDATE FORM
           </h1>
-          <p className="text-meta-muted mt-2">*Bookmark this URL for easy access</p>
+          <p className="text-meta-muted mt-2"></p>
         </div>
 
         <Card className="bg-meta-card border-meta-border">

@@ -81,6 +81,9 @@ export async function PUT(
         email_personal: validatedData.email_personal || null,
         parent_name: validatedData.parent_name || null,
         parent_email: validatedData.parent_email || null,
+        // Immediately invalidate the magic link after successful update
+        profile_update_token: null,
+        profile_update_token_expires: null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', existingCompetitor.id)

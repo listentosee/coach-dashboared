@@ -8,7 +8,7 @@ import { getFileIcon } from '@/lib/utils/file-icons'
 import { cn } from '@/lib/utils'
 import type { CoachLibraryDocument } from '@/components/coach-library/CoachLibraryModal'
 import { supabase } from '@/lib/supabase/client'
-import { Loader2, Upload, RefreshCcw, Trash2, FilePenLine } from 'lucide-react'
+import { Loader2, Upload, RefreshCcw, Trash2, FilePenLine, Copy } from 'lucide-react'
 
 export function CoachLibraryManager() {
   const [documents, setDocuments] = useState<CoachLibraryDocument[]>([])
@@ -171,6 +171,20 @@ export function CoachLibraryManager() {
     }
   }
 
+  const handleCopyUrl = async (doc: CoachLibraryDocument) => {
+    if (!doc.downloadUrl) {
+      alert('Download URL is not available yet. Try opening the document first.')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(doc.downloadUrl)
+      alert('Link copied to clipboard.')
+    } catch (error) {
+      console.error('Clipboard write failed', error)
+      window.prompt('Copy this link:', doc.downloadUrl)
+    }
+  }
+
   const handleOpen = (doc: CoachLibraryDocument) => {
     if (doc.downloadUrl) {
       window.open(doc.downloadUrl, '_blank', 'noopener,noreferrer')
@@ -276,6 +290,14 @@ export function CoachLibraryManager() {
                   <div className="flex flex-col gap-2">
                     <Button variant="secondary" size="sm" onClick={() => handleOpen(doc)}>
                       Open
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleCopyUrl(doc)}
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copy URL
                     </Button>
                     <Button variant="secondary" size="sm" onClick={() => triggerReplace(doc.id)} disabled={uploading}>
                       <FilePenLine className="mr-2 h-4 w-4" />Replace

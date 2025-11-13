@@ -737,15 +737,10 @@ export default function ReleaseManagementPage() {
             <div className="font-medium text-meta-light">
               {competitor.first_name} {competitor.last_name}
             </div>
-            <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-meta-muted">
-              <span className="rounded border border-meta-border/60 px-2 py-0.5">
-                {gradeLabel}
-              </span>
-              <span className="rounded border border-meta-border/60 px-2 py-0.5">
-                {divisionLabel}
-              </span>
+            <div className="text-sm text-meta-muted">
+              {divisionLabel} • {gradeLabel.replace('Grade ', 'G ')}
             </div>
-            <div className="text-sm text-meta-muted">{competitor.school}</div>
+            <div className="text-xs text-meta-muted">{competitor.school}</div>
             <div className="text-xs text-meta-muted">
               {competitor.is_18_or_over ? 'Adult' : 'Minor'} • 
               {competitor.is_18_or_over ? ` ${competitor.email_school}` : ` ${competitor.parent_email}`}

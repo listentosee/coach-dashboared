@@ -33,6 +33,7 @@ interface Competitor {
   first_name: string;
   last_name: string;
   grade: string;
+  division?: string | null;
   school: string;
   is_18_or_over: boolean;
   email_school: string;
@@ -727,14 +728,19 @@ export default function ReleaseManagementPage() {
       ),
       cell: ({ row }) => {
         const competitor = row.original.competitor;
+        const divisionLabel = competitor.division
+          ? competitor.division.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+          : 'No Division';
+        const gradeLabel = competitor.grade ? `Grade ${competitor.grade}` : 'Grade N/A';
         return (
           <div>
             <div className="font-medium text-meta-light">
               {competitor.first_name} {competitor.last_name}
             </div>
             <div className="text-sm text-meta-muted">
-              {competitor.grade} • {competitor.school}
+              {divisionLabel} • {gradeLabel.replace('Grade ', 'G ')}
             </div>
+            <div className="text-xs text-meta-muted">{competitor.school}</div>
             <div className="text-xs text-meta-muted">
               {competitor.is_18_or_over ? 'Adult' : 'Minor'} • 
               {competitor.is_18_or_over ? ` ${competitor.email_school}` : ` ${competitor.parent_email}`}

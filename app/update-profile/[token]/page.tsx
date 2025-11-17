@@ -25,7 +25,7 @@ const createProfileUpdateSchema = (is18OrOver: boolean) => {
     gender: z.string().min(1, 'Gender is required'),
     race: z.string().min(1, 'Race is required'),
     ethnicity: z.string().min(1, 'Ethnicity is required'),
-    years_competing: z.string().default('0'),
+    years_competing: z.string().min(1, 'Years competing is required'),
     level_of_technology: z.string().min(1, 'Level of technology is required'),
     competition_type: z.enum(['trove', 'gymnasium', 'mayors_cup']),
     email_personal: z.string().email('Valid email is required').optional(),
@@ -50,7 +50,7 @@ interface CompetitorProfile {
   gender?: string;
   race?: string;
   ethnicity?: string;
-  years_competing?: string;
+  years_competing?: number | null;
   level_of_technology?: string;
   is_18_or_over?: boolean;
   email_personal?: string;
@@ -80,7 +80,7 @@ export default function UpdateProfilePage() {
       gender: '',
       race: '',
       ethnicity: '',
-      years_competing: '0',
+      years_competing: '',
       level_of_technology: '',
       email_personal: '',
       parent_name: '',
@@ -117,7 +117,7 @@ export default function UpdateProfilePage() {
           ethnicity: data.profile.ethnicity || '',
           years_competing: (data.profile.years_competing !== null && data.profile.years_competing !== undefined)
             ? data.profile.years_competing.toString()
-            : '0',
+            : '',
           level_of_technology: data.profile.level_of_technology || '',
           email_personal: data.profile.email_personal || '',
           parent_name: data.profile.parent_name || '',
@@ -147,9 +147,15 @@ export default function UpdateProfilePage() {
     }
 
     // Convert years_competing from string to number for API
-    if (submissionData.years_competing) {
-      submissionData.years_competing = parseInt(submissionData.years_competing, 10);
+    const parsedYearsCompeting = parseInt(submissionData.years_competing, 10);
+    if (Number.isNaN(parsedYearsCompeting)) {
+      form.setError('years_competing', {
+        type: 'manual',
+        message: 'Years competing is required',
+      });
+      return;
     }
+    submissionData.years_competing = parsedYearsCompeting;
 
     try {
       const response = await fetch(`/api/competitors/profile/${params.token}/update`, {
@@ -388,7 +394,7 @@ export default function UpdateProfilePage() {
                       name="years_competing"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-meta-light">Years Competing</FormLabel>
+                          <FormLabel className="text-meta-light">Years Competing *</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger className="bg-meta-dark border-meta-border text-meta-light">

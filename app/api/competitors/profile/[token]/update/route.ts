@@ -5,6 +5,27 @@ import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 import { logger } from '@/lib/logging/safe-logger';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
 
+const yearsCompetingSchema = z.preprocess(
+  (value) => {
+    if (value === null || value === undefined) {
+      return undefined;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return undefined;
+      }
+      const parsed = Number(trimmed);
+      return Number.isNaN(parsed) ? trimmed : parsed;
+    }
+    return value;
+  },
+  z
+    .number({ required_error: 'Years competing is required' })
+    .min(0, 'Years competing must be between 0 and 20 years')
+    .max(20, 'Years competing must be between 0 and 20 years')
+);
+
 const ProfileUpdateSchema = z.object({
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
   last_name: z.string().min(2, 'Last name must be at least 2 characters'),
@@ -12,7 +33,7 @@ const ProfileUpdateSchema = z.object({
   gender: z.string().min(1, 'Gender is required'),
   race: z.string().min(1, 'Race is required'),
   ethnicity: z.string().min(1, 'Ethnicity is required'),
-  years_competing: z.number().min(0).max(20).optional(),
+  years_competing: yearsCompetingSchema,
   level_of_technology: z.string().min(1, 'Level of technology is required'),
   email_personal: z.string().email('Valid email is required').optional(),
   parent_name: z.string().optional(),
@@ -76,7 +97,7 @@ export async function PUT(
         gender: validatedData.gender,
         race: validatedData.race,
         ethnicity: validatedData.ethnicity,
-        years_competing: validatedData.years_competing ?? null,
+        years_competing: validatedData.years_competing,
         level_of_technology: validatedData.level_of_technology,
         email_personal: validatedData.email_personal || null,
         parent_name: validatedData.parent_name || null,

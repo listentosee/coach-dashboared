@@ -45,6 +45,7 @@ const nextConfig = {
     webpackBuildWorker: true,
     parallelServerBuildTraces: true,
     parallelServerCompiles: true,
+    instrumentationHook: true, // Enable instrumentation for background services
   },
   serverExternalPackages: ['playwright-core', '@sparticuz/chromium'],
 }

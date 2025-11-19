@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/lib/supabase/client';
-import { User, Lock, Database } from 'lucide-react';
+import { User, Lock, Database, MessageSquare } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 
 interface Profile {
   id: string;
@@ -26,6 +27,10 @@ interface Profile {
   mandated_reporter_completed: boolean;
   created_at: string;
   updated_at: string;
+  sms_notifications_enabled: boolean;
+  instant_sms_enabled: boolean;
+  email_alerts_enabled: boolean;
+  email_alert_address: string | null;
 }
 
 export default function CoachToolsPage() {
@@ -49,6 +54,10 @@ export default function CoachToolsPage() {
     new_password: '',
     confirm_password: '',
   });
+  const [emailAlertsEnabled, setEmailAlertsEnabled] = useState(true);
+  const [alertEmail, setAlertEmail] = useState('');
+  const [isUpdatingEmailAlerts, setIsUpdatingEmailAlerts] = useState(false);
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -70,6 +79,8 @@ export default function CoachToolsPage() {
           mobile_number: profileData.mobile_number || '',
           region: profileData.region || '',
         });
+        setEmailAlertsEnabled(profileData.email_alerts_enabled ?? true);
+        setAlertEmail(profileData.email_alert_address || '');
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -107,6 +118,58 @@ export default function CoachToolsPage() {
       alert('Failed to update profile: ' + error.message);
     } finally {
       setIsUpdatingProfile(false);
+    }
+  };
+
+  const persistEmailAlertSettings = async (enabled: boolean, emailValue: string) => {
+    setIsUpdatingEmailAlerts(true);
+
+    try {
+      const trimmedEmail = (emailValue || '').trim();
+      if (trimmedEmail && !emailRegex.test(trimmedEmail)) {
+        throw new Error('Please enter a valid email address or leave the field blank to use your account email.');
+      }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          email_alerts_enabled: enabled,
+          email_alert_address: trimmedEmail || null,
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+    } finally {
+      setIsUpdatingEmailAlerts(false);
+    }
+  };
+
+  const handleToggleEmailAlerts = async (enabled: boolean) => {
+    const previous = emailAlertsEnabled;
+    setEmailAlertsEnabled(enabled);
+
+    try {
+      await persistEmailAlertSettings(enabled, alertEmail);
+      alert(`Email alerts ${enabled ? 'enabled' : 'disabled'} successfully!`);
+      fetchProfile();
+    } catch (error: any) {
+      console.error('Error updating email alerts:', error);
+      setEmailAlertsEnabled(previous);
+      alert('Failed to update email alerts: ' + error.message);
+    }
+  };
+
+  const handleSaveEmailAlertSettings = async () => {
+    try {
+      await persistEmailAlertSettings(emailAlertsEnabled, alertEmail);
+      alert('Email alert settings updated successfully!');
+      fetchProfile();
+    } catch (error: any) {
+      console.error('Error saving email alert settings:', error);
+      alert('Failed to update email alert settings: ' + error.message);
     }
   };
 
@@ -376,6 +439,73 @@ export default function CoachToolsPage() {
         </CardContent>
       </Card>
 
+      {/* Alert Notification Settings */}
+      <Card className="bg-meta-card border-meta-border">
+        <CardHeader>
+          <CardTitle className="text-meta-light flex items-center">
+            <MessageSquare className="h-5 w-5 mr-2" />
+            Alert Notifications
+          </CardTitle>
+          <CardDescription className="text-meta-muted">
+            Choose how you want to be reminded when you have unread messages.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="rounded-md border border-meta-border p-4 space-y-4 bg-meta-panel">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="email-alerts-enabled" className="text-meta-light font-medium">
+                  Enable Daily Email Alerts
+                </Label>
+                <p className="text-sm text-meta-muted">
+                  Receive an email reminder when you have unread messages in your inbox.
+                </p>
+              </div>
+              <Switch
+                id="email-alerts-enabled"
+                checked={emailAlertsEnabled}
+                onCheckedChange={handleToggleEmailAlerts}
+                disabled={isUpdatingEmailAlerts}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="alert-email" className="text-meta-light">Alert Email Address</Label>
+              <Input
+                id="alert-email"
+                type="email"
+                value={alertEmail}
+                onChange={(e) => setAlertEmail(e.target.value)}
+                placeholder={profile?.email || 'coach@example.edu'}
+                className="bg-meta-card border-meta-border text-meta-light"
+                disabled={isUpdatingEmailAlerts}
+              />
+              <p className="text-sm text-meta-muted">
+                We will send alerts to <span className="text-meta-light font-semibold">{alertEmail.trim() || profile?.email || 'your account email'}</span>. Leave the field blank to use your account email.
+              </p>
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleSaveEmailAlertSettings}
+                  className="bg-meta-accent hover:bg-blue-600 text-white"
+                  disabled={isUpdatingEmailAlerts}
+                >
+                  {isUpdatingEmailAlerts ? 'Saving...' : 'Save Email Alert Settings'}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-meta-border p-4 space-y-2 bg-meta-panel">
+            <Label className="text-meta-light font-medium">
+              SMS Alerts (Future Feature)
+            </Label>
+            <p className="text-sm text-meta-muted">
+              We&apos;re focused on stabilizing the new message alert system, so SMS reminders are temporarily disabled.
+              Please use email alerts for now—SMS notifications will return in a future release.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Data Maintenance */}
       <Card className="bg-meta-card border-meta-border">
         <CardHeader>
@@ -388,7 +518,7 @@ export default function CoachToolsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button 
+          <Button
             onClick={handleUpdateAllStatuses}
             className="bg-meta-accent hover:bg-blue-600 text-white"
             disabled={isUpdatingStatuses}

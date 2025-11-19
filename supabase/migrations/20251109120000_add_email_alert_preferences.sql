@@ -3,11 +3,13 @@
 ALTER TABLE public.profiles
 ADD COLUMN IF NOT EXISTS email_alerts_enabled boolean DEFAULT true,
 ADD COLUMN IF NOT EXISTS email_alert_address text,
+ADD COLUMN IF NOT EXISTS sms_notifications_enabled boolean DEFAULT false,
 ADD COLUMN IF NOT EXISTS last_unread_alert_at timestamptz,
 ADD COLUMN IF NOT EXISTS last_unread_alert_count integer;
 
 COMMENT ON COLUMN public.profiles.email_alerts_enabled IS 'Whether the coach wants to receive unread message alerts via email';
 COMMENT ON COLUMN public.profiles.email_alert_address IS 'Optional override email address for unread alerts; defaults to login email if null';
+COMMENT ON COLUMN public.profiles.sms_notifications_enabled IS 'Whether the coach wants to receive SMS notifications';
 COMMENT ON COLUMN public.profiles.last_unread_alert_at IS 'Timestamp of the last unread message alert that was sent (email or SMS)';
 COMMENT ON COLUMN public.profiles.last_unread_alert_count IS 'Unread message count that triggered the most recent alert';
 
@@ -21,11 +23,19 @@ CREATE TABLE IF NOT EXISTS public.alert_log (
   error_text text
 );
 
+CREATE INDEX IF NOT EXISTS idx_alert_log_coach_channel ON public.alert_log (coach_id, channel, sent_at DESC);
+
 ALTER TABLE public.alert_log ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   CREATE POLICY alert_log_select_self ON public.alert_log
     FOR SELECT USING (coach_id = auth.uid());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY alert_log_insert_service ON public.alert_log
+    FOR INSERT WITH CHECK (auth.role() = 'service_role');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -66,7 +76,7 @@ AS $$
       COALESCE(count_unread_by_receipts(p.id), count_unread_messages(p.id)) AS unread_count,
       p.email_alerts_enabled,
       p.email_alert_address,
-      false AS sms_notifications_enabled,
+      p.sms_notifications_enabled,
       p.last_unread_alert_at,
       p.last_unread_alert_count
     FROM public.profiles p

@@ -4,8 +4,5 @@
  */
 
 export async function register() {
-  if (process.env.NEXT_RUNTIME === 'nodejs') {
-    const { startInstantSmsService } = await import('./lib/sms/instant-sms-service')
-    await startInstantSmsService()
-  }
+  // No-op instrumentation hook; reserved for future background services
 }

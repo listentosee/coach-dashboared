@@ -20,7 +20,8 @@ import { supabase } from '@/lib/supabase/client';
 const TASK_TYPES = [
   { value: 'game_platform_sync', label: 'Incremental Sync (game_platform_sync)' },
   { value: 'game_platform_totals_sweep', label: 'Totals Sweep (game_platform_totals_sweep)' },
-  { value: 'sms_digest_processor', label: 'Unread Notification Processor (sms_digest_processor)' },
+  { value: 'sms_digest_processor', label: 'Coach Alert Digest (sms_digest_processor)' },
+  { value: 'admin_alert_dispatch', label: 'Admin Instant Alerts (admin_alert_dispatch)' },
 ];
 
 const COMMON_INTERVALS = [
@@ -77,11 +78,35 @@ export function CreateJobDialog() {
     setIsSubmitting(true);
 
     try {
-      const payload = formData.task_type === 'game_platform_sync'
-        ? { dryRun: false, coachId: formData.coachId || null, forceFullSync: formData.forceFullSync }
-        : formData.task_type === 'sms_digest_processor'
-        ? { dryRun: false, coachId: formData.coachId || null, force: formData.forceNotifications }
-        : { batchSize: 50, coachId: formData.coachId || null };
+      const payload = (() => {
+        switch (formData.task_type) {
+          case 'game_platform_sync':
+            return {
+              dryRun: false,
+              coachId: formData.coachId || null,
+              forceFullSync: formData.forceFullSync,
+            };
+          case 'sms_digest_processor':
+            return {
+              dryRun: false,
+              coachId: formData.coachId || null,
+              force: formData.forceNotifications,
+              roles: ['coach'],
+              allowSms: true,
+            };
+          case 'admin_alert_dispatch':
+            return {
+              dryRun: false,
+              coachId: null,
+              force: true,
+              roles: ['admin'],
+              allowSms: false,
+              windowMinutes: 10,
+            };
+          default:
+            return { batchSize: 50, coachId: formData.coachId || null };
+        }
+      })();
 
       const expiresAt = !formData.is_recurring || formData.duration === 'forever'
         ? null
@@ -162,23 +187,32 @@ export function CreateJobDialog() {
             </select>
           </div>
 
-          <div>
-            <Label htmlFor="coach_id" className="text-gray-900">Coach (optional)</Label>
-            <select
-              id="coach_id"
-              value={formData.coachId}
-              onChange={(e) => setFormData({ ...formData, coachId: e.target.value })}
-              className="w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900"
-            >
-              <option value="">All Coaches</option>
-              {coaches.map((coach) => (
-                <option key={coach.id} value={coach.id}>
-                  {coach.full_name || coach.email}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">Leave empty to sync all coaches</p>
-          </div>
+          {formData.task_type !== 'admin_alert_dispatch' && (
+            <div>
+              <Label htmlFor="coach_id" className="text-gray-900">Coach (optional)</Label>
+              <select
+                id="coach_id"
+                value={formData.coachId}
+                onChange={(e) => setFormData({ ...formData, coachId: e.target.value })}
+                className="w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900"
+              >
+                <option value="">All Coaches</option>
+                {coaches.map((coach) => (
+                  <option key={coach.id} value={coach.id}>
+                    {coach.full_name || coach.email}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">Leave empty to target everyone</p>
+            </div>
+          )}
+
+          {formData.task_type === 'admin_alert_dispatch' && (
+            <div className="p-3 border rounded bg-gray-50 text-sm text-gray-700">
+              Sends instant alerts to all admins with notifications enabled every time the job runs.
+              Use the recurring schedule to control how often (recommended: every 5 minutes).
+            </div>
+          )}
 
           {formData.task_type === 'game_platform_sync' && (
             <div className="flex items-center gap-3 p-3 border rounded bg-gray-50">

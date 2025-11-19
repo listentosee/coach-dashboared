@@ -1,6 +1,6 @@
 import type { JobHandler, JobPayloadMap } from '../types';
 
-function getInternalBaseUrl() {
+export function getInternalBaseUrl() {
   const explicit =
     process.env.INTERNAL_JOBS_BASE_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
@@ -35,6 +35,8 @@ export const handleSmsDigestProcessor: JobHandler<'sms_digest_processor'> = asyn
       dryRun: payload.dryRun ?? false,
       coachId: payload.coachId ?? null,
       force: payload.force ?? false,
+      roles: payload.roles ?? ['coach'],
+      allowSms: payload.allowSms ?? true,
     });
 
     const response = await fetch(url, {
@@ -48,6 +50,8 @@ export const handleSmsDigestProcessor: JobHandler<'sms_digest_processor'> = asyn
         coachId: payload.coachId ?? null,
         windowMinutes: payload.windowMinutes ?? undefined,
         force: payload.force ?? false,
+        roles: payload.roles ?? ['coach'],
+        allowSms: payload.allowSms ?? true,
       }),
     });
 

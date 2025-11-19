@@ -21,7 +21,8 @@ yarn-error.log*
 
 # Supabase
 /supabase/.branches/
-/supabase/.temp/
+supabase/.temp/
+/supabase/.archive/
 
 # vercel
 .vercel

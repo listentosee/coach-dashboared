@@ -20,6 +20,7 @@ import { supabase } from '@/lib/supabase/client';
 const TASK_TYPES = [
   { value: 'game_platform_sync', label: 'Incremental Sync (game_platform_sync)' },
   { value: 'game_platform_totals_sweep', label: 'Totals Sweep (game_platform_totals_sweep)' },
+  { value: 'sms_digest_processor', label: 'Unread Notification Processor (sms_digest_processor)' },
 ];
 
 const COMMON_INTERVALS = [
@@ -54,6 +55,7 @@ export function CreateJobDialog() {
     run_at: '',
     coachId: '',
     forceFullSync: false,
+    forceNotifications: false,
   });
 
   useEffect(() => {
@@ -77,6 +79,8 @@ export function CreateJobDialog() {
     try {
       const payload = formData.task_type === 'game_platform_sync'
         ? { dryRun: false, coachId: formData.coachId || null, forceFullSync: formData.forceFullSync }
+        : formData.task_type === 'sms_digest_processor'
+        ? { dryRun: false, coachId: formData.coachId || null, force: formData.forceNotifications }
         : { batchSize: 50, coachId: formData.coachId || null };
 
       const expiresAt = !formData.is_recurring || formData.duration === 'forever'
@@ -114,6 +118,7 @@ export function CreateJobDialog() {
         run_at: '',
         coachId: '',
         forceFullSync: false,
+        forceNotifications: false,
       });
       router.refresh();
     } catch (error) {
@@ -184,6 +189,21 @@ export function CreateJobDialog() {
               <div>
                 <Label className="text-gray-900">Force Full Sync</Label>
                 <p className="text-xs text-gray-600">Ignore last sync timestamp and pull all historical data</p>
+              </div>
+            </div>
+          )}
+
+          {formData.task_type === 'sms_digest_processor' && (
+            <div className="flex items-center gap-3 p-3 border rounded bg-gray-50">
+              <Switch
+                checked={formData.forceNotifications}
+                onCheckedChange={(checked) => setFormData({ ...formData, forceNotifications: checked })}
+              />
+              <div>
+                <Label className="text-gray-900">Force Send Alerts</Label>
+                <p className="text-xs text-gray-600">
+                  Ignore cooldowns and send notifications to all coaches with unread messages.
+                </p>
               </div>
             </div>
           )}

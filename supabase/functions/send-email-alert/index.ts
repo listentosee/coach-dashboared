@@ -12,6 +12,23 @@ interface EmailAlertRequest {
   coachId?: string;
 }
 
+interface SendGridMailPayload {
+  personalizations: Array<{
+    to: Array<{ email: string }>;
+    dynamic_template_data: Record<string, unknown>;
+  }>;
+  from: {
+    email: string;
+    name?: string;
+  };
+  template_id: string;
+  mail_settings?: {
+    sandbox_mode: {
+      enable: boolean;
+    };
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -61,7 +78,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const payload: Record<string, unknown> = {
+    const payload: SendGridMailPayload = {
       personalizations: [
         {
           to: [{ email: body.to }],
@@ -73,13 +90,14 @@ Deno.serve(async (req) => {
         name: body.fromName || defaultFromName,
       },
       template_id: templateId,
+      ...(sandboxMode
+        ? {
+            mail_settings: {
+              sandbox_mode: { enable: true },
+            },
+          }
+        : {}),
     };
-
-    if (sandboxMode) {
-      payload.mail_settings = {
-        sandbox_mode: { enable: true },
-      };
-    }
 
     const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',

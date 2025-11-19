@@ -5,7 +5,7 @@
  * notifications to admins with instant_sms_enabled = true
  */
 
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js'
 
 // NOTE: All SMS delivery goes through the Supabase Edge function
 // (send-sms-notification). This worker never instantiates providers
@@ -13,6 +13,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const retryDelayMs = Number(process.env.INSTANT_SMS_RETRY_DELAY_MS ?? '5000')
 const preferredBaseUrl =
   process.env.NEXT_PUBLIC_APP_URL ||
   process.env.NEXT_PUBLIC_SITE_URL ||
@@ -25,37 +26,55 @@ const appBaseUrl = preferredBaseUrl
     : `https://${preferredBaseUrl}`
   : 'http://localhost:3000'
 
-let subscription: any = null
+let realtimeChannel: RealtimeChannel | null = null
+let supabaseClient: SupabaseClient | null = null
+let retryTimer: ReturnType<typeof setTimeout> | null = null
 
-export async function startInstantSmsService() {
-  console.log('[instant-sms-service] startInstantSmsService() called')
-  console.log('[instant-sms-service] NODE_ENV:', process.env.NODE_ENV)
-  console.log('[instant-sms-service] SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
-  console.log('[instant-sms-service] SERVICE_ROLE_KEY exists:', !!process.env.SUPABASE_SERVICE_ROLE_KEY)
-
-  // Don't start in development or if already running
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[instant-sms-service] Running in development mode - starting anyway for testing')
-    // Remove the return to allow it to run in development
+function getSupabaseClient() {
+  if (!supabaseClient) {
+    supabaseClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    })
   }
+  return supabaseClient
+}
 
-  if (subscription) {
-    console.log('[instant-sms-service] Already running')
+async function cleanupRealtimeChannel() {
+  if (realtimeChannel) {
+    try {
+      await realtimeChannel.unsubscribe()
+    } catch (error) {
+      console.error('[instant-sms-service] Error unsubscribing channel:', error)
+    }
+    realtimeChannel = null
+  }
+}
+
+function scheduleRealtimeRetry() {
+  if (retryTimer) return
+  console.error('[instant-sms-service] Scheduling Realtime resubscribe in', retryDelayMs, 'ms')
+  retryTimer = setTimeout(() => {
+    retryTimer = null
+    console.log('[instant-sms-service] Retrying Realtime subscription...')
+    subscribeToRealtime().catch((error) => {
+      console.error('[instant-sms-service] Failed to resubscribe:', error)
+      scheduleRealtimeRetry()
+    })
+  }, retryDelayMs)
+}
+
+async function subscribeToRealtime() {
+  if (realtimeChannel) {
+    console.log('[instant-sms-service] Realtime subscription already active')
     return
   }
 
-  console.log('[instant-sms-service] Starting Realtime subscription...')
+  const supabase = getSupabaseClient()
 
-  // Create Supabase client with service role (bypasses RLS)
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  })
-
-  // Subscribe to INSERT events on messages table
-  subscription = supabase
+  realtimeChannel = supabase
     .channel('instant-sms-notifications')
     .on(
       'postgres_changes',
@@ -71,11 +90,36 @@ export async function startInstantSmsService() {
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         console.log('[instant-sms-service] ✅ Subscribed to message INSERTs')
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error('[instant-sms-service] ❌ Channel error, retrying...')
-        // Retry logic could go here
+        if (retryTimer) {
+          clearTimeout(retryTimer)
+          retryTimer = null
+        }
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        console.error(`[instant-sms-service] ❌ Channel status ${status}`)
+        void cleanupRealtimeChannel().finally(() => scheduleRealtimeRetry())
       }
     })
+}
+
+export async function startInstantSmsService() {
+  console.log('[instant-sms-service] startInstantSmsService() called')
+  console.log('[instant-sms-service] NODE_ENV:', process.env.NODE_ENV)
+  console.log('[instant-sms-service] SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+  console.log('[instant-sms-service] SERVICE_ROLE_KEY exists:', !!process.env.SUPABASE_SERVICE_ROLE_KEY)
+
+  // Don't start in development or if already running
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[instant-sms-service] Running in development mode - starting anyway for testing')
+    // Remove the return to allow it to run in development
+  }
+
+  if (realtimeChannel) {
+    console.log('[instant-sms-service] Already running')
+    return
+  }
+
+  console.log('[instant-sms-service] Starting Realtime subscription...')
+  await subscribeToRealtime()
 }
 
 async function handleNewMessage(message: {
@@ -88,7 +132,7 @@ async function handleNewMessage(message: {
   try {
     console.log('[instant-sms] New message:', message.id, 'in conversation:', message.conversation_id)
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey)
+    const supabase = getSupabaseClient()
 
     // Get conversation members (excluding sender)
     const { data: members, error: membersError } = await supabase
@@ -257,9 +301,13 @@ async function handleNewMessage(message: {
 }
 
 export async function stopInstantSmsService() {
-  if (subscription) {
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
+
+  if (realtimeChannel) {
     console.log('[instant-sms-service] Stopping Realtime subscription...')
-    await subscription.unsubscribe()
-    subscription = null
+    await cleanupRealtimeChannel()
   }
 }

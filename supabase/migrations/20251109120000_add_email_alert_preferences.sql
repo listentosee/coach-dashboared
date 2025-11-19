@@ -66,7 +66,7 @@ AS $$
       COALESCE(count_unread_by_receipts(p.id), count_unread_messages(p.id)) AS unread_count,
       p.email_alerts_enabled,
       p.email_alert_address,
-      p.sms_notifications_enabled,
+      false AS sms_notifications_enabled,
       p.last_unread_alert_at,
       p.last_unread_alert_count
     FROM public.profiles p

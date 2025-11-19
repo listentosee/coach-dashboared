@@ -5,6 +5,7 @@ const INTERNAL_AUTOMATION_SECRET = process.env.INTERNAL_AUTOMATION_SECRET || pro
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SUPABASE_FUNCTION_BASE = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : null;
+const VALID_ALERT_ROLES = new Set(['coach', 'admin']);
 
 function getHeaderSecret(request: NextRequest) {
   return (
@@ -13,6 +14,20 @@ function getHeaderSecret(request: NextRequest) {
     request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ||
     null
   );
+}
+
+function normalizeRoles(roles: unknown): Array<'coach' | 'admin'> {
+  const list = Array.isArray(roles)
+    ? roles
+    : roles === undefined || roles === null
+      ? []
+      : [roles];
+
+  const normalized = list
+    .map((role) => (typeof role === 'string' ? role.toLowerCase() : ''))
+    .filter((role): role is 'coach' | 'admin' => VALID_ALERT_ROLES.has(role));
+
+  return normalized.length > 0 ? normalized : ['coach'];
 }
 
 function ensureSupabaseConfig() {
@@ -141,11 +156,15 @@ async function processNotifications({
   coachId,
   windowMinutes,
   force,
+  roles,
+  allowSms,
 }: {
   dryRun: boolean;
   coachId: string | null;
   windowMinutes: number;
   force: boolean;
+  roles: Array<'coach' | 'admin'>;
+  allowSms: boolean;
 }) {
   ensureSupabaseConfig();
   const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!, {
@@ -156,6 +175,7 @@ async function processNotifications({
     p_window_minutes: windowMinutes,
     p_coach_id: coachId,
     p_force: force,
+    p_roles: roles,
   });
 
   if (error) {
@@ -171,6 +191,8 @@ async function processNotifications({
     smsSent: 0,
     successes: 0,
     failures: 0,
+    roles,
+    allowSms,
     results: [] as Array<any>,
   };
 
@@ -233,7 +255,9 @@ async function processNotifications({
       });
     }
 
-    if (candidate.sms_notifications_enabled && candidate.mobile_number) {
+    const wantsSmsAlerts = allowSms && candidate.sms_notifications_enabled && candidate.mobile_number;
+
+    if (wantsSmsAlerts) {
       details.smsAttempted = true;
       const smsResponse = await sendSmsAlert({
         phoneNumber: candidate.mobile_number,
@@ -257,7 +281,7 @@ async function processNotifications({
       });
     }
 
-    if (!candidate.email_alerts_enabled && !candidate.sms_notifications_enabled) {
+    if (!candidate.email_alerts_enabled && !wantsSmsAlerts) {
       details.errors.push('Coach has all notifications disabled');
     }
 
@@ -306,8 +330,10 @@ export async function POST(request: NextRequest) {
     const coachId = body.coachId ?? null;
     const windowMinutes = Number(body.windowMinutes ?? 1440) || 1440;
     const force = !!body.force;
+    const roles = normalizeRoles(body.roles ?? body.audience);
+    const allowSms = typeof body.allowSms === 'boolean' ? body.allowSms : roles.includes('coach');
 
-    const summary = await processNotifications({ dryRun, coachId, windowMinutes, force });
+    const summary = await processNotifications({ dryRun, coachId, windowMinutes, force, roles, allowSms });
 
     return NextResponse.json(summary);
   } catch (error: any) {
@@ -329,6 +355,11 @@ export async function GET(request: NextRequest) {
   const coachId = request.nextUrl.searchParams.get('coachId');
   const windowMinutes = Number(request.nextUrl.searchParams.get('windowMinutes') ?? 1440) || 1440;
   const force = request.nextUrl.searchParams.get('force') === 'true';
+  const roleParams = request.nextUrl.searchParams.getAll('role');
+  const audienceParam = request.nextUrl.searchParams.get('audience');
+  const roles = normalizeRoles(roleParams.length > 0 ? roleParams : audienceParam ? [audienceParam] : undefined);
+  const allowSmsParam = request.nextUrl.searchParams.get('allowSms');
+  const allowSms = allowSmsParam ? allowSmsParam === 'true' : roles.includes('coach');
 
   try {
     const summary = await processNotifications({
@@ -336,6 +367,8 @@ export async function GET(request: NextRequest) {
       coachId,
       windowMinutes,
       force,
+      roles,
+      allowSms,
     });
     return NextResponse.json(summary);
   } catch (error: any) {

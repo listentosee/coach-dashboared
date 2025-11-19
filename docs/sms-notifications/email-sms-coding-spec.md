@@ -158,7 +158,9 @@ File: `lib/jobs/handlers/smsDigestProcessor.ts`
 
 ### 3.4 Instrumentation service
 
-`lib/sms/instant-sms-service.ts` should reuse the new alert body when notifying admins.
+Admin instant alerts should reuse the same edge functions as the daily notifications; the
+legacy Realtime worker (`lib/sms/instant-sms-service.ts`) was removed in favor of the
+`admin_alert_dispatch` job that runs every few minutes.
 If desired, add a guard so this service only runs in production builds where a service
 role key is available.
 

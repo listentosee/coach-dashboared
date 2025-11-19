@@ -24,9 +24,8 @@ email-first + opt-in SMS plan that replaces the digest approach.
   inherit the last-alert metadata (`last_unread_alert_at`/`_count`) for throttling.
 - **UI toggles** – `/dashboard/settings` includes an “Alert Notifications” card that
   lets coaches opt into daily email reminders (with custom address) and optional SMS.
-- **Admin instant SMS** – `lib/sms/instant-sms-service.ts` runs from
-  `instrumentation.ts`, subscribes to Supabase Realtime, and fires SMS alerts for admins
-  with `instant_sms_enabled = true`.
+- **Admin instant alerts** – processed by the `admin_alert_dispatch` job every few minutes,
+  which calls `/api/internal/notifications/unread` with `roles=['admin']`.
 
 ### Why the old digest docs were removed
 

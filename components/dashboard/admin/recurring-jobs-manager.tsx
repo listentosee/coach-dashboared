@@ -33,7 +33,8 @@ interface RecurringJobsManagerProps {
 const TASK_TYPES = [
   { value: 'game_platform_sync', label: 'Incremental Sync (game_platform_sync)' },
   { value: 'game_platform_totals_sweep', label: 'Totals Sweep (game_platform_totals_sweep)' },
-  { value: 'sms_digest_processor', label: 'Unread Notification Processor (sms_digest_processor)' },
+  { value: 'sms_digest_processor', label: 'Coach Alert Digest (sms_digest_processor)' },
+  { value: 'admin_alert_dispatch', label: 'Admin Instant Alerts (admin_alert_dispatch)' },
 ];
 
 const COMMON_INTERVALS = [

@@ -1,5 +1,6 @@
 import type { JobHandler, JobPayloadMap } from '../types';
 import { getInternalBaseUrl } from './smsDigestProcessor';
+import { buildInternalHeaders } from './smsDigestProcessor';
 
 export const handleAdminAlertDispatch: JobHandler<'admin_alert_dispatch'> = async (job, { logger }) => {
   const payload: JobPayloadMap['admin_alert_dispatch'] = job.payload ?? {};
@@ -31,7 +32,7 @@ export const handleAdminAlertDispatch: JobHandler<'admin_alert_dispatch'> = asyn
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...buildInternalHeaders(),
         'x-internal-automation-secret': internalSecret,
       },
       body: JSON.stringify({

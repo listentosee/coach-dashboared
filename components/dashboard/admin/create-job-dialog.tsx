@@ -101,7 +101,7 @@ export function CreateJobDialog() {
               force: false,
               roles: ['admin'],
               allowSms: false,
-              windowMinutes: 10,
+              windowMinutes: formData.recurrence_interval_minutes || 60,
             };
           default:
             return { batchSize: 50, coachId: formData.coachId || null };

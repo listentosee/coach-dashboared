@@ -18,7 +18,8 @@ export const handleAdminAlertDispatch: JobHandler<'admin_alert_dispatch'> = asyn
     const roles = payload.roles && payload.roles.length > 0 ? payload.roles : ['admin'];
     const allowSms = payload.allowSms ?? false;
     const force = payload.force ?? false;
-    const windowMinutes = payload.windowMinutes ?? 10;
+    // Honor a window passed in by the job payload; fall back to a conservative default (60m) if none supplied.
+    const windowMinutes = payload.windowMinutes ?? 60;
 
     log.info('[notifications/admin] calling internal route', {
       url,

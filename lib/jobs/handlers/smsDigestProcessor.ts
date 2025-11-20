@@ -17,6 +17,23 @@ export function getInternalBaseUrl() {
   return normalized.replace(/\/+$/, '');
 }
 
+export function buildInternalHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  const bypass =
+    process.env.INTERNAL_JOBS_BYPASS_TOKEN ||
+    process.env.VERCEL_AUTOMATION_BYPASS_SECRET ||
+    process.env.VERCEL_AUTOMATION_BYPASS_TOKEN;
+
+  if (bypass) {
+    headers['x-vercel-protection-bypass'] = bypass;
+  }
+
+  return headers;
+}
+
 export const handleSmsDigestProcessor: JobHandler<'sms_digest_processor'> = async (job, { logger }) => {
   const payload: JobPayloadMap['sms_digest_processor'] = job.payload ?? {};
   const log = logger ?? console;
@@ -42,7 +59,7 @@ export const handleSmsDigestProcessor: JobHandler<'sms_digest_processor'> = asyn
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...buildInternalHeaders(),
         'x-internal-automation-secret': internalSecret,
       },
       body: JSON.stringify({

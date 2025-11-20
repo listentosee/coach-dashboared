@@ -4,7 +4,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 
 interface ActionPayload {
   jobId?: string;
-  action?: 'retry' | 'cancel';
+  action?: 'retry' | 'cancel' | 'delete';
 }
 
 async function requireAdmin() {
@@ -64,6 +64,13 @@ export async function POST(request: NextRequest) {
           status: 'cancelled',
           completed_at: new Date().toISOString(),
         })
+        .eq('id', jobId);
+
+      if (error) throw error;
+    } else if (action === 'delete') {
+      const { error } = await supabase
+        .from('job_queue')
+        .delete()
         .eq('id', jobId);
 
       if (error) throw error;

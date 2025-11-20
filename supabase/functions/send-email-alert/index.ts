@@ -108,6 +108,19 @@ Deno.serve(async (req) => {
       body: JSON.stringify(payload),
     });
 
+    const shouldLog = Deno.env.get('SENDGRID_LOG_RESPONSES') === 'true';
+
+    if (shouldLog) {
+      const bodyText = await response.clone().text().catch(() => '<unreadable>');
+      console.log('SendGrid response (debug)', {
+        coachId: body.coachId ?? 'unknown',
+        to: body.to,
+        status: response.status,
+        ok: response.ok,
+        body: bodyText,
+      });
+    }
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error('SendGrid API error:', { status: response.status, errorText, coachId: body.coachId });

@@ -98,7 +98,7 @@ export function CreateJobDialog() {
             return {
               dryRun: false,
               coachId: null,
-              force: true,
+              force: false,
               roles: ['admin'],
               allowSms: false,
               windowMinutes: 10,

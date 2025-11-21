@@ -126,6 +126,40 @@ export async function POST(
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 403 })
+
+    // Enqueue admin alerts for this conversation (exclude sender)
+    try {
+      const { data: members } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .eq('conversation_id', id)
+        .neq('user_id', user.id)
+
+      const memberIds = (members || []).map((m: any) => m.user_id);
+      if (memberIds.length > 0) {
+        const { data: admins } = await supabase
+          .from('profiles')
+          .select('id, role')
+          .in('id', memberIds)
+          .eq('role', 'admin');
+
+        const adminRows = (admins || []).map((admin: any) => ({
+          recipient_id: admin.id,
+          message_id: inserted.id,
+        }));
+
+        if (adminRows.length > 0) {
+          // Use upsert to avoid duplicates if retried
+          await supabase
+            .from('admin_alert_queue')
+            .upsert(adminRows, { onConflict: 'recipient_id,message_id' });
+        }
+      }
+    } catch (queueErr) {
+      console.error('[messages] Failed to enqueue admin alerts', queueErr);
+      // Do not block message send on alert queue
+    }
+
     return NextResponse.json({ ok: true, id: inserted.id, created_at: inserted.created_at })
   } catch (e) {
     console.error('Send message error', e)

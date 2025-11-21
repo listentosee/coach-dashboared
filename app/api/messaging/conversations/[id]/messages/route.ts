@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
 // Fetch messages for a conversation (RLS enforced)
@@ -127,17 +128,25 @@ export async function POST(
 
     if (error) return NextResponse.json({ error: error.message }, { status: 403 })
 
-    // Enqueue admin alerts for this conversation (exclude sender)
+    // Enqueue admin alerts for this conversation (exclude sender). Use service-role client because RLS on queue is service-only.
     try {
-      const { data: members } = await supabase
+      const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!serviceUrl || !serviceKey) {
+        throw new Error('Supabase service role env vars are not configured');
+      }
+
+      const serviceClient = createClient(serviceUrl, serviceKey, { auth: { persistSession: false } });
+
+      const { data: members } = await serviceClient
         .from('conversation_members')
         .select('user_id')
         .eq('conversation_id', id)
-        .neq('user_id', user.id)
+        .neq('user_id', user.id);
 
       const memberIds = (members || []).map((m: any) => m.user_id);
       if (memberIds.length > 0) {
-        const { data: admins } = await supabase
+        const { data: admins } = await serviceClient
           .from('profiles')
           .select('id, role')
           .in('id', memberIds)
@@ -150,7 +159,7 @@ export async function POST(
 
         if (adminRows.length > 0) {
           // Use upsert to avoid duplicates if retried
-          await supabase
+          await serviceClient
             .from('admin_alert_queue')
             .upsert(adminRows, { onConflict: 'recipient_id,message_id' });
         }

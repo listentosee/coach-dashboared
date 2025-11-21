@@ -117,17 +117,29 @@ export function JobQueueTable({ jobs, statusCounts, initialStatus = "all" }: Job
       ),
     },
     {
-      accessorKey: "run_at",
-      header: "Scheduled Run",
+      id: "last_run",
+      header: "Last Run",
       cell: ({ row }) => {
-        const runAt = new Date(row.original.run_at);
-        const pastDue = row.original.status === "pending" && runAt < new Date();
+        const lastRun = row.original.last_run_at || row.original.completed_at || row.original.updated_at;
+        return (
+          <div className="text-sm text-slate-200">
+            {lastRun ? formatDate(lastRun) : "—"}
+          </div>
+        );
+      },
+    },
+    {
+      id: "next_run",
+      header: "Next Scheduled",
+      cell: ({ row }) => {
+        const nextRun = computeNextRun(row.original);
+        const pastDue = row.original.status === "pending" && nextRun && nextRun < new Date();
         return (
           <div className={pastDue ? "text-red-400 font-semibold" : "text-sm text-slate-200"}>
-            {formatDate(row.original.run_at)}
+            {nextRun ? formatDate(nextRun.toISOString()) : "—"}
             {pastDue && (
               <div className="text-xs text-red-400/80">
-                Overdue by {formatDuration(Date.now() - runAt.getTime())}
+                Overdue by {formatDuration(Date.now() - nextRun.getTime())}
               </div>
             )}
           </div>
@@ -273,4 +285,13 @@ function summarizePayload(job: JobQueueRow) {
   }
 
   return 'All recipients';
+}
+
+function computeNextRun(job: JobQueueRow): Date | null {
+  if (job.is_recurring && job.recurrence_interval_minutes) {
+    const base = job.last_run_at ? new Date(job.last_run_at) : new Date(job.run_at);
+    return new Date(base.getTime() + job.recurrence_interval_minutes * 60 * 1000);
+  }
+
+  return job.run_at ? new Date(job.run_at) : null;
 }

@@ -1,12 +1,14 @@
 import { cookies } from 'next/headers'
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
 import { DemographicCharts, DemographicChartConfig } from '@/components/dashboard/admin/demographic-charts'
+import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AdminAnalyticsPage({ searchParams }: { searchParams?: Promise<{ coach_id?: string }> }) {
   const cookieStore = await cookies()
   const supabase = createServerComponentClient({ cookies: () => cookieStore })
+  const serviceSupabase = getServiceRoleSupabaseClient()
 
   const resolvedParams = searchParams ? await searchParams : undefined
   const coachId = resolvedParams?.coach_id
@@ -23,6 +25,12 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
     .select('id, full_name, email')
     .eq('role', 'coach')
     .order('full_name')
+
+  const { data: coachCounts } = await serviceSupabase
+    .from('coach_competitor_counts')
+    .select('coach_id, competitor_count')
+
+  const coachCountMap = new Map((coachCounts || []).map((row: any) => [row.coach_id, Number(row.competitor_count) || 0]))
 
   // Basic counts (optionally filtered by coach)
   const [{ count: coachCount }, { count: competitorCount }, { count: teamCount }] = await Promise.all([
@@ -198,7 +206,9 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
             <select name="coach_id" defaultValue={coachId || ''} className="bg-meta-card border border-meta-border text-meta-light px-3 py-2 rounded">
               <option value="">All Coaches</option>
               {(coaches || []).map((c: any) => (
-                <option key={c.id} value={c.id}>{c.full_name || c.email}</option>
+                <option key={c.id} value={c.id}>
+                  {(c.full_name || c.email) + `(${coachCountMap.get(c.id) ?? 0})`}
+                </option>
               ))}
             </select>
             <button className="px-3 py-2 rounded bg-meta-accent text-white" type="submit">Apply</button>

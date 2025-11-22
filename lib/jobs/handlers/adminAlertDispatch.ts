@@ -41,7 +41,7 @@ export const handleAdminAlertDispatch: JobHandler<'admin_alert_dispatch'> = asyn
     const recipientIds = Object.keys(grouped);
     const { data: recipients, error: profileErr } = await supabase
       .from('profiles')
-      .select('id, email, full_name, first_name')
+      .select('id, email, email_alert_address, full_name, first_name')
       .in('id', recipientIds);
 
     if (profileErr) throw profileErr;
@@ -50,7 +50,7 @@ export const handleAdminAlertDispatch: JobHandler<'admin_alert_dispatch'> = asyn
 
     for (const recipient of recipients || []) {
       const pendingMessages = grouped[recipient.id] ?? [];
-      const to = recipient.email;
+      const to = recipient.email_alert_address || recipient.email;
       if (!to) {
         sendResults.push({ recipient: recipient.id, sent: false, count: pendingMessages.length, error: 'Missing email' });
         continue;

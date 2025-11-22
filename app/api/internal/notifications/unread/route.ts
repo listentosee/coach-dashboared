@@ -16,7 +16,7 @@ function getHeaderSecret(request: NextRequest) {
   );
 }
 
-function normalizeRoles(roles: unknown): Array<'coach' | 'admin'> {
+function normalizeRoles(roles: unknown): Array<'coach' | 'admin'> | null {
   const list = Array.isArray(roles)
     ? roles
     : roles === undefined || roles === null
@@ -27,7 +27,8 @@ function normalizeRoles(roles: unknown): Array<'coach' | 'admin'> {
     .map((role) => (typeof role === 'string' ? role.toLowerCase() : ''))
     .filter((role): role is 'coach' | 'admin' => VALID_ALERT_ROLES.has(role));
 
-  return normalized.length > 0 ? normalized : ['coach'];
+  // If no explicit roles provided, return null to include all roles (coach + admin)
+  return normalized.length > 0 ? normalized : null;
 }
 
 function ensureSupabaseConfig() {
@@ -175,7 +176,7 @@ async function processNotifications({
     p_window_minutes: windowMinutes,
     p_coach_id: coachId,
     p_force: force,
-    p_roles: roles,
+    p_roles: roles && roles.length > 0 ? roles : null,
   });
 
   if (error) {

@@ -1031,12 +1031,12 @@ export default function GamePlatformDashboard() {
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm text-meta-muted">
                   <div className="flex items-center justify-between">
-                    <span>Avg Score</span>
-                    <span className="text-meta-light font-semibold">{team ? formatNumber(team.avgScore) : '—'}</span>
+                    <span>Total Team Points</span>
+                    <span className="text-meta-light font-semibold">{team ? formatNumber(team.totalPoints) : '—'}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>Total Challenges</span>
-                    <span className="text-meta-light font-semibold">{team ? formatNumber(team.totalChallenges) : '—'}</span>
+                    <span>Average Per Member</span>
+                    <span className="text-meta-light font-semibold">{team ? formatNumber(team.avgScore) : '—'}</span>
                   </div>
                   <button
                     type="button"

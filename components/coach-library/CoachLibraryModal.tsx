@@ -17,6 +17,12 @@ export type CoachLibraryDocument = {
   updated_at: string
 }
 
+const getDisplayFileName = (fileName: string) => {
+  const base = fileName.split('/').pop() || fileName
+  const trimmed = base.replace(/\.[^.]+$/, '')
+  return trimmed || base
+}
+
 interface CoachLibraryModalProps {
   open: boolean
   onClose: () => void
@@ -93,6 +99,7 @@ export function CoachLibraryModal({ open, onClose }: CoachLibraryModalProps) {
             <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
               {sortedDocuments.map((doc) => {
                 const { Icon, hasFill } = getFileIcon(doc.file_name || doc.content_type || '')
+                const displayFileName = getDisplayFileName(doc.file_name)
                 return (
                   <button
                     key={doc.id}
@@ -103,8 +110,8 @@ export function CoachLibraryModal({ open, onClose }: CoachLibraryModalProps) {
                       <Icon className={cn('h-6 w-6', hasFill ? '' : '')} />
                     </span>
                     <span className="flex-1">
-                      <span className="block text-sm font-medium text-meta-light">{doc.description}</span>
-                      <span className="block text-xs text-meta-muted">{doc.file_name}</span>
+                      <span className="block text-sm font-medium text-meta-light">{displayFileName}</span>
+                      <span className="block text-xs text-meta-muted">{doc.description}</span>
                     </span>
                     <span className="text-xs text-meta-muted">
                       {new Date(doc.updated_at).toLocaleDateString()}

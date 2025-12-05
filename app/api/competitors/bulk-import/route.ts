@@ -6,6 +6,7 @@ import { normalizeEnumValue, normalizeGrade, normalizeProgramTrack } from '@/lib
 import { AuditLogger } from '@/lib/audit/audit-logger';
 import { logger } from '@/lib/logging/safe-logger';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
+import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 
 type IncomingRow = {
   first_name?: string
@@ -178,24 +179,30 @@ export async function POST(req: NextRequest) {
           continue
         }
 
+        const candidate = {
+          coach_id: coachId,
+          first_name, last_name, grade,
+          is_18_or_over: isAdult,
+          email_school: email_school || null,
+          email_personal: email_personal || null,
+          parent_name: parent_name || null,
+          parent_email: parent_email || null,
+          division: division || null,
+          program_track: program_track,
+          gender: gender || null,
+          race: race || null,
+          ethnicity: ethnicity || null,
+          level_of_technology: level_of_technology || null,
+          years_competing: years_competing as number | null,
+        }
+
+        const computedStatus = calculateCompetitorStatus(candidate)
+
         const { error: insErr } = await supabase
           .from('competitors')
           .insert({
-            coach_id: coachId,
-            first_name, last_name, grade,
-            is_18_or_over: isAdult,
-            email_school: email_school || null,
-            email_personal: email_personal || null,
-            parent_name: parent_name || null,
-            parent_email: parent_email || null,
-            division: division || null,
-            program_track: program_track,
-            gender: gender || null,
-            race: race || null,
-            ethnicity: ethnicity || null,
-            level_of_technology: level_of_technology || null,
-            years_competing: years_competing as number | null,
-            status: 'profile',
+            ...candidate,
+            status: computedStatus,
             is_active: true,
           })
         if (insErr) throw insErr

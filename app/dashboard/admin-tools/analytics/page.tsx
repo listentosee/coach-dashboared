@@ -90,11 +90,13 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   const notStarted = (competitorCount || 0) - (completeRelease || 0) - (sentCount || 0)
 
   // Demographic breakdowns
+  const eligibleStatuses: string[] = ['profile', 'compliance', 'complete']
   let demographicRows: Array<{ gender: string | null; race: string | null; ethnicity: string | null; level_of_technology: string | null; years_competing: number | null }> = []
   {
     let demoQuery = supabase
       .from('competitors')
       .select('gender, race, ethnicity, level_of_technology, years_competing')
+      .in('status', eligibleStatuses)
 
     if (coachId) {
       demoQuery = demoQuery.eq('coach_id', coachId)
@@ -281,7 +283,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
             <div className="text-sm text-meta-muted">Demographics</div>
             <div className="text-meta-light text-lg font-semibold">Competitor Breakdown</div>
             <p className="text-sm text-meta-muted mt-1">
-              Distributions are filtered by the current coach context.
+              Includes only competitors who are Profile or above, filtered by the current coach context.
             </p>
           </div>
           <DemographicCharts charts={demographicCharts} />

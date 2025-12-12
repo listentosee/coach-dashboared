@@ -245,6 +245,7 @@ export function useCoachComposer({ currentUserId, onSend }: UseCoachComposerOpti
     subject,
     preview,
     dmRecipientId,
+    lockDmRecipient,
     groupRecipients,
     context,
     attachments,

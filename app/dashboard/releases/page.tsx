@@ -340,7 +340,7 @@ export default function ReleaseManagementPage() {
     } finally {
       releaseLoadingRef.current = false
     }
-  }, [agreements, coachId, competitors, computeReleaseSummary, isAdmin, releaseOffset, releaseTotal])
+  }, [agreements, coachId, competitors, isAdmin, releaseOffset, releaseTotal])
 
   const sendRelease = async (competitorId: string, mode: 'email' | 'print' = 'email') => {
     try {

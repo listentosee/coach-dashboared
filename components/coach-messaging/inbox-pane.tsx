@@ -236,7 +236,7 @@ export function CoachInboxPane({
       }
     }
     return entries.sort((a, b) => new Date(b.message.created_at).getTime() - new Date(a.message.created_at).getTime())
-  }, [filteredConversations, messagesByConversation, threadGroupsByConversation, viewMode, currentUserId, readMessageIds, listMode])
+  }, [filteredConversations, messagesByConversation, threadGroupsByConversation, viewMode, currentUserId, readMessageIds])
 
   const listEmptyState = (() => {
     if (loading) return 'Loading messages…'

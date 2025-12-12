@@ -174,13 +174,13 @@ export default function DisclosuresPage() {
                 </div>
               )}
 
-              {showDropdown && searchTerm.trim() && filteredCompetitors.length === 0 && (
-                <div className="absolute z-50 w-full mt-1 bg-popover border border-border rounded-md shadow-lg p-4">
-                  <p className="text-sm text-muted-foreground">
-                    No competitors found matching "{searchTerm}"
-                  </p>
-                </div>
-              )}
+                  {showDropdown && searchTerm.trim() && filteredCompetitors.length === 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-popover border border-border rounded-md shadow-lg p-4">
+                      <p className="text-sm text-muted-foreground">
+                        No competitors found matching &quot;{searchTerm}&quot;
+                      </p>
+                    </div>
+                  )}
             </div>
 
             {selectedCompetitor && (

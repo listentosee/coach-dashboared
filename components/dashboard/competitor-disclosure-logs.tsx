@@ -128,7 +128,7 @@ export function CompetitorDisclosureLogs({ competitorId }: DisclosureLogsProps) 
             Third-Party Data Disclosures
           </CardTitle>
           <CardDescription>
-            All instances where this student's data was shared with external parties (FERPA 34 CFR § 99.32)
+            All instances where this student&apos;s data was shared with external parties (FERPA 34 CFR § 99.32)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -136,7 +136,7 @@ export function CompetitorDisclosureLogs({ competitorId }: DisclosureLogsProps) 
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No third-party disclosures recorded</p>
-              <p className="text-sm mt-2">This student's data has not been shared with external parties</p>
+              <p className="text-sm mt-2">This student&apos;s data has not been shared with external parties</p>
             </div>
           ) : (
             <Table>
@@ -209,7 +209,7 @@ export function CompetitorDisclosureLogs({ competitorId }: DisclosureLogsProps) 
             Recent Activity
           </CardTitle>
           <CardDescription>
-            Other actions performed on this student's record
+            Other actions performed on this student&apos;s record
           </CardDescription>
         </CardHeader>
         <CardContent>

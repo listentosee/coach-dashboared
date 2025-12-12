@@ -139,7 +139,7 @@ export default function ReportCardContent({ competitorId }: { competitorId: stri
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
           <h3 className="text-lg font-semibold text-yellow-900 mb-2">Sync Required</h3>
           <p className="text-yellow-700">
-            This competitor hasn't been synced with the Game Platform yet.
+            This competitor hasn&apos;t been synced with the Game Platform yet.
             Contact your administrator to enable syncing.
           </p>
         </div>

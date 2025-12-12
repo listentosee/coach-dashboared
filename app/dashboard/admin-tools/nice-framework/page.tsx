@@ -78,8 +78,8 @@ export default function NiceFrameworkPage() {
         <CardHeader>
           <CardTitle>Work Roles Lookup Table</CardTitle>
           <CardDescription>
-            Fetches NICE Framework data from NIST to translate work role codes (e.g., "DD-WRL-003")
-            into human-readable titles (e.g., "Secure Software Development")
+            Fetches NICE Framework data from NIST to translate work role codes (e.g., &quot;DD-WRL-003&quot;)
+            into human-readable titles (e.g., &quot;Secure Software Development&quot;)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -156,7 +156,7 @@ export default function NiceFrameworkPage() {
             <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
               <li>Fetches the latest NICE Framework work roles from NIST</li>
               <li>Populates the lookup table with work role IDs, titles, and descriptions</li>
-              <li>Enables the UI to show "Secure Software Development" instead of "DD-WRL-003"</li>
+              <li>Enables the UI to show &quot;Secure Software Development&quot; instead of &quot;DD-WRL-003&quot;</li>
               <li>Safe to run multiple times - updates existing records</li>
             </ul>
 

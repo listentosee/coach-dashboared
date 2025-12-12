@@ -941,7 +941,7 @@ export default function BulkImportPage() {
                                     </select>
                                     {rawValue && isInvalid && (
                                       <div className="text-[10px] text-red-400 italic truncate max-w-[14rem]" title={`Original value: ${rawValue}`}>
-                                        Was: "{rawValue}"
+                                        Was: &quot;{rawValue}&quot;
                                       </div>
                                     )}
                                     {hasDuplicate && duplicateMessages!.map((msg, idx) => (

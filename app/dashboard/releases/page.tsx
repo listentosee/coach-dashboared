@@ -497,11 +497,12 @@ export default function ReleaseManagementPage() {
         return;
       }
 
-      const shouldCancel = agreement.status === 'sent' || agreement.status === 'viewed';
+      if (agreement.status !== 'declined' && agreement.status !== 'expired') {
+        alert('Restart is only available for declined/expired releases.');
+        return;
+      }
 
-      const confirmMessage = shouldCancel
-        ? `Cancel the current Zoho request and restart the release for ${displayName}? This creates a new signing link and invalidates the previous one.`
-        : `Restart the release for ${displayName}? This creates a new Zoho request and signing link.`;
+      const confirmMessage = `Send a new release request for ${displayName}? This creates a new Zoho request and signing link.`;
 
       if (typeof window !== 'undefined' && !window.confirm(confirmMessage)) {
         return;
@@ -524,36 +525,6 @@ export default function ReleaseManagementPage() {
 
       try {
         setRestarting(competitor.id);
-
-        if (shouldCancel) {
-          const cancelRes = await fetch('/api/zoho/cancel', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ agreementId: agreement.id }),
-          });
-
-          if (!cancelRes.ok) {
-            let message = 'Failed to cancel agreement';
-            try {
-              const payload = await cancelRes.json();
-              if (payload?.error) {
-                message = payload.details ? `${payload.error}: ${payload.details}` : payload.error;
-              }
-            } catch {
-              // ignore parse errors
-            }
-            throw new Error(message);
-          }
-
-          const cancelPayload = await cancelRes.json().catch(() => null);
-          const cleanup = cancelPayload?.zohoCleanup;
-          if (cleanup && (cleanup.recallSuccess === false || cleanup.deleteSuccess === false)) {
-            alert(
-              'Agreement cancelled locally, but Zoho cleanup is pending. A new request will still be created; the old one may remain visible in Zoho until cleanup succeeds.',
-            );
-          }
-          needsRefresh = true;
-        }
 
         const sendRes = await fetch('/api/zoho/send', {
           method: 'POST',
@@ -1044,7 +1015,7 @@ export default function ReleaseManagementPage() {
               !isPrintMode &&
               !isSignedStatus &&
               !hasLegacySigned &&
-              ['sent', 'viewed', 'declined', 'expired'].includes(agreement.status) && (
+              ['declined', 'expired'].includes(agreement.status) && (
                 <Button
                   size="sm"
                   variant="outline"

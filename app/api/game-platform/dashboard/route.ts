@@ -23,6 +23,12 @@ export async function GET(request: NextRequest) {
     // Get time range from query params (7d, 30d, 90d, or custom)
     const range = request.nextUrl.searchParams.get('range') || '30d';
 
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceClient = (serviceRoleKey && serviceUrl)
+      ? createClient(serviceUrl, serviceRoleKey, { auth: { persistSession: false } })
+      : null;
+
     const isAdminUser = await isUserAdmin(supabase, user.id);
     const actingCoachCookie = cookieStore.get('admin_coach_id')?.value || null;
     const coachContextId = isAdminUser ? actingCoachCookie : user.id;
@@ -89,11 +95,7 @@ export async function GET(request: NextRequest) {
     let flashCtfEvents: any[] = [];
 
     if (competitorIds.length) {
-      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-      const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const statsClient = (serviceRoleKey && serviceUrl)
-        ? createClient(serviceUrl, serviceRoleKey, { auth: { persistSession: false } })
-        : supabase;
+      const statsClient = serviceClient ?? supabase;
 
       const { data: statsData, error: statsError } = await statsClient
         .from('game_platform_stats')
@@ -311,6 +313,35 @@ export async function GET(request: NextRequest) {
     let totalChallenges = 0;
     let activeRecently = 0;
     let lastSyncedAt: string | null = null;
+    let lastSyncRunAt: string | null = null;
+
+    // Prefer global sync run tracking (reflects when the sync job actually executed).
+    if (serviceClient) {
+      try {
+        const { data: lastCompleted } = await serviceClient
+          .from('game_platform_sync_runs')
+          .select('completed_at')
+          .eq('status', 'completed')
+          .order('completed_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (lastCompleted?.completed_at) {
+          lastSyncRunAt = new Date(lastCompleted.completed_at).toISOString();
+        } else {
+          const { data: latestRun } = await serviceClient
+            .from('game_platform_sync_runs')
+            .select('started_at, completed_at')
+            .order('started_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const ts = latestRun?.completed_at ?? latestRun?.started_at ?? null;
+          lastSyncRunAt = ts ? new Date(ts).toISOString() : null;
+        }
+      } catch {
+        lastSyncRunAt = null;
+      }
+    }
 
     const leaderboard: Array<{
       competitorId: string;
@@ -637,7 +668,7 @@ export async function GET(request: NextRequest) {
         activeRecently,
         totalChallenges,
         monthlyCtfParticipants: monthlyCtfParticipantsFromEvents,
-        lastSyncedAt,
+        lastSyncedAt: lastSyncRunAt ?? lastSyncedAt,
       },
       leaderboard,
       teams,

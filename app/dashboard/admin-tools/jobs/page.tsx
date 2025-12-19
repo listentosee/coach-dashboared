@@ -59,14 +59,6 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
     ? requestedStatus
     : 'all';
 
-  const counts = await Promise.all(statusValues.map(async (status) => {
-    const query = serviceSupabase.from('job_queue').select('id', { count: 'exact', head: true });
-    const { count } = status === 'all'
-      ? await query
-      : await query.eq('status', status);
-    return { status, count: count ?? 0 };
-  }));
-
   const { data: jobs } = await serviceSupabase
     .from('job_queue')
     .select('*')
@@ -79,17 +71,6 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
     .eq('id', 1)
     .single();
   const quickStartContent = loadQuickStart();
-
-  const statusCountsRecord: Record<string, number> = {};
-  statusValues.forEach((status) => {
-    statusCountsRecord[status] = 0;
-  });
-  counts.forEach(({ status, count }) => {
-    if (statusCountsRecord.hasOwnProperty(status)) {
-      statusCountsRecord[status] = count ?? 0;
-    }
-  });
-  statusCountsRecord.all = totalJobs ?? jobs?.length ?? 0;
 
   return (
     <div className="container mx-auto py-4 px-4">
@@ -126,7 +107,6 @@ export default async function JobQueuePage({ searchParams }: { searchParams?: Se
 
       <JobQueueTable
         jobs={(jobs as JobQueueRow[] | null) ?? []}
-        statusCounts={statusCountsRecord}
         initialStatus={statusFilter}
       />
 

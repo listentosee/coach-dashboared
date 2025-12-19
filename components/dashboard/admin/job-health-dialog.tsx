@@ -84,6 +84,12 @@ interface HealthResponse {
     failed: number | null;
     message: string | null;
     error_message: string | null;
+    results: Array<{
+      id: string;
+      status: string;
+      attempts: number;
+      lastError: string | null;
+    }> | null;
   }>;
   gamePlatformSyncRun: {
     started_at: string;
@@ -192,10 +198,21 @@ function buildMarkdown(data: HealthResponse) {
     '',
     ...workerRuns.map((run) => {
       const started = run.started_at ? new Date(run.started_at).toLocaleString() : 'unknown';
-      const status = run.status ?? 'unknown';
-      const meta = `processed=${run.processed}${run.succeeded !== null ? ` ok=${run.succeeded}` : ''}${run.failed !== null ? ` fail=${run.failed}` : ''}`;
+      const workerStatus = run.status ?? 'unknown';
+      const meta = `jobs=${run.processed}${run.succeeded !== null ? ` succeeded=${run.succeeded}` : ''}${run.failed !== null ? ` failed=${run.failed}` : ''}`;
+      const message = run.message ? ` — ${run.message}` : '';
       const err = run.error_message ? ` — ${run.error_message.substring(0, 140)}${run.error_message.length > 140 ? '…' : ''}` : '';
-      return `- **${status}** @ ${started} (${run.source}) — ${meta}${err}`;
+      const results = Array.isArray(run.results) ? run.results : [];
+      const failures = results.filter((item) => item?.lastError);
+      const failureLines = failures.slice(0, 3).map((item) => {
+        const lastError = item.lastError ?? '';
+        return `  - \`${item.id}\` — ${lastError.substring(0, 160)}${lastError.length > 160 ? '…' : ''}`;
+      });
+
+      return [
+        `- **worker=${workerStatus}** @ ${started} (${run.source}) — ${meta}${message}${err}`,
+        ...failureLines,
+      ].join('\n');
     }),
     '',
     '### Game Platform Sync',

@@ -113,7 +113,7 @@ export async function runJobs(options: RunJobsOptions = {}): Promise<RunJobsResu
     });
   }
 
-  const succeeded = results.filter((r) => r.status === 'succeeded').length;
+  const succeeded = results.filter((r) => r.lastError === null).length;
   const failed = results.length - succeeded;
 
   return {

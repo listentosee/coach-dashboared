@@ -115,7 +115,7 @@ export async function GET() {
   try {
     const { data } = await supabase
       .from('job_worker_runs')
-      .select('id, started_at, completed_at, source, status, processed, succeeded, failed, message, error_message')
+      .select('id, started_at, completed_at, source, status, processed, succeeded, failed, message, error_message, results')
       .order('started_at', { ascending: false })
       .limit(20);
     workerRuns = data ?? [];

@@ -75,10 +75,11 @@ interface DashboardData {
   leaderboard: LeaderboardEntry[];
   teams: TeamSummary[];
   alerts: {
-    unsyncedCompetitors: Array<{ competitorId: string; name: string }>;
-    syncErrors: Array<{ competitorId: string; name: string; error: string }>;
+    unsyncedCompetitors: Array<{ competitorId: string; name: string; coachName?: string | null }>;
+    syncErrors: Array<{ competitorId: string; name: string; coachName?: string | null; error: string }>;
     staleCompetitors: LeaderboardEntry[];
   };
+  recentActivity?: Array<{ at: string; label: string; type: 'sync' | 'challenge' | 'ctf' }>;
   controller?: {
     isAdmin: boolean;
     coachId: string | null;
@@ -630,8 +631,8 @@ export default function GamePlatformDashboard() {
   const alerts = useMemo(() => {
     if (!dashboard) {
       return {
-        unsyncedCompetitors: [] as Array<{ competitorId: string; name: string }>,
-        syncErrors: [] as Array<{ competitorId: string; name: string; error: string }>,
+        unsyncedCompetitors: [] as Array<{ competitorId: string; name: string; coachName?: string | null }>,
+        syncErrors: [] as Array<{ competitorId: string; name: string; coachName?: string | null; error: string }>,
         staleCompetitors: [] as LeaderboardEntry[],
       };
     }
@@ -651,28 +652,18 @@ export default function GamePlatformDashboard() {
       staleCompetitors: dashboard.alerts.staleCompetitors.filter((item) => allowedCompetitors.has(item.competitorId)),
     };
   }, [dashboard, coachScope]);
-  const lastSyncedAt = dashboard?.global.lastSyncedAt ?? null;
+
   const timeline = useMemo(() => {
     const events: Array<{ time: string; label: string; type: keyof typeof accentByType }> = [];
-    if (lastSyncedAt) {
+    for (const entry of dashboard?.recentActivity ?? []) {
       events.push({
-        time: new Date(lastSyncedAt).toLocaleString(),
-        label: 'Stats sync completed',
-        type: 'sync',
+        time: relativeFromNow(entry.at),
+        label: entry.label,
+        type: entry.type,
       });
     }
-    for (const alert of alerts.unsyncedCompetitors || []) {
-      events.push({ time: 'Pending', label: `${alert.name} not yet synced to platform`, type: 'team' });
-    }
-    for (const stale of alerts.staleCompetitors || []) {
-      events.push({
-        time: stale.lastActivity ? new Date(stale.lastActivity).toLocaleDateString() : 'Unknown',
-        label: `${stale.name} inactive recently`,
-        type: 'challenge',
-      });
-    }
-    return events.slice(0, 6);
-  }, [alerts, lastSyncedAt]);
+    return events;
+  }, [dashboard?.recentActivity]);
 
   const handleRefresh = () => {
     setRefreshKey((key) => key + 1);
@@ -1105,12 +1096,15 @@ export default function GamePlatformDashboard() {
                 <CardContent className="space-y-3 text-sm">
                   {alerts.unsyncedCompetitors.length ? (
                     <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                      {alerts.unsyncedCompetitors.map((item: { competitorId: string; name: string }) => (
+                      {alerts.unsyncedCompetitors.map((item: { competitorId: string; name: string; coachName?: string | null }) => (
                         <div
                           key={item.competitorId}
                           className="rounded border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-amber-100"
                         >
                           <div className="font-medium text-meta-light">{item.name}</div>
+                          {item.coachName ? (
+                            <div className="text-xs text-meta-muted">Coach: {item.coachName}</div>
+                          ) : null}
                           <div className="text-xs text-meta-muted">No Game Platform ID assigned</div>
                         </div>
                       ))}
@@ -1131,12 +1125,15 @@ export default function GamePlatformDashboard() {
                 <CardContent className="space-y-3 text-sm">
                   {alerts.syncErrors.length ? (
                     <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                      {alerts.syncErrors.map((item: { competitorId: string; name: string; error: string }) => (
+                      {alerts.syncErrors.map((item: { competitorId: string; name: string; coachName?: string | null; error: string }) => (
                         <div
                           key={item.competitorId}
                           className="rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-red-100"
                         >
                           <div className="font-medium text-meta-light">{item.name}</div>
+                          {item.coachName ? (
+                            <div className="text-xs text-meta-muted">Coach: {item.coachName}</div>
+                          ) : null}
                           <div className="text-xs text-meta-muted">{item.error}</div>
                         </div>
                       ))}
@@ -1154,14 +1151,14 @@ export default function GamePlatformDashboard() {
               <Card className="border-meta-border bg-meta-card">
                 <CardHeader className="flex items-center justify-between">
                   <div>
-                    <CardTitle>Activity Timeline</CardTitle>
-                    <CardDescription>Recent Game Platform events</CardDescription>
+                    <CardTitle>Recent Activity</CardTitle>
+                    <CardDescription>Latest solves, events, and sync runs</CardDescription>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {timeline.length === 0 ? (
                     <div className="rounded border border-meta-border/60 bg-meta-dark/40 px-3 py-2 text-sm text-meta-muted">
-                      Activity will appear once the first sync job runs.
+                      No recent activity found for the selected range.
                     </div>
                   ) : (
                     timeline.map((item, idx) => (

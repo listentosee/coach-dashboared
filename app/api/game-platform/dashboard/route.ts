@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
         game_platform_synced_at,
         game_platform_sync_error,
         team_members(team_id, teams(id, name, division, affiliation, game_platform_synced_at, game_platform_id)),
-        coach:profiles!competitors_coach_id_fkey(school_name)
+        coach:profiles!competitors_coach_id_fkey(full_name, email, school_name)
       `);
 
     if (isAdminUser) {
@@ -443,6 +443,7 @@ export async function GET(request: NextRequest) {
       .map((c) => ({
         competitorId: c.id,
         name: `${c.first_name} ${c.last_name}`.trim(),
+        coachName: c.coach?.full_name ?? null,
       }));
 
     const syncErrors = (competitors || [])
@@ -451,6 +452,7 @@ export async function GET(request: NextRequest) {
         return {
           competitorId: c.id,
           name: `${c.first_name} ${c.last_name}`.trim(),
+          coachName: c.coach?.full_name ?? null,
           error: c.game_platform_sync_error ?? mapping?.sync_error ?? null,
         };
       })
@@ -461,6 +463,89 @@ export async function GET(request: NextRequest) {
       const ts = new Date(entry.lastActivity).getTime();
       return Number.isNaN(ts) || ts < fourteenDaysAgo;
     });
+
+    const recentActivity = (() => {
+      const events: Array<{ at: string; label: string; type: 'sync' | 'challenge' | 'ctf' }> = [];
+      const rangeStartMs = rangeStartTime ? rangeStartTime.getTime() : null;
+
+      const competitorBySyncedUserId = new Map<string, { competitorId: string; name: string }>();
+      for (const competitor of competitors || []) {
+        const mapping = mappingByCompetitorId.get(competitor.id);
+        const syncedUserId = competitor.game_platform_id || mapping?.synced_user_id || null;
+        if (!syncedUserId) continue;
+        competitorBySyncedUserId.set(syncedUserId, {
+          competitorId: competitor.id,
+          name: `${competitor.first_name} ${competitor.last_name}`.trim(),
+        });
+      }
+
+      const syncAt = lastSyncRunAt ?? lastSyncedAt;
+      if (syncAt) {
+        const iso = toIsoOrNull(syncAt);
+        if (iso) {
+          events.push({
+            at: iso,
+            label: 'Stats sync completed',
+            type: 'sync',
+          });
+        }
+      }
+
+      const solveEvents = (challengeSolves || [])
+        .map((solve: any) => {
+          const solvedAt = toIsoOrNull(solve?.solved_at);
+          if (!solvedAt) return null;
+          const solvedMs = new Date(solvedAt).getTime();
+          if (rangeStartMs !== null && solvedMs < rangeStartMs) return null;
+
+          const syncedUserId = typeof solve?.synced_user_id === 'string' ? solve.synced_user_id : null;
+          const competitor = syncedUserId ? competitorBySyncedUserId.get(syncedUserId) : null;
+          const name = competitor?.name ?? 'Unknown competitor';
+
+          const title = typeof solve?.challenge_title === 'string' && solve.challenge_title.trim().length > 0
+            ? solve.challenge_title.trim()
+            : 'a challenge';
+          const shortTitle = title.length > 90 ? `${title.slice(0, 89)}…` : title;
+          const category = typeof solve?.challenge_category === 'string' && solve.challenge_category.trim().length > 0
+            ? solve.challenge_category.trim()
+            : null;
+          const points = typeof solve?.challenge_points === 'number' ? solve.challenge_points : null;
+
+          const label = `${name} solved “${shortTitle}”${category ? ` (${category})` : ''}${points !== null ? ` (+${points})` : ''}`;
+          return { at: solvedAt, label, type: 'challenge' as const };
+        })
+        .filter((entry): entry is { at: string; label: string; type: 'challenge' } => Boolean(entry))
+        .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+        .slice(0, 6);
+
+      const ctfEvents = (flashCtfEvents || [])
+        .map((event: any) => {
+          const startedAt = toIsoOrNull(event?.started_at);
+          if (!startedAt) return null;
+          const startedMs = new Date(startedAt).getTime();
+          if (rangeStartMs !== null && startedMs < rangeStartMs) return null;
+
+          const syncedUserId = typeof event?.synced_user_id === 'string' ? event.synced_user_id : null;
+          const competitor = syncedUserId ? competitorBySyncedUserId.get(syncedUserId) : null;
+          const name = competitor?.name ?? 'Unknown competitor';
+
+          const ctfName = typeof event?.flash_ctf_name === 'string' && event.flash_ctf_name.trim().length > 0
+            ? event.flash_ctf_name.trim()
+            : 'Flash CTF';
+          const solved = typeof event?.challenges_solved === 'number' ? event.challenges_solved : null;
+          const points = typeof event?.points_earned === 'number' ? event.points_earned : null;
+
+          const label = `${name} played ${ctfName}${solved !== null ? ` (${solved} challenges)` : ''}${points !== null ? ` (+${points} pts)` : ''}`;
+          return { at: startedAt, label, type: 'ctf' as const };
+        })
+        .filter((entry): entry is { at: string; label: string; type: 'ctf' } => Boolean(entry))
+        .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+        .slice(0, 6);
+
+      events.push(...solveEvents, ...ctfEvents);
+      events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+      return events.slice(0, 8);
+    })();
 
     // Calculate Flash CTF momentum data for Monthly CTF panel
     const today = new Date();
@@ -678,6 +763,7 @@ export async function GET(request: NextRequest) {
         syncErrors,
         staleCompetitors: staleStats,
       },
+      recentActivity,
       controller: {
         isAdmin: isAdminUser,
         coachId: coachContextId,

@@ -5,7 +5,8 @@ export type JobTaskType =
   | 'game_platform_sync'
   | 'game_platform_totals_sweep'
   | 'sms_digest_processor'
-  | 'admin_alert_dispatch';
+  | 'admin_alert_dispatch'
+  | 'release_parent_email_verification';
 
 export interface GamePlatformSyncPayload {
   dryRun?: boolean;
@@ -31,11 +32,18 @@ export interface NotificationJobPayload {
 export type SmsDigestProcessorPayload = NotificationJobPayload;
 export type AdminAlertDispatchPayload = NotificationJobPayload;
 
+export interface ReleaseParentEmailVerificationPayload {
+  dryRun?: boolean;
+  limit?: number;
+  staleHours?: number;
+}
+
 export interface JobPayloadMap {
   game_platform_sync: GamePlatformSyncPayload;
   game_platform_totals_sweep: GamePlatformTotalsSweepPayload;
   sms_digest_processor: SmsDigestProcessorPayload;
   admin_alert_dispatch: AdminAlertDispatchPayload;
+  release_parent_email_verification: ReleaseParentEmailVerificationPayload;
 }
 
 export type JobPayload<T extends JobTaskType = JobTaskType> = JobPayloadMap[T];

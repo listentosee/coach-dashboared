@@ -128,15 +128,17 @@ export async function POST(req: NextRequest) {
         // Duplicate check by coach + primary email (school or personal)
         const dedupeEmail = email_school || email_personal || parent_email || null
         let existingId: string | null = null
+        let existingParentEmail: string | null = null
         if (dedupeEmail) {
           const { data: existing } = await supabase
             .from('competitors')
-            .select('id, email_school, email_personal, coach_id')
+            .select('id, email_school, email_personal, coach_id, parent_email')
             .eq('coach_id', coachId)
             .or(`email_school.eq.${dedupeEmail},email_personal.eq.${dedupeEmail}`)
             .limit(1)
             .maybeSingle()
           existingId = existing?.id || null
+          existingParentEmail = existing?.parent_email ? String(existing.parent_email).trim().toLowerCase() : null
         }
 
         try {
@@ -156,6 +158,8 @@ export async function POST(req: NextRequest) {
 
         if (existingId) {
           if (onConflict === 'skip') { skipped++; duplicates++; continue }
+          const incomingParentEmail = parent_email ? String(parent_email).trim().toLowerCase() : null
+          const parentEmailChanged = existingParentEmail !== incomingParentEmail
           const { error: updErr } = await supabase
             .from('competitors')
             .update({
@@ -164,7 +168,14 @@ export async function POST(req: NextRequest) {
               email_school: email_school || null,
               email_personal: email_personal || null,
               parent_name: parent_name || null,
-              parent_email: parent_email || null,
+              parent_email: incomingParentEmail,
+              ...(parentEmailChanged
+                ? {
+                    parent_email_is_valid: null,
+                    parent_email_validated_at: null,
+                    parent_email_invalid_reason: null,
+                  }
+                : {}),
               division: division || null,
               program_track: program_track,
               gender: gender || null,

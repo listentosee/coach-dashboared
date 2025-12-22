@@ -10,18 +10,25 @@ interface EmailAlertRequest {
   fromEmail?: string;
   fromName?: string;
   coachId?: string;
+  subject?: string;
+  text?: string;
+  html?: string;
+  customArgs?: Record<string, string>;
 }
 
 interface SendGridMailPayload {
   personalizations: Array<{
     to: Array<{ email: string }>;
-    dynamic_template_data: Record<string, unknown>;
+    dynamic_template_data?: Record<string, unknown>;
+    custom_args?: Record<string, string>;
   }>;
   from: {
     email: string;
     name?: string;
   };
-  template_id: string;
+  template_id?: string;
+  subject?: string;
+  content?: Array<{ type: string; value: string }>;
   mail_settings?: {
     sandbox_mode: {
       enable: boolean;
@@ -70,10 +77,106 @@ Deno.serve(async (req) => {
       );
     }
 
-    const templateId = body.templateId || defaultTemplateId;
-    if (!templateId) {
+    const wantsPlainEmail = Boolean(body.subject || body.text || body.html);
+
+    if (!wantsPlainEmail) {
+      const templateId = body.templateId || defaultTemplateId;
+      if (!templateId) {
+        return new Response(
+          JSON.stringify({ error: 'Missing SendGrid template. Provide templateId in request or set SENDGRID_TEMPLATE_ID.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const payload: SendGridMailPayload = {
+        personalizations: [
+          {
+            to: [{ email: body.to }],
+            dynamic_template_data: body.templateData ?? {},
+            ...(body.customArgs ? { custom_args: body.customArgs } : {}),
+          },
+        ],
+        from: {
+          email: body.fromEmail || defaultFromEmail,
+          name: body.fromName || defaultFromName,
+        },
+        template_id: templateId,
+        ...(sandboxMode
+          ? {
+              mail_settings: {
+                sandbox_mode: { enable: true },
+              },
+            }
+          : {}),
+      };
+
+      const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const shouldLog = Deno.env.get('SENDGRID_LOG_RESPONSES') === 'true';
+
+      if (shouldLog) {
+        const bodyText = await response.clone().text().catch(() => '<unreadable>');
+        console.log('SendGrid response (debug)', {
+          coachId: body.coachId ?? 'unknown',
+          to: body.to,
+          status: response.status,
+          ok: response.ok,
+          body: bodyText,
+        });
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('SendGrid API error:', { status: response.status, errorText, coachId: body.coachId });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: `SendGrid API error: ${response.status}`,
+            details: errorText,
+          }),
+          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('SendGrid email sent', {
+        coachId: body.coachId ?? 'unknown',
+        templateId,
+      });
+
       return new Response(
-        JSON.stringify({ error: 'Missing SendGrid template. Provide templateId in request or set SENDGRID_TEMPLATE_ID.' }),
+        JSON.stringify({ success: true }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const subject = (body.subject || '').trim();
+    const content: Array<{ type: string; value: string }> = [];
+    if (body.text) {
+      const text = String(body.text);
+      if (text.trim()) content.push({ type: 'text/plain', value: text });
+    }
+    if (body.html) {
+      const html = String(body.html);
+      if (html.trim()) content.push({ type: 'text/html', value: html });
+    }
+
+    if (!subject) {
+      return new Response(
+        JSON.stringify({ error: 'Missing subject. Provide subject when sending non-templated email.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (content.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Missing email content. Provide text and/or html when sending non-templated email.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -82,14 +185,15 @@ Deno.serve(async (req) => {
       personalizations: [
         {
           to: [{ email: body.to }],
-          dynamic_template_data: body.templateData ?? {},
+          ...(body.customArgs ? { custom_args: body.customArgs } : {}),
         },
       ],
       from: {
         email: body.fromEmail || defaultFromEmail,
         name: body.fromName || defaultFromName,
       },
-      template_id: templateId,
+      subject,
+      content,
       ...(sandboxMode
         ? {
             mail_settings: {
@@ -136,7 +240,7 @@ Deno.serve(async (req) => {
 
     console.log('SendGrid email sent', {
       coachId: body.coachId ?? 'unknown',
-      templateId,
+      subject,
     });
 
     return new Response(

@@ -626,15 +626,24 @@ export default function GamePlatformDashboard() {
       return {
         unsyncedCompetitors: [] as Array<{ competitorId: string; name: string; coachName?: string | null }>,
         syncErrors: [] as Array<{ competitorId: string; name: string; coachName?: string | null; error: string }>,
+        actionRequired: [] as Array<{ competitorId: string; name: string; syncedUserId: string; message: string }>,
         staleCompetitors: [] as LeaderboardEntry[],
       };
     }
     if (dashboard.controller?.isAdmin && coachScope === 'all') {
-      return dashboard.alerts;
+      const rawAlerts = dashboard.alerts as any;
+      return {
+        ...rawAlerts,
+        actionRequired: Array.isArray(rawAlerts?.actionRequired) ? rawAlerts.actionRequired : [],
+      };
     }
     const currentCoachId = dashboard.controller?.coachId || null;
     if (!currentCoachId || !dashboard.competitors) {
-      return dashboard.alerts;
+      const rawAlerts = dashboard.alerts as any;
+      return {
+        ...rawAlerts,
+        actionRequired: Array.isArray(rawAlerts?.actionRequired) ? rawAlerts.actionRequired : [],
+      };
     }
     const allowedCompetitors = new Set(
       (dashboard.competitors as any[]).filter((c) => c.coach_id === currentCoachId).map((c) => c.id)
@@ -642,22 +651,10 @@ export default function GamePlatformDashboard() {
     return {
       unsyncedCompetitors: dashboard.alerts.unsyncedCompetitors.filter((item) => allowedCompetitors.has(item.competitorId)),
       syncErrors: dashboard.alerts.syncErrors.filter((item) => allowedCompetitors.has(item.competitorId)),
-      actionRequired: dashboard.alerts.actionRequired.filter((item) => allowedCompetitors.has(item.competitorId)),
+      actionRequired: (dashboard.alerts.actionRequired ?? []).filter((item) => allowedCompetitors.has(item.competitorId)),
       staleCompetitors: dashboard.alerts.staleCompetitors.filter((item) => allowedCompetitors.has(item.competitorId)),
     };
   }, [dashboard, coachScope]);
-
-  const timeline = useMemo(() => {
-    const events: Array<{ time: string; label: string; type: keyof typeof accentByType }> = [];
-    for (const entry of dashboard?.recentActivity ?? []) {
-      events.push({
-        time: relativeFromNow(entry.at),
-        label: entry.label,
-        type: entry.type,
-      });
-    }
-    return events;
-  }, [dashboard?.recentActivity]);
 
   const handleRefresh = () => {
     setRefreshKey((key) => key + 1);
@@ -1174,38 +1171,6 @@ export default function GamePlatformDashboard() {
                     <div className="rounded border border-meta-border/60 bg-meta-dark/40 px-3 py-2 text-meta-muted">
                       No sync errors reported.
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            </section>
-
-            <section>
-              <Card className="border-meta-border bg-meta-card">
-                <CardHeader className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Recent Activity</CardTitle>
-                    <CardDescription>Latest solves, events, and sync runs</CardDescription>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {timeline.length === 0 ? (
-                    <div className="rounded border border-meta-border/60 bg-meta-dark/40 px-3 py-2 text-sm text-meta-muted">
-                      No recent activity found for the selected range.
-                    </div>
-                  ) : (
-                    timeline.map((item, idx) => (
-                      <div key={`${item.label}-${idx}`} className="flex items-start gap-3 text-sm text-meta-light/90">
-                        <div className="w-32 shrink-0 text-xs uppercase tracking-wide text-meta-muted">{item.time}</div>
-                        <div
-                          className={cn(
-                            'flex-1 rounded border px-3 py-2 backdrop-blur',
-                            accentByType[item.type] ?? 'text-meta-muted border-meta-border'
-                          )}
-                        >
-                          {item.label}
-                        </div>
-                      </div>
-                    ))
                   )}
                 </CardContent>
               </Card>

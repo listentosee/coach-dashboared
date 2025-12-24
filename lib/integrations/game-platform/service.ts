@@ -960,7 +960,7 @@ export async function syncCompetitorGameStats({
 }: SyncCompetitorStatsParams): Promise<SyncCompetitorStatsResult> {
   const { data: competitor, error } = await supabase
     .from('competitors')
-    .select('id, first_name, last_name, coach_id, game_platform_id, team_members:team_members(team_id, teams!inner(game_platform_id))')
+    .select('id, first_name, last_name, coach_id, game_platform_id, game_platform_sync_error, team_members:team_members(team_id, teams!inner(game_platform_id))')
     .eq('id', competitorId)
     .maybeSingle();
 
@@ -978,6 +978,7 @@ export async function syncCompetitorGameStats({
 
   const syncedUserId = competitor.game_platform_id;
   const effectiveDryRun = isDryRunOverride(dryRun);
+  const shouldClearSyncErrors = Boolean(competitor.game_platform_sync_error);
 
   if (effectiveDryRun) {
     return {
@@ -1018,8 +1019,8 @@ export async function syncCompetitorGameStats({
 
   let scores: any = null;
   let scoresError: unknown = null;
-  let missingRemoteUser = false;
-  let missingRemoteMessage: string | null = null;
+  let blockedStatus: 'missing_user' | 'not_approved' | null = null;
+  let blockedMessage: string | null = null;
   try {
     scores = await resolvedClient.getScores({
       syned_user_id: syncedUserId,
@@ -1027,19 +1028,37 @@ export async function syncCompetitorGameStats({
     });
   } catch (err: any) {
     if (err?.status === 404) {
-      missingRemoteUser = true;
-      missingRemoteMessage = typeof err?.message === 'string'
+      blockedStatus = 'missing_user';
+      blockedMessage = typeof err?.message === 'string'
         ? err.message
         : `ODL scores unavailable for ${syncedUserId}`;
       logger?.info?.(`ODL scores missing for ${syncedUserId}`);
+    } else if (err?.status === 403) {
+      blockedStatus = 'not_approved';
+      blockedMessage = typeof err?.message === 'string'
+        ? err.message
+        : `ODL scores forbidden for ${syncedUserId}`;
+      logger?.info?.(`ODL scores forbidden for ${syncedUserId}`);
     } else {
       scoresError = err;
       logger?.warn?.(`Failed to fetch ODL scores for ${syncedUserId}`, { error: err });
     }
   }
 
-  if (missingRemoteUser) {
-    const message = missingRemoteMessage ?? `ODL scores unavailable for ${syncedUserId}`;
+  if (blockedStatus) {
+    let message = blockedMessage ?? `ODL scores unavailable for ${syncedUserId}`;
+
+    if (blockedStatus === 'not_approved') {
+      try {
+        const user = await resolvedClient.getUser({ syned_user_id: syncedUserId });
+        const rawStatus = (user as any)?.metactf_user_status;
+        if (typeof rawStatus === 'string' && rawStatus.length) {
+          message = `${message} (metactf_user_status: ${rawStatus})`;
+        }
+      } catch (lookupError: any) {
+        logger?.warn?.(`Failed to fetch MetaCTF user status for ${syncedUserId}`, { error: lookupError });
+      }
+    }
 
     await updateCompetitorSyncError(supabase, competitorId, message);
 
@@ -1058,7 +1077,7 @@ export async function syncCompetitorGameStats({
 
     return {
       competitorId,
-      status: 'skipped_remote_missing',
+      status: blockedStatus === 'missing_user' ? 'skipped_remote_missing' : 'error',
       message,
     };
   }
@@ -1081,6 +1100,11 @@ export async function syncCompetitorGameStats({
 
     if (syncStateFailureError) {
       throw new Error(`Failed to persist sync failure state: ${syncStateFailureError.message}`);
+    }
+
+    const status = (scoresError as any)?.status;
+    if (typeof status === 'number' && status < 500) {
+      await updateCompetitorSyncError(supabase, competitorId, message);
     }
 
     return {
@@ -1259,6 +1283,10 @@ export async function syncCompetitorGameStats({
     .upsert(syncStatePayload);
   if (upsertSyncStateError) {
     throw new Error(`Failed to update sync state: ${upsertSyncStateError.message}`);
+  }
+
+  if (shouldClearSyncErrors) {
+    await updateCompetitorSyncError(supabase, competitorId, null);
   }
 
   if (needsRefresh) {

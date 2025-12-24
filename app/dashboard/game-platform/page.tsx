@@ -115,13 +115,6 @@ interface StatCard {
   accent: string;
 }
 
-const accentByType: Record<string, string> = {
-  challenge: 'text-amber-400 border-amber-500/40',
-  team: 'text-sky-400 border-sky-500/40',
-  ctf: 'text-fuchsia-400 border-fuchsia-500/40',
-  sync: 'text-emerald-400 border-emerald-500/40',
-};
-
 const rosterStatusStyles: Record<TeamMemberRosterEntry['status'], string> = {
   Active: 'border-transparent bg-green-100 text-green-800',
   'Waiting for Add': 'border-transparent bg-yellow-100 text-yellow-800',
@@ -649,6 +642,7 @@ export default function GamePlatformDashboard() {
     return {
       unsyncedCompetitors: dashboard.alerts.unsyncedCompetitors.filter((item) => allowedCompetitors.has(item.competitorId)),
       syncErrors: dashboard.alerts.syncErrors.filter((item) => allowedCompetitors.has(item.competitorId)),
+      actionRequired: dashboard.alerts.actionRequired.filter((item) => allowedCompetitors.has(item.competitorId)),
       staleCompetitors: dashboard.alerts.staleCompetitors.filter((item) => allowedCompetitors.has(item.competitorId)),
     };
   }, [dashboard, coachScope]);
@@ -1083,6 +1077,44 @@ export default function GamePlatformDashboard() {
               </Card>
             ))}
           </div>
+        </section>
+
+        <section>
+          <Card className="border-meta-border bg-meta-card/90">
+            <CardHeader>
+              <CardTitle>Action Required</CardTitle>
+              <CardDescription>
+                Competitors blocked by MetaCTF approval (pending merge / not approved).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {alerts.actionRequired.length ? (
+                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {alerts.actionRequired.map((item) => (
+                    <div
+                      key={item.competitorId}
+                      className="rounded border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-amber-100"
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <div className="font-medium text-meta-light">{item.name}</div>
+                        {dashboard?.controller?.isAdmin && item.coachName ? (
+                          <div className="text-xs text-meta-muted">Coach: {item.coachName}</div>
+                        ) : null}
+                      </div>
+                      <div className="text-xs text-meta-muted">{item.message}</div>
+                      {item.lastAttemptAt ? (
+                        <div className="text-xs text-meta-muted">Last checked: {new Date(item.lastAttemptAt).toLocaleString()}</div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded border border-meta-border/60 bg-meta-dark/40 px-3 py-2 text-meta-muted">
+                  No action required at this time.
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </section>
 
         {dashboard?.controller?.isAdmin && (

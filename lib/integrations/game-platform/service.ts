@@ -1295,6 +1295,52 @@ export async function syncCompetitorGameStats({
     logger?.info?.(`Marked ${syncedUserId} for totals refresh (stats row doesn't exist)`);
   }
 
+  const syncTimestamp = new Date().toISOString();
+
+  const { error: competitorSyncMetaError } = await supabase
+    .from('competitors')
+    .update({
+      game_platform_synced_at: syncTimestamp,
+      game_platform_sync_error: null,
+    })
+    .eq('id', competitorId);
+
+  if (competitorSyncMetaError) {
+    logger?.warn?.('Failed to update competitor sync timestamp', {
+      competitorId,
+      error: competitorSyncMetaError.message,
+    });
+  }
+
+  try {
+    const updatedProfile = await updateGamePlatformProfile(
+      supabase,
+      { competitorId },
+      {
+        status: 'approved',
+        syncError: null,
+        lastSyncedAt: syncTimestamp,
+        syncedUserId,
+      },
+    );
+
+    if (!updatedProfile) {
+      await upsertGamePlatformProfile(supabase, {
+        competitorId,
+        metactfRole: 'user',
+        syncedUserId,
+        status: 'approved',
+        syncError: null,
+        lastSyncedAt: syncTimestamp,
+      });
+    }
+  } catch (profileError) {
+    logger?.warn?.('Failed to update competitor game platform profile after stats sync', {
+      competitorId,
+      error: profileError instanceof Error ? profileError.message : String(profileError),
+    });
+  }
+
   // Return 'synced' only if we actually found new data, otherwise 'skipped_no_new_data'
   // Note: We only check ODL solves here because the API filters by after_time_unix.
   // Flash CTF data is not filtered by the API, so we sync it opportunistically when processing ODL updates.

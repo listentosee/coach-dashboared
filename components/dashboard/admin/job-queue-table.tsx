@@ -42,19 +42,59 @@ export interface JobQueueRow {
 
 interface JobQueueTableProps {
   jobs: JobQueueRow[];
-  statusCounts: Record<string, number>;
   initialStatus?: string;
 }
 
-export function JobQueueTable({ jobs, statusCounts, initialStatus = "all" }: JobQueueTableProps) {
+type EffectiveStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled";
+
+function getEffectiveStatus(job: JobQueueRow, now: Date): EffectiveStatus {
+  const raw = job.status as EffectiveStatus;
+  if (raw && raw !== "pending") return raw;
+
+  if (!job.is_recurring) return "pending";
+
+  // Recurring jobs revert to "pending" between runs; use last run outcome when available.
+  if (job.last_error) return "failed";
+
+  if (job.last_run_at) {
+    const nextRun = computeNextRun(job);
+    if (nextRun && nextRun.getTime() <= now.getTime()) return "pending";
+    return "succeeded";
+  }
+
+  return "pending";
+}
+
+function computeStatusCounts(jobs: JobQueueRow[], now: Date) {
+  const counts: Record<string, number> = {
+    all: jobs.length,
+    pending: 0,
+    running: 0,
+    succeeded: 0,
+    failed: 0,
+    cancelled: 0,
+  };
+
+  for (const job of jobs) {
+    const status = getEffectiveStatus(job, now);
+    counts[status] = (counts[status] ?? 0) + 1;
+  }
+
+  return counts;
+}
+
+export function JobQueueTable({ jobs, initialStatus = "all" }: JobQueueTableProps) {
   const [statusFilter, setStatusFilter] = useState<string>(
     STATUS_LABELS[initialStatus] ? initialStatus : "all"
   );
 
+  const now = useMemo(() => new Date(), []);
+  const statusCounts = useMemo(() => computeStatusCounts(jobs, now), [jobs, now]);
+
   const filteredJobs = useMemo(() => {
     if (statusFilter === "all") return jobs;
-    return jobs.filter((job) => job.status === statusFilter);
-  }, [jobs, statusFilter]);
+    return jobs.filter((job) => getEffectiveStatus(job, now) === statusFilter);
+  }, [jobs, now, statusFilter]);
 
   const columns = useMemo<ColumnDef<JobQueueRow>[]>(() => [
     {
@@ -88,15 +128,18 @@ export function JobQueueTable({ jobs, statusCounts, initialStatus = "all" }: Job
     {
       accessorKey: "status",
       header: "Status",
-      cell: ({ row }) => (
-        <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
-            STATUS_CLASSES[row.original.status] || "bg-gray-100 text-gray-800"
-          }`}
-        >
-          {STATUS_LABELS[row.original.status] ?? row.original.status}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const status = getEffectiveStatus(row.original, now);
+        return (
+          <span
+            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+              STATUS_CLASSES[status] || "bg-gray-100 text-gray-800"
+            }`}
+          >
+            {STATUS_LABELS[status] ?? status}
+          </span>
+        );
+      },
     },
     {
       accessorKey: "attempts",
@@ -133,7 +176,7 @@ export function JobQueueTable({ jobs, statusCounts, initialStatus = "all" }: Job
       header: "Next Scheduled",
       cell: ({ row }) => {
         const nextRun = computeNextRun(row.original);
-        const pastDue = row.original.status === "pending" && nextRun && nextRun < new Date();
+        const pastDue = getEffectiveStatus(row.original, now) === "pending" && nextRun && nextRun < now;
         return (
           <div className={pastDue ? "text-red-400 font-semibold" : "text-sm text-slate-200"}>
             {nextRun ? formatDate(nextRun.toISOString()) : "—"}
@@ -193,11 +236,12 @@ export function JobQueueTable({ jobs, statusCounts, initialStatus = "all" }: Job
         </div>
       ),
     },
-  ], []);
+  ], [now]);
 
   const getRowClassName = (job: JobQueueRow) => {
-    const runAt = new Date(job.run_at);
-    if (job.status === "pending" && runAt < new Date()) {
+    const status = getEffectiveStatus(job, now);
+    const nextRun = computeNextRun(job);
+    if (status === "pending" && nextRun && nextRun < now) {
       return "bg-red-500/15";
     }
     return undefined;
@@ -205,6 +249,9 @@ export function JobQueueTable({ jobs, statusCounts, initialStatus = "all" }: Job
 
   return (
     <div className="space-y-4">
+      <div className="text-xs text-slate-300">
+        Counts reflect the jobs loaded below (max 500). Recurring jobs show last run outcome between executions.
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {Object.entries(STATUS_LABELS).map(([key, label]) => (
           <button
@@ -289,7 +336,11 @@ function summarizePayload(job: JobQueueRow) {
 
 function computeNextRun(job: JobQueueRow): Date | null {
   if (job.is_recurring && job.recurrence_interval_minutes) {
-    const base = job.last_run_at ? new Date(job.last_run_at) : new Date(job.run_at);
+    if (!job.last_run_at) {
+      return job.run_at ? new Date(job.run_at) : null;
+    }
+
+    const base = new Date(job.last_run_at);
     return new Date(base.getTime() + job.recurrence_interval_minutes * 60 * 1000);
   }
 

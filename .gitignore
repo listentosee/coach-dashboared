@@ -113,3 +113,5 @@ app/print.css
 
 # local data exports (never commit)
 /data/
+# local data exports (do not track)
+data/

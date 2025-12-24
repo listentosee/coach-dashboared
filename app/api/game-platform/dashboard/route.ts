@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         game_platform_synced_at,
         game_platform_sync_error,
         team_members(team_id, teams(id, name, division, affiliation, game_platform_synced_at, game_platform_id)),
-        coach:profiles!competitors_coach_id_fkey(school_name)
+        coach:profiles!competitors_coach_id_fkey(full_name, school_name)
       `);
 
     if (isAdminUser) {
@@ -87,6 +87,7 @@ export async function GET(request: NextRequest) {
     let stats: any[] = [];
     let challengeSolves: any[] = [];
     let flashCtfEvents: any[] = [];
+    let syncStates: any[] = [];
 
     if (competitorIds.length) {
       const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -109,6 +110,18 @@ export async function GET(request: NextRequest) {
 
       // Query challenge solves from the normalized table
       if (gamePlatformIds.length > 0) {
+        const { data: syncStateData, error: syncStateError } = await statsClient
+          .from('game_platform_sync_state')
+          .select('synced_user_id, last_attempt_at, last_result, error_message')
+          .in('synced_user_id', gamePlatformIds);
+
+        if (syncStateError) {
+          console.error('Dashboard sync state query failed', syncStateError);
+          syncStates = [];
+        } else {
+          syncStates = syncStateData || [];
+        }
+
         const { data: solvesData, error: solvesError } = await statsClient
           .from('game_platform_challenge_solves')
           .select('synced_user_id, challenge_title, challenge_category, challenge_points, source, solved_at')
@@ -163,6 +176,13 @@ export async function GET(request: NextRequest) {
       flashEventsByCompetitor.get(key)!.push(event);
     }
 
+    const syncStateByUserId = new Map<string, any>();
+    for (const state of syncStates) {
+      if (state?.synced_user_id) {
+        syncStateByUserId.set(state.synced_user_id, state);
+      }
+    }
+
     const competitorMap = new Map<string, any>();
     const competitorList: any[] = [];
     const teamRoster = new Map<string, any>();
@@ -213,6 +233,7 @@ export async function GET(request: NextRequest) {
         game_platform_sync_error: competitor.game_platform_sync_error ?? profileMapping?.sync_error ?? null,
         team_id: teamMembership?.team_id || null,
         team,
+        coach_name: competitor.coach?.full_name ?? null,
         coach_school: competitor.coach?.school_name ?? null,
         challenges_completed: challengesCompleted,
         monthly_ctf_challenges: monthlyCtf,
@@ -412,6 +433,7 @@ export async function GET(request: NextRequest) {
       .map((c) => ({
         competitorId: c.id,
         name: `${c.first_name} ${c.last_name}`.trim(),
+        coachName: c.coach?.full_name ?? null,
       }));
 
     const syncErrors = (competitors || [])
@@ -421,9 +443,34 @@ export async function GET(request: NextRequest) {
           competitorId: c.id,
           name: `${c.first_name} ${c.last_name}`.trim(),
           error: c.game_platform_sync_error ?? mapping?.sync_error ?? null,
+          coachName: c.coach?.full_name ?? null,
         };
       })
       .filter((entry) => !!entry.error);
+
+    const actionRequired = (competitors || [])
+      .map((c) => {
+        const mapping = mappingByCompetitorId.get(c.id);
+        const syncedUserId = c.game_platform_id || mapping?.synced_user_id || null;
+        if (!syncedUserId) return null;
+        const syncState = syncStateByUserId.get(syncedUserId) ?? null;
+        if (!syncState || syncState.last_result !== 'failure') return null;
+
+        const message = typeof syncState.error_message === 'string' ? syncState.error_message : '';
+        const normalized = message.toLowerCase();
+        const needsApproval = normalized.includes('not approved') || normalized.includes('pending_approval') || normalized.includes('pending approval');
+        if (!needsApproval) return null;
+
+        return {
+          competitorId: c.id,
+          name: `${c.first_name} ${c.last_name}`.trim(),
+          coachName: c.coach?.full_name ?? null,
+          syncedUserId,
+          message,
+          lastAttemptAt: toIsoOrNull(syncState.last_attempt_at),
+        };
+      })
+      .filter(Boolean);
 
     const staleStats = leaderboard.filter((entry) => {
       if (!entry.lastActivity) return true;
@@ -645,6 +692,7 @@ export async function GET(request: NextRequest) {
       alerts: {
         unsyncedCompetitors,
         syncErrors,
+        actionRequired,
         staleCompetitors: staleStats,
       },
       controller: {

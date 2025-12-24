@@ -75,8 +75,16 @@ interface DashboardData {
   leaderboard: LeaderboardEntry[];
   teams: TeamSummary[];
   alerts: {
-    unsyncedCompetitors: Array<{ competitorId: string; name: string }>;
-    syncErrors: Array<{ competitorId: string; name: string; error: string }>;
+    unsyncedCompetitors: Array<{ competitorId: string; name: string; coachName?: string | null }>;
+    syncErrors: Array<{ competitorId: string; name: string; error: string; coachName?: string | null }>;
+    actionRequired: Array<{
+      competitorId: string;
+      name: string;
+      coachName?: string | null;
+      syncedUserId: string;
+      message: string;
+      lastAttemptAt?: string | null;
+    }>;
     staleCompetitors: LeaderboardEntry[];
   };
   controller?: {
@@ -113,13 +121,6 @@ interface StatCard {
   hint?: string;
   accent: string;
 }
-
-const accentByType: Record<string, string> = {
-  challenge: 'text-amber-400 border-amber-500/40',
-  team: 'text-sky-400 border-sky-500/40',
-  ctf: 'text-fuchsia-400 border-fuchsia-500/40',
-  sync: 'text-emerald-400 border-emerald-500/40',
-};
 
 const rosterStatusStyles: Record<TeamMemberRosterEntry['status'], string> = {
   Active: 'border-transparent bg-green-100 text-green-800',
@@ -632,6 +633,7 @@ export default function GamePlatformDashboard() {
       return {
         unsyncedCompetitors: [] as Array<{ competitorId: string; name: string }>,
         syncErrors: [] as Array<{ competitorId: string; name: string; error: string }>,
+        actionRequired: [] as Array<{ competitorId: string; name: string; syncedUserId: string; message: string }>,
         staleCompetitors: [] as LeaderboardEntry[],
       };
     }
@@ -648,31 +650,10 @@ export default function GamePlatformDashboard() {
     return {
       unsyncedCompetitors: dashboard.alerts.unsyncedCompetitors.filter((item) => allowedCompetitors.has(item.competitorId)),
       syncErrors: dashboard.alerts.syncErrors.filter((item) => allowedCompetitors.has(item.competitorId)),
+      actionRequired: dashboard.alerts.actionRequired.filter((item) => allowedCompetitors.has(item.competitorId)),
       staleCompetitors: dashboard.alerts.staleCompetitors.filter((item) => allowedCompetitors.has(item.competitorId)),
     };
   }, [dashboard, coachScope]);
-  const lastSyncedAt = dashboard?.global.lastSyncedAt ?? null;
-  const timeline = useMemo(() => {
-    const events: Array<{ time: string; label: string; type: keyof typeof accentByType }> = [];
-    if (lastSyncedAt) {
-      events.push({
-        time: new Date(lastSyncedAt).toLocaleString(),
-        label: 'Stats sync completed',
-        type: 'sync',
-      });
-    }
-    for (const alert of alerts.unsyncedCompetitors || []) {
-      events.push({ time: 'Pending', label: `${alert.name} not yet synced to platform`, type: 'team' });
-    }
-    for (const stale of alerts.staleCompetitors || []) {
-      events.push({
-        time: stale.lastActivity ? new Date(stale.lastActivity).toLocaleDateString() : 'Unknown',
-        label: `${stale.name} inactive recently`,
-        type: 'challenge',
-      });
-    }
-    return events.slice(0, 6);
-  }, [alerts, lastSyncedAt]);
 
   const handleRefresh = () => {
     setRefreshKey((key) => key + 1);
@@ -1094,6 +1075,44 @@ export default function GamePlatformDashboard() {
           </div>
         </section>
 
+        <section>
+          <Card className="border-meta-border bg-meta-card/90">
+            <CardHeader>
+              <CardTitle>Action Required</CardTitle>
+              <CardDescription>
+                Competitors blocked by MetaCTF approval (pending merge / not approved).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {alerts.actionRequired.length ? (
+                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {alerts.actionRequired.map((item) => (
+                    <div
+                      key={item.competitorId}
+                      className="rounded border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-amber-100"
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <div className="font-medium text-meta-light">{item.name}</div>
+                        {dashboard?.controller?.isAdmin && item.coachName ? (
+                          <div className="text-xs text-meta-muted">Coach: {item.coachName}</div>
+                        ) : null}
+                      </div>
+                      <div className="text-xs text-meta-muted">{item.message}</div>
+                      {item.lastAttemptAt ? (
+                        <div className="text-xs text-meta-muted">Last checked: {new Date(item.lastAttemptAt).toLocaleString()}</div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded border border-meta-border/60 bg-meta-dark/40 px-3 py-2 text-meta-muted">
+                  No action required at this time.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
         {dashboard?.controller?.isAdmin && (
           <>
             <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -1105,12 +1124,17 @@ export default function GamePlatformDashboard() {
                 <CardContent className="space-y-3 text-sm">
                   {alerts.unsyncedCompetitors.length ? (
                     <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                      {alerts.unsyncedCompetitors.map((item: { competitorId: string; name: string }) => (
+                      {alerts.unsyncedCompetitors.map((item: { competitorId: string; name: string; coachName?: string | null }) => (
                         <div
                           key={item.competitorId}
                           className="rounded border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-amber-100"
                         >
-                          <div className="font-medium text-meta-light">{item.name}</div>
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <div className="font-medium text-meta-light">{item.name}</div>
+                            {item.coachName ? (
+                              <div className="text-xs text-meta-muted">Coach: {item.coachName}</div>
+                            ) : null}
+                          </div>
                           <div className="text-xs text-meta-muted">No Game Platform ID assigned</div>
                         </div>
                       ))}
@@ -1131,12 +1155,17 @@ export default function GamePlatformDashboard() {
                 <CardContent className="space-y-3 text-sm">
                   {alerts.syncErrors.length ? (
                     <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                      {alerts.syncErrors.map((item: { competitorId: string; name: string; error: string }) => (
+                      {alerts.syncErrors.map((item: { competitorId: string; name: string; error: string; coachName?: string | null }) => (
                         <div
                           key={item.competitorId}
                           className="rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-red-100"
                         >
-                          <div className="font-medium text-meta-light">{item.name}</div>
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <div className="font-medium text-meta-light">{item.name}</div>
+                            {item.coachName ? (
+                              <div className="text-xs text-meta-muted">Coach: {item.coachName}</div>
+                            ) : null}
+                          </div>
                           <div className="text-xs text-meta-muted">{item.error}</div>
                         </div>
                       ))}
@@ -1150,37 +1179,6 @@ export default function GamePlatformDashboard() {
               </Card>
             </section>
 
-            <section>
-              <Card className="border-meta-border bg-meta-card">
-                <CardHeader className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Activity Timeline</CardTitle>
-                    <CardDescription>Recent Game Platform events</CardDescription>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {timeline.length === 0 ? (
-                    <div className="rounded border border-meta-border/60 bg-meta-dark/40 px-3 py-2 text-sm text-meta-muted">
-                      Activity will appear once the first sync job runs.
-                    </div>
-                  ) : (
-                    timeline.map((item, idx) => (
-                      <div key={`${item.label}-${idx}`} className="flex items-start gap-3 text-sm text-meta-light/90">
-                        <div className="w-32 shrink-0 text-xs uppercase tracking-wide text-meta-muted">{item.time}</div>
-                        <div
-                          className={cn(
-                            'flex-1 rounded border px-3 py-2 backdrop-blur',
-                            accentByType[item.type] ?? 'text-meta-muted border-meta-border'
-                          )}
-                        >
-                          {item.label}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </CardContent>
-              </Card>
-            </section>
           </>
         )}
       </div>

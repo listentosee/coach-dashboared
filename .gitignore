@@ -110,3 +110,6 @@ CLAUDE.md
 
 # print styles (development only)
 app/print.css
+
+# local data exports (never commit)
+/data/

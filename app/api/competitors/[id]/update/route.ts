@@ -27,7 +27,7 @@ export async function PUT(
 ) {
   try {
     const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createRouteHandlerClient({ cookies });
     
     // Verify authentication (validated)
     const { data: { user } } = await supabase.auth.getUser();

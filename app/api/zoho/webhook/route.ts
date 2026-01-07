@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { getZohoAccessToken } from '../_lib/token';
 import { logger } from '@/lib/logging/safe-logger';
 import { AuditLogger } from '@/lib/audit/audit-logger';
+import { maybeAutoOnboardCompetitor } from '@/lib/integrations/game-platform/auto-onboard';
 
 function verifyZohoHmac(rawBody: string, headerSig: string | null) {
   if (!headerSig) return false;
@@ -104,12 +105,22 @@ export async function POST(req: NextRequest) {
 
         if (updatedCompetitor) {
           const { calculateCompetitorStatus } = await import('@/lib/utils/competitor-status');
+          const previousStatus = updatedCompetitor.status;
           const newStatus = calculateCompetitorStatus(updatedCompetitor);
           
           await supabase
             .from('competitors')
             .update({ status: newStatus })
             .eq('id', existing.competitor_id);
+
+          await maybeAutoOnboardCompetitor({
+            supabase,
+            competitorId: existing.competitor_id,
+            previousStatus,
+            nextStatus: newStatus,
+            userId: null,
+            logger,
+          });
         }
 
         await supabase.from('agreements')

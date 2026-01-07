@@ -6,6 +6,7 @@ import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { logger } from '@/lib/logging/safe-logger';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
+import { maybeAutoOnboardCompetitor } from '@/lib/integrations/game-platform/auto-onboard';
 export const dynamic = 'force-dynamic';
 
 const UpdateCompetitorSchema = z.object({
@@ -144,6 +145,7 @@ export async function PUT(
     }
 
     // Calculate and update status
+    const previousStatus = competitor.status;
     const newStatus = calculateCompetitorStatus(competitor);
     const { error: statusError } = await supabase
       .from('competitors')
@@ -153,6 +155,16 @@ export async function PUT(
     if (statusError) {
       logger.error('Status update failed', { error: statusError.message, competitor_id: id });
       // Don't fail the entire request, just log the error
+    } else {
+      await maybeAutoOnboardCompetitor({
+        supabase,
+        competitorId: competitor.id,
+        previousStatus,
+        nextStatus: newStatus,
+        coachContextId: isAdmin ? actingCoachId : user.id,
+        userId: user.id,
+        logger,
+      });
     }
 
     // Log activity

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 import { logger } from '@/lib/logging/safe-logger';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
+import { maybeAutoOnboardCompetitor } from '@/lib/integrations/game-platform/auto-onboard';
 
 const yearsCompetingSchema = z.preprocess(
   (value) => {
@@ -132,6 +133,7 @@ export async function PUT(
     }
 
     // Calculate and update status
+    const previousStatus = competitor.status;
     const newStatus = calculateCompetitorStatus(competitor);
     const { error: statusError } = await supabase
       .from('competitors')
@@ -141,6 +143,15 @@ export async function PUT(
     if (statusError) {
       logger.error('Status update error:', { error: statusError instanceof Error ? statusError.message : String(statusError) });
       // Don't fail the entire request, just log the error
+    } else {
+      await maybeAutoOnboardCompetitor({
+        supabase,
+        competitorId: existingCompetitor.id,
+        previousStatus,
+        nextStatus: newStatus,
+        userId: null,
+        logger,
+      });
     }
 
     return NextResponse.json({

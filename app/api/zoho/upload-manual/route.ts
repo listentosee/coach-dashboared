@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { logger } from '@/lib/logging/safe-logger';
+import { maybeAutoOnboardCompetitor } from '@/lib/integrations/game-platform/auto-onboard';
 
 export async function POST(req: NextRequest) {
   try {
@@ -227,12 +228,23 @@ export async function POST(req: NextRequest) {
 
     if (updatedCompetitor) {
       const { calculateCompetitorStatus } = await import('@/lib/utils/competitor-status');
+      const previousStatus = updatedCompetitor.status;
       const newStatus = calculateCompetitorStatus(updatedCompetitor);
       
       await supabase
         .from('competitors')
         .update({ status: newStatus })
         .eq('id', agreement.competitor_id);
+
+      await maybeAutoOnboardCompetitor({
+        supabase,
+        competitorId: agreement.competitor_id,
+        previousStatus,
+        nextStatus: newStatus,
+        coachContextId: isAdmin ? actingCoachId : user.id,
+        userId: user.id,
+        logger,
+      });
     }
 
     return NextResponse.json({

@@ -384,4 +384,4 @@ export async function POST(req: NextRequest) {
 
 ## 10) Cleanup — status description helper
 
-In `lib/utils/competitor-status.ts`, align `getStatusDescription()` with your computed statuses (`pending | profile | compliance | complete`) so UI badges read correctly.
+In `lib/utils/competitor-status.ts`, align `getStatusDescription()` with your computed statuses (`pending | profile | in_the_game_not_compliant | complete`, with legacy `compliance` treated as `profile`) so UI badges read correctly.

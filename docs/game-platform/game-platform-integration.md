@@ -1,18 +1,18 @@
 # Game Platform Integration Spec
 
 ## 1. Objectives
-- Enable coaches to add compliant competitors to the SynED Game Platform and keep platform rosters in sync with our internal data.
+- Enable coaches to add profile-complete competitors to the SynED Game Platform (even before releases are complete) and keep platform rosters in sync with our internal data.
 - Mirror team structure and roster changes between Coach Dashboard and the Game Platform in near real-time.
 - Provide visibility into Game Platform activity (scores, assignments, sync health) from a dedicated dashboard section.
 
 ## 2. Context & Constraints
 - The Game Platform provides REST endpoints under `/integrations/syned/v1/...` requiring an `Authorization` header (token format TBD).
-- Current competitor statuses progress `pending → profile → compliance → complete`; status becomes `complete` when `game_platform_id` is set.
+- Status model: `pending` (profile incomplete) → `profile` (profile complete, not onboarded) → `in_the_game_not_compliant` (onboarded without release) → `complete` (onboarded with release). Legacy `compliance` is treated as `profile` for onboarding eligibility.
 - App uses Next.js 15 with React Query, Supabase as primary data store, and role-based gating for coaches/admins.
 - Network access is restricted; remote calls must be proxied through server-side code (Next.js Route Handlers or Server Actions).
 
 ## 3. Success Criteria
-1. Coaches can trigger "Add to Game Platform" only after competitor status is `compliance` and the action promotes them to `complete` upon success.
+1. Competitors auto-onboard when they reach `profile` status (legacy `compliance` still allowed); onboarding updates status to `in_the_game_not_compliant` or `complete` depending on release completion.
 2. Team CRUD operations in Coach Dashboard automatically reflect on the Game Platform (create/update roster assignments within 60s).
 3. Dashboard shows synchronized data with last sync timestamps and actionable error states.
 4. Integration code is covered by unit/integration tests plus live API smoke coverage and an operational runbook exists.
@@ -77,19 +77,17 @@ Background Sync (cron/job) -> Next.js route or Edge Function -> GamePlatformClie
    - `deleteTeamFromGamePlatform(teamId)` calls MetaCTF API to delete team, skips if not synced, logs errors but doesn't block local deletion.
    - `syncScores(teamId | null)` fetches ODL scores, stores snapshots.
 3. **Route Handlers (`app/api/game-platform/...`)**
-   - `POST /competitors/{id}`: guard on `status === 'compliance'`, invoke service, return updated competitor DTO.
+   - `POST /competitors/{id}`: guard on `status in ('profile', 'compliance')`, invoke service, return updated competitor DTO (UI control disabled; endpoint reserved for manual/admin use).
    - `POST /teams/{id}/sync`: triggered from UI or background to push latest roster.
    - `DELETE /api/teams/{id}`: validates no members exist, calls Game Platform deletion API, then deletes local record. Returns error if members exist or if local deletion fails. API deletion failures are logged but don't block local cleanup.
    - `POST /scores/sync`: cron endpoint for scheduled score ingestion.
 4. **Status Calculation**
-   - After Supabase update, reuse `calculateCompetitorStatus` to set `complete` when `game_platform_id` stored.
+- After Supabase update, reuse `calculateCompetitorStatus` to set `in_the_game_not_compliant` or `complete` once `game_platform_id` is stored.
    - Consider Supabase trigger to auto-update status on `game_platform_id` change for consistency.
 
 ## 8. Frontend Updates
 - Competitor list row (in `app/dashboard/page.tsx`)
-  - Show "Add to Game Platform" button when `status === 'compliance' && !game_platform_id`.
-  - Disabled tooltip when `status !== 'compliance'` explaining prerequisites.
-  - On click, call `/api/game-platform/competitors/{id}`, show loading state, optimistic status update to `complete` or show error.
+  - "Add to Game Platform" control remains disabled; tooltip explains auto-onboarding runs when status reaches `profile`.
 - Team management UI
   - Ensure create/update forms propagate division & affiliation (match Game Platform enum values).
   - When members are added/removed, show inline badge for remote sync status (e.g., `Synced`, `Pending`, `Error`).
@@ -179,6 +177,7 @@ Admins can manually trigger syncs via Admin Tools:
 - Migrate database ahead of code deploy; run data backfills to attach existing external IDs.
 - Deploy client + API wrapper, release to internal testers, monitor logs.
 - After validation, enable feature for all coaches and communicate workflow changes.
+- After deploy, run one-off status recompute and job-queue backfill for existing `profile`/legacy `compliance` competitors with no `game_platform_id`.
 
 ## 14. Open Questions
 1. Confirm the expected `Authorization` scheme and token lifecycle (expiry, refresh).

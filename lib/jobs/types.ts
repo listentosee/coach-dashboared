@@ -4,6 +4,7 @@ export type JobStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancel
 export type JobTaskType =
   | 'game_platform_sync'
   | 'game_platform_totals_sweep'
+  | 'game_platform_onboard_competitors'
   | 'sms_digest_processor'
   | 'admin_alert_dispatch'
   | 'release_parent_email_verification';
@@ -18,6 +19,14 @@ export interface GamePlatformTotalsSweepPayload {
   dryRun?: boolean;
   coachId?: string | null;
   batchSize?: number;
+}
+
+export interface GamePlatformOnboardCompetitorsPayload {
+  competitorIds?: string[];
+  batchSize?: number;
+  coachId?: string | null;
+  onlyActive?: boolean;
+  source?: 'bulk_import' | 'backfill' | 'manual';
 }
 
 export interface NotificationJobPayload {
@@ -41,6 +50,7 @@ export interface ReleaseParentEmailVerificationPayload {
 export interface JobPayloadMap {
   game_platform_sync: GamePlatformSyncPayload;
   game_platform_totals_sweep: GamePlatformTotalsSweepPayload;
+  game_platform_onboard_competitors: GamePlatformOnboardCompetitorsPayload;
   sms_digest_processor: SmsDigestProcessorPayload;
   admin_alert_dispatch: AdminAlertDispatchPayload;
   release_parent_email_verification: ReleaseParentEmailVerificationPayload;

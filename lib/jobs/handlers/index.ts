@@ -5,6 +5,7 @@ import { handleSmsDigestProcessor } from './smsDigestProcessor';
 import { handleAdminAlertDispatch } from './adminAlertDispatch';
 import { handleReleaseParentEmailVerification } from './releaseParentEmailVerification';
 import { handleGamePlatformOnboardCompetitors } from './gamePlatformOnboardCompetitors';
+import { handleMessageReadReceiptsBackfill } from './messageReadReceiptsBackfill';
 
 const handlers: Record<JobTaskType, JobHandler<any>> = {
   game_platform_sync: handleGamePlatformSync,
@@ -13,6 +14,7 @@ const handlers: Record<JobTaskType, JobHandler<any>> = {
   sms_digest_processor: handleSmsDigestProcessor,
   admin_alert_dispatch: handleAdminAlertDispatch,
   release_parent_email_verification: handleReleaseParentEmailVerification,
+  message_read_receipts_backfill: handleMessageReadReceiptsBackfill,
 };
 
 export function getJobHandler<T extends JobTaskType>(taskType: T): JobHandler<T> {

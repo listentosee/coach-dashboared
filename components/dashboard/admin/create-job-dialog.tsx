@@ -24,7 +24,15 @@ const TASK_TYPES = [
   { value: 'sms_digest_processor', label: 'Coach Alert Digest (sms_digest_processor)' },
   { value: 'admin_alert_dispatch', label: 'Admin Instant Alerts (admin_alert_dispatch)' },
   { value: 'release_parent_email_verification', label: 'Release Parent Email Verification (release_parent_email_verification)' },
+  { value: 'message_read_receipts_backfill', label: 'Message Read Receipt Backfill (message_read_receipts_backfill)' },
 ];
+
+const TASKS_WITH_COACH_FILTER = new Set([
+  'game_platform_sync',
+  'game_platform_totals_sweep',
+  'game_platform_onboard_competitors',
+  'sms_digest_processor',
+]);
 
 const COMMON_INTERVALS = [
   { value: 5, label: '5 minutes' },
@@ -118,6 +126,11 @@ export function CreateJobDialog() {
               allowSms: false,
               windowMinutes: formData.recurrence_interval_minutes || 60,
             };
+          case 'message_read_receipts_backfill':
+            return {
+              dryRun: false,
+              batchSize: 500,
+            };
           default:
             return { batchSize: 50, coachId: formData.coachId || null };
         }
@@ -202,7 +215,7 @@ export function CreateJobDialog() {
             </select>
           </div>
 
-          {formData.task_type !== 'admin_alert_dispatch' && formData.task_type !== 'release_parent_email_verification' && (
+          {TASKS_WITH_COACH_FILTER.has(formData.task_type) && (
             <div>
               <Label htmlFor="coach_id" className="text-gray-900">Coach (optional)</Label>
               <select

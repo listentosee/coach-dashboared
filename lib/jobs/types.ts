@@ -7,7 +7,8 @@ export type JobTaskType =
   | 'game_platform_onboard_competitors'
   | 'sms_digest_processor'
   | 'admin_alert_dispatch'
-  | 'release_parent_email_verification';
+  | 'release_parent_email_verification'
+  | 'message_read_receipts_backfill';
 
 export interface GamePlatformSyncPayload {
   dryRun?: boolean;
@@ -47,6 +48,12 @@ export interface ReleaseParentEmailVerificationPayload {
   staleHours?: number;
 }
 
+export interface MessageReadReceiptsBackfillPayload {
+  batchSize?: number;
+  maxRows?: number;
+  dryRun?: boolean;
+}
+
 export interface JobPayloadMap {
   game_platform_sync: GamePlatformSyncPayload;
   game_platform_totals_sweep: GamePlatformTotalsSweepPayload;
@@ -54,6 +61,7 @@ export interface JobPayloadMap {
   sms_digest_processor: SmsDigestProcessorPayload;
   admin_alert_dispatch: AdminAlertDispatchPayload;
   release_parent_email_verification: ReleaseParentEmailVerificationPayload;
+  message_read_receipts_backfill: MessageReadReceiptsBackfillPayload;
 }
 
 export type JobPayload<T extends JobTaskType = JobTaskType> = JobPayloadMap[T];

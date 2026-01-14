@@ -7,6 +7,7 @@ type CheckRow = {
   rowIndex: number
   email_school?: string | null
   email_personal?: string | null
+  competitor_id?: string | null
 }
 
 type ConflictType = 'in_system' | 'in_file'
@@ -29,7 +30,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ conflicts: [] })
     }
 
-    const emailOccurrences = new Map<string, Array<{ rowIndex: number; column: 'email_school' | 'email_personal' }>>()
+    const emailOccurrences = new Map<string, Array<{
+      rowIndex: number
+      column: 'email_school' | 'email_personal'
+      competitorId?: string | null
+    }>>()
 
     for (const row of rows) {
       const index = Number.isFinite(row.rowIndex) ? Number(row.rowIndex) : null
@@ -40,13 +45,13 @@ export async function POST(req: NextRequest) {
 
       if (school) {
         const list = emailOccurrences.get(school) || []
-        list.push({ rowIndex: index, column: 'email_school' })
+        list.push({ rowIndex: index, column: 'email_school', competitorId: row.competitor_id })
         emailOccurrences.set(school, list)
       }
 
       if (personal) {
         const list = emailOccurrences.get(personal) || []
-        list.push({ rowIndex: index, column: 'email_personal' })
+        list.push({ rowIndex: index, column: 'email_personal', competitorId: row.competitor_id })
         emailOccurrences.set(personal, list)
       }
     }
@@ -90,23 +95,32 @@ export async function POST(req: NextRequest) {
 
     for (const [email, occurrences] of emailOccurrences.entries()) {
       const systemMatches = conflictsByEmail.get(email) ?? []
-      const hasSystemConflict = systemMatches.length > 0
-      const hasInFileConflict = occurrences.length > 1
-
-      if (!hasSystemConflict && !hasInFileConflict) continue
-
-      const conflictTypes: ConflictType[] = []
-      if (hasSystemConflict) conflictTypes.push('in_system')
-      if (hasInFileConflict) conflictTypes.push('in_file')
+      const rowIndices = new Set(occurrences.map((occurrence) => occurrence.rowIndex))
 
       for (const occurrence of occurrences) {
+        const rowCompetitorId = (occurrence.competitorId || '').trim().toLowerCase()
+        const filteredMatches = rowCompetitorId
+          ? systemMatches.filter((match) => {
+              const matchId = (match.recordId || '').toLowerCase()
+              const isCompetitorMatch = match.source === 'competitor_school' || match.source === 'competitor_personal'
+              return !(isCompetitorMatch && matchId === rowCompetitorId)
+            })
+          : systemMatches
+        const hasSystemConflict = filteredMatches.length > 0
+        const hasInFileConflict = rowCompetitorId
+          ? rowIndices.size > 1
+          : occurrences.length > 1
+        if (!hasSystemConflict && !hasInFileConflict) continue
+        const conflictTypes: ConflictType[] = []
+        if (hasSystemConflict) conflictTypes.push('in_system')
+        if (hasInFileConflict) conflictTypes.push('in_file')
         responseConflicts.push({
           rowIndex: occurrence.rowIndex,
           column: occurrence.column,
           email,
           conflictTypes,
           systemMatches: hasSystemConflict
-            ? systemMatches.map(match => ({
+            ? filteredMatches.map(match => ({
                 source: match.source,
                 recordId: match.recordId,
                 coachId: match.coachId ?? null,

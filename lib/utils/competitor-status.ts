@@ -18,17 +18,16 @@ export function calculateCompetitorStatus(competitor: any): string {
   if (!hasCore || !adultEmailOk || !minorGuardianOk) return 'pending'
 
   // At this point the profile is complete
-  // Next gate: compliance (release signed)
+  // Release completion only affects status after game platform onboarding
   const hasRelease = competitor.is_18_or_over
     ? !!competitor.participation_agreement_date
     : !!competitor.media_release_date
 
-  if (!hasRelease) return 'profile'
+  if (competitor.game_platform_id) {
+    return hasRelease ? 'complete' : 'in_the_game_not_compliant'
+  }
 
-  // Next gate: platform assignment
-  if (!competitor.game_platform_id) return 'compliance'
-
-  return 'complete'
+  return 'profile'
 }
 
 // Bulk status update function for maintenance
@@ -83,14 +82,16 @@ export async function updateAllCompetitorStatuses(supabase: any) {
   }
 }
 
-export function getStatusDescription(status: 'pending' | 'profile' | 'compliance' | 'complete'): string {
+export function getStatusDescription(status: 'pending' | 'profile' | 'in_the_game_not_compliant' | 'complete' | 'compliance'): string {
   switch (status) {
     case 'pending':
       return 'Waiting for profile update';
     case 'profile':
-      return 'Waiting for release completion';
+      return 'Profile complete; onboarding in progress';
+    case 'in_the_game_not_compliant':
+      return 'On the game platform; release incomplete';
     case 'compliance':
-      return 'Release form is complete';
+      return 'Profile complete; onboarding in progress';
     case 'complete':
       return 'In The Game';
     default:
@@ -102,12 +103,14 @@ export function getStatusDisplayLabel(status: string): string {
   switch (status) {
     case 'complete':
       return 'In The Game';
+    case 'in_the_game_not_compliant':
+      return 'In The Game NC';
     case 'pending':
       return 'Pending';
     case 'profile':
       return 'Profile';
     case 'compliance':
-      return 'Compliance';
+      return 'Profile';
     default:
       return status;
   }

@@ -123,7 +123,7 @@ export class AuditLogger {
    * @param competitorId - ID of the competitor whose data was disclosed
    * @param disclosedTo - Name of the third party (e.g., "Zoho Sign", "MetaCTF")
    * @param purpose - Purpose of the disclosure
-   * @param userId - ID of the user who initiated the disclosure
+   * @param userId - ID of the user who initiated the disclosure (optional for system/webhook actions)
    * @param dataFields - List of data fields disclosed (optional)
    *
    * @example
@@ -141,13 +141,13 @@ export class AuditLogger {
       competitorId: string;
       disclosedTo: string;
       purpose: string;
-      userId: string;
+      userId?: string | null;
       dataFields?: string[];
       requestId?: string;
     }
   ): Promise<void> {
     await this.logAction(supabase, {
-      user_id: params.userId,
+      user_id: params.userId ?? null,
       action: this.getDisclosureAction(params.disclosedTo),
       entity_type: 'competitor',
       entity_id: params.competitorId,

@@ -25,7 +25,42 @@ export async function POST(
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    return NextResponse.json({ success: true })
+    let markedCount = 0
+    try {
+      const chunkSize = 200
+      let offset = 0
+      while (true) {
+        const { data: messages, error: messageError } = await supabase
+          .from('messages')
+          .select('id')
+          .eq('conversation_id', id)
+          .order('created_at', { ascending: false })
+          .range(offset, offset + chunkSize - 1)
+
+        if (messageError) {
+          throw messageError
+        }
+
+        if (!messages || messages.length === 0) break
+
+        const messageIds = messages.map((row) => row.id)
+        const { data: marked, error: readError } = await supabase.rpc('mark_messages_read', {
+          p_message_ids: messageIds as any,
+        })
+
+        if (readError) {
+          throw readError
+        }
+
+        markedCount += typeof marked === 'number' ? marked : Number(marked ?? 0)
+        if (messages.length < chunkSize) break
+        offset += messages.length
+      }
+    } catch (readError) {
+      console.error('Failed to mark archived messages as read:', readError)
+    }
+
+    return NextResponse.json({ success: true, marked_read: markedCount })
   } catch (e) {
     console.error('Archive conversation error', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

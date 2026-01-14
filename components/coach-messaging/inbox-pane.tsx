@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { InboxActionBar, InboxListMode, InboxViewMode, ConversationType } from './inbox-action-bar'
 import { ThreadGroup } from './thread-group'
 import { MessageListItem } from './message-list-item'
@@ -154,23 +154,16 @@ export function CoachInboxPane({
   ) => {
     setSelection({ conversationId: conversation.id, threadId, messageId: message.id })
     emitSelection(conversation, message, threadMessages, threadId, threadSubject)
-  }
-
-  useEffect(() => {
-    const previousMessageId = selection.messageId
-    return () => {
-      if (!previousMessageId) return
+    if (message.sender_id !== currentUserId && !readMessageIds.has(message.id)) {
       setReadMessageIds((prev) => {
-        if (prev.has(previousMessageId)) return prev
+        if (prev.has(message.id)) return prev
         const next = new Set(prev)
-        next.add(previousMessageId)
+        next.add(message.id)
         return next
       })
-      if (onMessagesRead) {
-        void onMessagesRead([previousMessageId])
-      }
+      onMessagesRead?.([message.id])
     }
-  }, [selection.messageId, onMessagesRead])
+  }
 
   const resolveConversationTitle = (conversation: CoachConversation): string => {
     if (conversation.display_title && conversation.display_title.trim()) return conversation.display_title.trim()

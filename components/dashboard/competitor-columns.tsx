@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Edit, UserCheck, Gamepad2, Ban, Link as LinkIcon, ChevronDown, ChevronUp, ChevronsUpDown, Send, FileText, Trophy } from "lucide-react"
 import { emailTemplates } from "@/components/ui/email-composer"
+import { getStatusDisplayLabel } from "@/lib/utils/competitor-status"
 
 const DIVISION_LABELS: Record<string, string> = {
   middle_school: 'Middle School',
@@ -60,9 +61,9 @@ export const getStatusColor = (status: string) => {
   switch (status) {
     case 'complete':
       return 'bg-green-100 text-green-800';
-    case 'compliance':
-      return 'bg-purple-100 text-purple-800';
+    case 'in_the_game_not_compliant':
     case 'profile':
+    case 'compliance':
       return 'bg-blue-100 text-blue-800';
     case 'pending':
       return 'bg-yellow-100 text-yellow-800';
@@ -172,7 +173,7 @@ export const createCompetitorColumns = (
     ),
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
-      const displayLabel = status === 'complete' ? 'In The Game' : status;
+      const displayLabel = getStatusDisplayLabel(status);
       return (
         <div className="text-center">
           <Badge className={getStatusColor(status)}>
@@ -312,19 +313,16 @@ export const createCompetitorColumns = (
       const globalDisabled = !!disableEdits;
       const mergedDisabled = isDisabled || globalDisabled;
       const isRegistering = registeringId === competitor.id;
-      const canRegister = competitor.status === 'compliance' && !competitor.game_platform_id && competitor.is_active && !mergedDisabled;
-      const registerDisabled = mergedDisabled || !canRegister || isRegistering;
+      const registerDisabled = true;
       const registerTooltip = globalDisabled
         ? (disableTooltip || 'Select a coach to edit')
         : !competitor.is_active
           ? 'Competitor is inactive'
           : competitor.game_platform_id
-            ? 'Already on the Game Platform'
-            : competitor.status !== 'compliance'
-              ? 'Complete compliance steps before registering'
-              : undefined;
+            ? 'Already on the Game Platform (auto-managed)'
+            : 'Auto-onboarding runs when profile is complete';
       const title = globalDisabled ? (disableTooltip || 'Select a coach to edit') : 'Edit Competitor';
-      const statusOk = ['profile','compliance','complete'].includes((competitor.status || '').toLowerCase())
+      const statusOk = ['profile', 'in_the_game_not_compliant', 'complete', 'compliance'].includes((competitor.status || '').toLowerCase())
       const emailRegex = /.+@.+\..+/;
       const adultRecipient = (competitor.email_personal && emailRegex.test(competitor.email_personal)) || (competitor.email_school && emailRegex.test(competitor.email_school))
       const minorRecipient = competitor.parent_email && emailRegex.test(competitor.parent_email)
@@ -351,6 +349,8 @@ export const createCompetitorColumns = (
           alert(e?.message || 'Failed to send release')
         }
       }
+
+      const showTrophy = Boolean(competitor.game_platform_id)
 
       return (
         <div className="flex items-center justify-end space-x-1 w-full">
@@ -435,7 +435,7 @@ export const createCompetitorColumns = (
             disabled={registerDisabled}
             aria-disabled={registerDisabled}
           >
-            {competitor.status === 'complete' && competitor.game_platform_id ? (
+            {showTrophy ? (
               <Trophy className="h-4 w-4" />
             ) : (
               <Gamepad2 className="h-4 w-4" />

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 import { logger } from '@/lib/logging/safe-logger';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
+import { maybeAutoOnboardCompetitor } from '@/lib/integrations/game-platform/auto-onboard';
 
 const yearsCompetingSchema = z.preprocess(
   (value) => {
@@ -60,7 +61,7 @@ export async function PUT(
 
     const { data: existingCompetitor, error: fetchError } = await supabase
       .from('competitors')
-      .select('id, profile_update_token_expires')
+      .select('id, profile_update_token_expires, parent_email')
       .eq('profile_update_token', token)
       .single();
 
@@ -89,6 +90,14 @@ export async function PUT(
       throw error;
     }
 
+    const existingParentEmail = existingCompetitor.parent_email
+      ? String(existingCompetitor.parent_email).trim().toLowerCase()
+      : null
+    const incomingParentEmail = validatedData.parent_email
+      ? String(validatedData.parent_email).trim().toLowerCase()
+      : null
+    const parentEmailChanged = existingParentEmail !== incomingParentEmail
+
     // Update competitor profile
     const { data: competitor, error: updateError } = await supabase
       .from('competitors')
@@ -101,7 +110,14 @@ export async function PUT(
         level_of_technology: validatedData.level_of_technology,
         email_personal: validatedData.email_personal || null,
         parent_name: validatedData.parent_name || null,
-        parent_email: validatedData.parent_email || null,
+        parent_email: incomingParentEmail,
+        ...(parentEmailChanged
+          ? {
+              parent_email_is_valid: null,
+              parent_email_validated_at: null,
+              parent_email_invalid_reason: null,
+            }
+          : {}),
         // Immediately invalidate the magic link after successful update
         profile_update_token: null,
         profile_update_token_expires: null,
@@ -117,6 +133,7 @@ export async function PUT(
     }
 
     // Calculate and update status
+    const previousStatus = competitor.status;
     const newStatus = calculateCompetitorStatus(competitor);
     const { error: statusError } = await supabase
       .from('competitors')
@@ -126,6 +143,15 @@ export async function PUT(
     if (statusError) {
       logger.error('Status update error:', { error: statusError instanceof Error ? statusError.message : String(statusError) });
       // Don't fail the entire request, just log the error
+    } else {
+      await maybeAutoOnboardCompetitor({
+        supabase,
+        competitorId: existingCompetitor.id,
+        previousStatus,
+        nextStatus: newStatus,
+        userId: null,
+        logger,
+      });
     }
 
     return NextResponse.json({

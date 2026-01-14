@@ -213,6 +213,7 @@ export function CoachMessagingWorkspace() {
       const res = await fetch(`/api/messaging/conversations/${conversationId}/archive`, { method: 'POST' })
       if (!res.ok) throw new Error('Failed to archive conversation')
       await refresh()
+      window.dispatchEvent(new Event('unread-refresh'))
     } catch (error) {
       console.error('Archive conversation error:', error)
     }

@@ -308,6 +308,8 @@ function formatTaskLabel(taskType: string) {
       return 'Coach Alert Digest';
     case 'admin_alert_dispatch':
       return 'Admin Instant Alerts';
+    case 'message_read_receipts_backfill':
+      return 'Message Read Receipt Backfill';
     default:
       return taskType;
   }

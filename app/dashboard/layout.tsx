@@ -17,7 +17,8 @@ import {
   FileSignature,
   ChevronDown,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  BookOpen
 } from 'lucide-react';
 import AdminToolsLink from '@/components/dashboard/admin-tools-link';
 import SingleSessionGuard from '@/components/SingleSessionGuard';
@@ -176,6 +177,13 @@ function DashboardLayoutInner({
                 </Button>
               </Link>
 
+              <Link href="/dashboard/library">
+                <Button variant="ghost" className="w-full justify-start text-meta-light hover:bg-meta-accent hover:text-white">
+                  <BookOpen className="h-5 w-5 mr-3" />
+                  Coach Library
+                </Button>
+              </Link>
+
               {/* Admin Tools - Only visible to system administrators */}
               {typeof window !== 'undefined' && (
                 <AdminToolsLink />
@@ -202,11 +210,6 @@ function DashboardLayoutInner({
                     <Link href="/dashboard/settings">
                       <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
                         Profile & Settings
-                      </Button>
-                    </Link>
-                    <Link href="/dashboard/library">
-                      <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
-                        Coach Library
                       </Button>
                     </Link>
                     {profile?.role !== 'admin' && (

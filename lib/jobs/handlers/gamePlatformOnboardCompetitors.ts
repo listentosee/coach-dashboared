@@ -61,8 +61,42 @@ export const handleGamePlatformOnboardCompetitors: JobHandler<'game_platform_onb
     }
   };
 
-  if (competitorIds.length > 0) {
-    for (const competitorId of competitorIds) {
+  let targetIds = competitorIds;
+
+  if (targetIds.length > 0 && (coachId || onlyActive)) {
+    let scopedQuery = supabase
+      .from('competitors')
+      .select('id')
+      .in('id', targetIds);
+
+    if (coachId) {
+      scopedQuery = scopedQuery.eq('coach_id', coachId);
+    }
+
+    if (onlyActive) {
+      scopedQuery = scopedQuery.eq('is_active', true);
+    }
+
+    const { data: scopedRows, error: scopedError } = await scopedQuery;
+    if (scopedError) {
+      return { status: 'failed', error: scopedError.message };
+    }
+
+    const allowedIds = new Set((scopedRows ?? []).map((row) => row.id));
+    const filteredOut = targetIds.filter((id) => !allowedIds.has(id));
+    if (filteredOut.length > 0) {
+      results.skipped += filteredOut.length;
+      resolvedLogger.warn?.('Skipped competitors outside coach scope or inactive', {
+        coachId,
+        onlyActive,
+        count: filteredOut.length,
+      });
+    }
+    targetIds = targetIds.filter((id) => allowedIds.has(id));
+  }
+
+  if (targetIds.length > 0) {
+    for (const competitorId of targetIds) {
       await processCompetitor(competitorId);
     }
   } else {

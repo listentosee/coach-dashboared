@@ -350,6 +350,8 @@ export const createCompetitorColumns = (
         }
       }
 
+      const showTrophy = Boolean(competitor.game_platform_id)
+
       return (
         <div className="flex items-center justify-end space-x-1 w-full">
           {competitor.game_platform_synced_at && onViewReportCard && (
@@ -433,7 +435,7 @@ export const createCompetitorColumns = (
             disabled={registerDisabled}
             aria-disabled={registerDisabled}
           >
-            {competitor.status === 'complete' && competitor.game_platform_id ? (
+            {showTrophy ? (
               <Trophy className="h-4 w-4" />
             ) : (
               <Gamepad2 className="h-4 w-4" />

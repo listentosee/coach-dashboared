@@ -96,12 +96,15 @@ export function JobQueueTable({ jobs, initialStatus = "all" }: JobQueueTableProp
     return jobs.filter((job) => getEffectiveStatus(job, now) === statusFilter);
   }, [jobs, now, statusFilter]);
 
+  const isCancelled = (job: JobQueueRow) => getEffectiveStatus(job, now) === "cancelled";
+  const getMutedClass = (job: JobQueueRow) => (isCancelled(job) ? "opacity-40 saturate-0" : "");
+
   const columns = useMemo<ColumnDef<JobQueueRow>[]>(() => [
     {
       accessorKey: "id",
       header: "Job ID",
       cell: ({ row }) => (
-        <div className="font-mono text-xs text-slate-100 break-all">
+        <div className={`font-mono text-xs text-slate-100 break-all ${getMutedClass(row.original)}`}>
           {row.original.id}
         </div>
       ),
@@ -109,21 +112,31 @@ export function JobQueueTable({ jobs, initialStatus = "all" }: JobQueueTableProp
     {
       accessorKey: "task_type",
       header: "Task",
-      cell: ({ row }) => (
-        <div className="space-y-1">
-          <div className="text-sm font-semibold text-white">
-            {formatTaskLabel(row.original.task_type)}
+      cell: ({ row }) => {
+        const cancelled = isCancelled(row.original);
+        return (
+          <div className="relative">
+            {cancelled ? (
+              <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-3xl font-semibold uppercase tracking-[0.35em] text-slate-500/30">
+                Cancelled
+              </span>
+            ) : null}
+            <div className={`space-y-1 ${getMutedClass(row.original)} relative z-10`}>
+              <div className="text-sm font-semibold text-white">
+                {formatTaskLabel(row.original.task_type)}
+              </div>
+              <div className="text-xs text-slate-300/90">
+                {summarizePayload(row.original)}
+              </div>
+              {row.original.is_recurring && (
+                <span className="inline-flex items-center rounded-full bg-purple-500/20 px-2 py-0.5 text-xs font-semibold text-purple-100">
+                  ↻ {row.original.recurrence_interval_minutes ?? 0}m
+                </span>
+              )}
+            </div>
           </div>
-          <div className="text-xs text-slate-300/90">
-            {summarizePayload(row.original)}
-          </div>
-          {row.original.is_recurring && (
-            <span className="inline-flex items-center rounded-full bg-purple-500/20 px-2 py-0.5 text-xs font-semibold text-purple-100">
-              ↻ {row.original.recurrence_interval_minutes ?? 0}m
-            </span>
-          )}
-        </div>
-      ),
+        );
+      },
     },
     {
       accessorKey: "status",
@@ -134,7 +147,7 @@ export function JobQueueTable({ jobs, initialStatus = "all" }: JobQueueTableProp
           <span
             className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
               STATUS_CLASSES[status] || "bg-gray-100 text-gray-800"
-            }`}
+            } ${getMutedClass(row.original)}`}
           >
             {STATUS_LABELS[status] ?? status}
           </span>
@@ -145,7 +158,7 @@ export function JobQueueTable({ jobs, initialStatus = "all" }: JobQueueTableProp
       accessorKey: "attempts",
       header: "Attempts",
       cell: ({ row }) => (
-        <span className="text-sm text-white">
+        <span className={`text-sm text-white ${getMutedClass(row.original)}`}>
           {row.original.attempts} / {row.original.max_attempts}
         </span>
       ),
@@ -154,7 +167,7 @@ export function JobQueueTable({ jobs, initialStatus = "all" }: JobQueueTableProp
       accessorKey: "created_at",
       header: "Created",
       cell: ({ row }) => (
-        <div className="text-sm text-slate-200">
+        <div className={`text-sm text-slate-200 ${getMutedClass(row.original)}`}>
           {formatDate(row.original.created_at)}
         </div>
       ),
@@ -165,7 +178,7 @@ export function JobQueueTable({ jobs, initialStatus = "all" }: JobQueueTableProp
       cell: ({ row }) => {
         const lastRun = row.original.last_run_at || row.original.completed_at || row.original.updated_at;
         return (
-          <div className="text-sm text-slate-200">
+          <div className={`text-sm text-slate-200 ${getMutedClass(row.original)}`}>
             {lastRun ? formatDate(lastRun) : "—"}
           </div>
         );
@@ -178,7 +191,11 @@ export function JobQueueTable({ jobs, initialStatus = "all" }: JobQueueTableProp
         const nextRun = computeNextRun(row.original);
         const pastDue = getEffectiveStatus(row.original, now) === "pending" && nextRun && nextRun < now;
         return (
-          <div className={pastDue ? "text-red-400 font-semibold" : "text-sm text-slate-200"}>
+          <div
+            className={`${pastDue ? "text-red-400 font-semibold" : "text-sm text-slate-200"} ${
+              getMutedClass(row.original)
+            }`}
+          >
             {nextRun ? formatDate(nextRun.toISOString()) : "—"}
             {pastDue && (
               <div className="text-xs text-red-400/80">
@@ -193,7 +210,10 @@ export function JobQueueTable({ jobs, initialStatus = "all" }: JobQueueTableProp
       accessorKey: "last_error",
       header: "Last Error",
       cell: ({ row }) => (
-        <div className="max-w-xs whitespace-pre-wrap text-xs text-slate-200/80" title={row.original.last_error ?? ''}>
+        <div
+          className={`max-w-xs whitespace-pre-wrap text-xs text-slate-200/80 ${getMutedClass(row.original)}`}
+          title={row.original.last_error ?? ''}
+        >
           {row.original.last_error ?? '—'}
         </div>
       ),
@@ -243,6 +263,9 @@ export function JobQueueTable({ jobs, initialStatus = "all" }: JobQueueTableProp
     const nextRun = computeNextRun(job);
     if (status === "pending" && nextRun && nextRun < now) {
       return "bg-red-500/15";
+    }
+    if (status === "cancelled") {
+      return "bg-slate-950/70 hover:bg-slate-950/70";
     }
     return undefined;
   };

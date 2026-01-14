@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { getStatusColor } from '@/components/dashboard/competitor-columns';
+import { getStatusDisplayLabel } from '@/lib/utils/competitor-status';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -475,9 +476,10 @@ export default function GamePlatformDashboard() {
         header: 'Status',
         cell: ({ row }) => {
           const statusValue = row.original.status ? row.original.status.toLowerCase() : '';
+          const statusLabel = row.original.status ? getStatusDisplayLabel(row.original.status) : 'Unknown';
           return (
             <Badge className={getStatusColor(statusValue)}>
-              {row.original.status ?? 'Unknown'}
+              {statusLabel}
             </Badge>
           );
         },

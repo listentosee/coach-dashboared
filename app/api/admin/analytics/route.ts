@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     ])
 
     // Status breakdown
-    const statuses = ['pending','profile','compliance','complete'] as const
+    const statuses = ['pending', 'profile', 'in_the_game_not_compliant', 'complete', 'compliance'] as const
     const statusCounts: Record<string, number> = {}
     for (const s of statuses) {
       statusCounts[s] = await countCompetitors({ ...coachFilter, status: s })

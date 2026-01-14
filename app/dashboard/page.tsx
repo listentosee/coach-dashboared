@@ -68,7 +68,7 @@ interface DashboardStats {
   activeCompetitors: number;
   pendingCompetitors: number;
   profileCompetitors?: number;
-  complianceCompetitors?: number;
+  inTheGameNcCompetitors?: number;
 }
 
 const decorateCompetitor = (comp: any): Competitor => ({
@@ -87,7 +87,9 @@ export default function DashboardPage() {
     totalCompetitors: 0,
     totalTeams: 0,
     activeCompetitors: 0,
-    pendingCompetitors: 0
+    pendingCompetitors: 0,
+    profileCompetitors: 0,
+    inTheGameNcCompetitors: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -230,8 +232,9 @@ export default function DashboardPage() {
             const totalCompetitors = (aj?.totals?.competitorCount) ?? (statList?.length || 0)
             const totalTeams = (aj?.totals?.teamCount) ?? transformedTeams.length
             const pendingCompetitors = aj?.statusCounts?.pending ?? 0
-            const profileCompetitors = aj?.statusCounts?.profile ?? 0
-            const complianceCompetitors = aj?.statusCounts?.compliance ?? 0
+            const legacyCompliance = aj?.statusCounts?.compliance ?? 0
+            const profileCompetitors = (aj?.statusCounts?.profile ?? 0) + legacyCompliance
+            const inTheGameNcCompetitors = aj?.statusCounts?.in_the_game_not_compliant ?? 0
             const activeCompetitors = aj?.statusCounts?.complete ?? 0
             setStats({
               totalCompetitors,
@@ -239,37 +242,39 @@ export default function DashboardPage() {
               activeCompetitors,
               pendingCompetitors,
               profileCompetitors,
-              complianceCompetitors,
+              inTheGameNcCompetitors,
             })
           } else {
             // Fallback to client counts if analytics fails
             const totalCompetitors = statList.length;
             const activeCompetitors = statList.filter((c: any) => c.status === 'complete').length;
             const pendingCompetitors = statList.filter((c: any) => c.status === 'pending').length;
-            const profileCompetitors = statList.filter((c: any) => c.status === 'profile').length;
-            const complianceCompetitors = statList.filter((c: any) => c.status === 'compliance').length;
+            const legacyCompliance = statList.filter((c: any) => c.status === 'compliance').length;
+            const profileCompetitors = statList.filter((c: any) => c.status === 'profile').length + legacyCompliance;
+            const inTheGameNcCompetitors = statList.filter((c: any) => c.status === 'in_the_game_not_compliant').length;
             setStats({
               totalCompetitors,
               totalTeams: transformedTeams.length,
               activeCompetitors,
               pendingCompetitors,
               profileCompetitors,
-              complianceCompetitors
+              inTheGameNcCompetitors
             });
           }
         } catch {
           const totalCompetitors = statList.length;
           const activeCompetitors = statList.filter((c: any) => c.status === 'complete').length;
           const pendingCompetitors = statList.filter((c: any) => c.status === 'pending').length;
-          const profileCompetitors = statList.filter((c: any) => c.status === 'profile').length;
-          const complianceCompetitors = statList.filter((c: any) => c.status === 'compliance').length;
+          const legacyCompliance = statList.filter((c: any) => c.status === 'compliance').length;
+          const profileCompetitors = statList.filter((c: any) => c.status === 'profile').length + legacyCompliance;
+          const inTheGameNcCompetitors = statList.filter((c: any) => c.status === 'in_the_game_not_compliant').length;
           setStats({
             totalCompetitors,
             totalTeams: transformedTeams.length,
             activeCompetitors,
             pendingCompetitors,
             profileCompetitors,
-            complianceCompetitors
+            inTheGameNcCompetitors
           });
         }
       } else {
@@ -277,15 +282,16 @@ export default function DashboardPage() {
         const totalCompetitors = statList.length;
         const activeCompetitors = statList.filter((c: any) => c.status === 'complete').length;
         const pendingCompetitors = statList.filter((c: any) => c.status === 'pending').length;
-        const profileCompetitors = statList.filter((c: any) => c.status === 'profile').length;
-        const complianceCompetitors = statList.filter((c: any) => c.status === 'compliance').length;
+        const legacyCompliance = statList.filter((c: any) => c.status === 'compliance').length;
+        const profileCompetitors = statList.filter((c: any) => c.status === 'profile').length + legacyCompliance;
+        const inTheGameNcCompetitors = statList.filter((c: any) => c.status === 'in_the_game_not_compliant').length;
         setStats({
           totalCompetitors,
           totalTeams: transformedTeams.length,
           activeCompetitors,
           pendingCompetitors,
           profileCompetitors,
-          complianceCompetitors
+          inTheGameNcCompetitors
         });
       }
     } catch (error) {
@@ -537,9 +543,9 @@ export default function DashboardPage() {
     switch (status) {
       case 'complete':
         return 'bg-green-100 text-green-800';
-      case 'compliance':
-        return 'bg-purple-100 text-purple-800';
+      case 'in_the_game_not_compliant':
       case 'profile':
+      case 'compliance':
         return 'bg-blue-100 text-blue-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
@@ -640,48 +646,7 @@ export default function DashboardPage() {
     const competitor = competitors.find((c) => c.id === competitorId);
     if (!competitor) return;
 
-    if (competitor.status !== 'compliance') {
-      alert('Competitor must complete compliance steps before registering on the Game Platform.');
-      return;
-    }
-
-    const hasRegistered = Boolean(competitor.game_platform_id);
-
-    if (hasRegistered) {
-      alert('Competitor is already registered on the Game Platform.');
-      return;
-    }
-
-    if (registeringId) {
-      return;
-    }
-
-    try {
-      setRegisteringId(competitorId);
-      const response = await fetch(`/api/game-platform/competitors/${competitorId}` , {
-        method: 'POST',
-      });
-
-      const payload = await response.json();
-
-      if (!response.ok) {
-        const message = payload?.error || 'Failed to register competitor on the Game Platform';
-        throw new Error(message);
-      }
-
-      if (payload?.status === 'dry_run') {
-        alert('Game Platform integration is running in dry-run mode. Payload validated but no remote registration occurred.');
-      } else {
-        alert('Competitor added to the Game Platform successfully.');
-      }
-
-      await fetchData();
-    } catch (error: any) {
-      console.error('Game Platform registration failed', error);
-      alert(error?.message || 'Failed to register competitor on the Game Platform');
-    } finally {
-      setRegisteringId(null);
-    }
+    alert('Manual registration is disabled. Auto-onboarding runs when the profile is complete.');
   };
 
   const handleDisable = async (competitorId: string) => {
@@ -814,9 +779,9 @@ export default function DashboardPage() {
           <CardContent>
             <div className="text-[11px] text-meta-muted mb-3 grid grid-cols-2 gap-y-1 gap-x-4">
               <div><span className="text-meta-light">Pending:</span> Waiting for profile update</div>
-              <div><span className="text-meta-light">Profile:</span> Waiting for release completion</div>
-              <div><span className="text-meta-light">Compliance:</span> Release form is complete</div>
-              <div><span className="text-meta-light">In The Game:</span> On the game platform</div>
+              <div><span className="text-meta-light">Profile:</span> Profile complete; onboarding in progress</div>
+              <div><span className="text-meta-light">In The Game NC:</span> On the game platform; release incomplete</div>
+              <div><span className="text-meta-light">In The Game:</span> On the game platform with completed release</div>
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="bg-meta-dark rounded p-3">
@@ -828,8 +793,8 @@ export default function DashboardPage() {
                 <div className="text-xl font-bold text-blue-400">{stats.profileCompetitors}</div>
               </div>
               <div className="bg-meta-dark rounded p-3">
-                <div className="text-xs text-meta-muted">Compliance</div>
-                <div className="text-xl font-bold text-purple-400">{stats.complianceCompetitors}</div>
+                <div className="text-xs text-meta-muted">In The Game NC</div>
+                <div className="text-xl font-bold text-blue-400">{stats.inTheGameNcCompetitors}</div>
               </div>
               <div className="bg-meta-dark rounded p-3">
                 <div className="text-xs text-meta-muted">In The Game</div>

@@ -48,7 +48,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   ])
 
   // Competitor status breakdown
-  const statusKeys = ['pending','profile','compliance','complete'] as const
+  const statusKeys = ['pending', 'profile', 'in_the_game_not_compliant', 'complete', 'compliance'] as const
   const statusCounts: Record<string, number> = {}
   for (const s of statusKeys) {
     let q = supabase.from('competitors').select('id', { count: 'exact', head: true }).eq('status', s)
@@ -56,6 +56,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
     const { count } = await q
     statusCounts[s] = count || 0
   }
+  statusCounts.profile = (statusCounts.profile || 0) + (statusCounts.compliance || 0)
 
   // Release/Agreement status approximation
   // complete: any required agreement dates present
@@ -90,7 +91,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   const notStarted = (competitorCount || 0) - (completeRelease || 0) - (sentCount || 0)
 
   // Demographic breakdowns
-  const eligibleStatuses: string[] = ['profile', 'compliance', 'complete']
+  const eligibleStatuses: string[] = ['profile', 'in_the_game_not_compliant', 'complete', 'compliance']
   let demographicRows: Array<{ gender: string | null; race: string | null; ethnicity: string | null; level_of_technology: string | null; years_competing: number | null }> = []
   {
     let demoQuery = supabase
@@ -245,8 +246,8 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
               {[
                 {k: 'pending', label: 'Pending', color: 'bg-yellow-500'},
                 {k: 'profile', label: 'Profile', color: 'bg-blue-500'},
-                {k: 'compliance', label: 'Compliance', color: 'bg-purple-500'},
-                {k: 'complete', label: 'Complete', color: 'bg-green-500'},
+                {k: 'in_the_game_not_compliant', label: 'In The Game NC', color: 'bg-blue-500'},
+                {k: 'complete', label: 'In The Game', color: 'bg-green-500'},
               ].map((row) => {
                 const c = statusCounts[row.k as keyof typeof statusCounts] || 0
                 const w = pct(c)

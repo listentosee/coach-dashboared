@@ -22,7 +22,7 @@ export async function maybeAutoOnboardCompetitor({
   userId,
   logger,
 }: AutoOnboardOptions): Promise<void> {
-  if (nextStatus !== 'compliance' || previousStatus === 'compliance') {
+  if (nextStatus !== 'profile' || previousStatus === 'profile') {
     return;
   }
 

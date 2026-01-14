@@ -31,7 +31,7 @@ export interface SyncTeamParams extends ServiceOptions {
 }
 
 export interface OnboardResult {
-  status: 'synced' | 'skipped_requires_compliance' | 'skipped_already_synced' | 'dry_run';
+  status: 'synced' | 'skipped_requires_profile' | 'skipped_already_synced' | 'dry_run';
   competitor: any;
   remote?: any;
 }
@@ -209,8 +209,8 @@ export async function onboardCompetitorToGamePlatform({
     throw new Error(`Competitor ${competitorId} not found: ${error?.message ?? 'unknown error'}`);
   }
 
-  if (competitor.status !== 'compliance') {
-    return { status: 'skipped_requires_compliance', competitor };
+  if (!['profile', 'compliance'].includes(competitor.status)) {
+    return { status: 'skipped_requires_profile', competitor };
   }
 
   const competitorMapping = await getGamePlatformProfile(supabase, { competitorId }).catch(() => null);

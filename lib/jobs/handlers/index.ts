@@ -4,10 +4,12 @@ import { handleGamePlatformTotalsSweep } from './gamePlatformTotalsSweep';
 import { handleSmsDigestProcessor } from './smsDigestProcessor';
 import { handleAdminAlertDispatch } from './adminAlertDispatch';
 import { handleReleaseParentEmailVerification } from './releaseParentEmailVerification';
+import { handleGamePlatformOnboardCompetitors } from './gamePlatformOnboardCompetitors';
 
 const handlers: Record<JobTaskType, JobHandler<any>> = {
   game_platform_sync: handleGamePlatformSync,
   game_platform_totals_sweep: handleGamePlatformTotalsSweep,
+  game_platform_onboard_competitors: handleGamePlatformOnboardCompetitors,
   sms_digest_processor: handleSmsDigestProcessor,
   admin_alert_dispatch: handleAdminAlertDispatch,
   release_parent_email_verification: handleReleaseParentEmailVerification,

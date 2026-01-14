@@ -662,11 +662,12 @@ export default function ReleaseManagementPage() {
   };
 
   const eligibleCompetitors = useMemo(() => {
-    const statusOrder = ['pending', 'profile', 'compliance', 'complete']
+    const statusOrder = ['pending', 'profile', 'in_the_game_not_compliant', 'complete']
     const profileIndex = statusOrder.indexOf('profile')
     return competitors.filter(competitor => {
       if (!competitor.is_active) return false
-      const competitorStatusIndex = statusOrder.indexOf(competitor.status)
+      const normalizedStatus = competitor.status === 'compliance' ? 'profile' : competitor.status
+      const competitorStatusIndex = statusOrder.indexOf(normalizedStatus)
       return competitorStatusIndex >= profileIndex
     })
   }, [competitors])

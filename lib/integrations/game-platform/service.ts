@@ -263,7 +263,7 @@ export async function onboardCompetitorToGamePlatform({
   const userPayload: CreateUserPayload = {
     first_name: competitor.first_name,
     last_name: competitor.last_name,
-    email: competitor.email_school || competitor.email_personal,
+    email: competitor.email_personal || competitor.email_school,
     preferred_username: buildPreferredUsername(competitor),
     role: 'user',
     // Competitors inherit school/region from coach if not set

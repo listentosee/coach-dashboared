@@ -153,6 +153,7 @@ export async function GET(request: NextRequest) {
         last_name: competitor.last_name,
         email_personal: competitor.email_personal,
         email_school: competitor.email_school,
+        parent_name: (competitor as any).parent_name || null,
         parent_email: (competitor as any).parent_email || null,
         is_18_or_over: competitor.is_18_or_over,
         grade: competitor.grade,

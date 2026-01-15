@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase/client'
 import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext'
 
 type FieldKey =
+  | 'competitor_id'
   | 'first_name'
   | 'last_name'
   | 'is_18_or_over'
@@ -35,6 +36,7 @@ type FieldConfig = {
 }
 
 const FIELDS: FieldConfig[] = [
+  { key: 'competitor_id', label: 'Competitor ID', hint: 'Optional. If provided, updates the existing competitor with this UUID.' },
   { key: 'first_name', label: 'First Name', required: true, hint: 'At least two characters; letters, spaces, hyphens, apostrophes, and periods allowed.' },
   { key: 'last_name', label: 'Last Name', required: true, hint: 'At least two characters; letters, spaces, hyphens, apostrophes, and periods allowed.' },
   { key: 'is_18_or_over', label: 'Is Adult', required: true, hint: 'Accepts Y/N, Yes/No, True/False, or 1/0.' },
@@ -75,11 +77,19 @@ const COLUMN_ORDER: FieldKey[] = [
   'years_competing',
 ]
 
+const UPDATE_COLUMN_ORDER: FieldKey[] = [
+  'competitor_id',
+  ...COLUMN_ORDER,
+]
+
+const MAX_TEMPLATE_ROWS = 500
+
 type Row = Record<FieldKey, string>
 type ParsedRow = string[]
 
 const serializeRowForApi = (row: Row) => ({
   ...row,
+  competitor_id: row.competitor_id?.trim() || undefined,
   grade: normalizeGrade(row.grade),
   division: normalizeEnumValue(row.division),
   gender: normalizeEnumValue(row.gender),
@@ -108,6 +118,13 @@ function isValidName(name?: string | null) {
   const n = name.trim()
   // Must be at least 2 characters and contain only letters, spaces, hyphens, apostrophes, and periods
   return n.length >= 2 && /^[a-zA-Z\s\-'.]+$/.test(n)
+}
+
+function isValidUuid(value?: string | null) {
+  if (!value) return false
+  const v = value.trim()
+  if (!v) return false
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
 }
 
 // Minimal CSV parser with basic quote handling
@@ -169,6 +186,7 @@ export default function BulkImportPage() {
   const [rows, setRows] = useState<string[][]>([])
   const [headerIndex, setHeaderIndex] = useState<number>(0)
   const [mapping, setMapping] = useState<Record<FieldKey, number | null>>({
+    competitor_id: null,
     first_name: null,
     last_name: null,
     is_18_or_over: null,
@@ -192,8 +210,9 @@ export default function BulkImportPage() {
   const [duplicateConflicts, setDuplicateConflicts] = useState<Record<number, { email_school?: string[]; email_personal?: string[] }>>({})
   const [duplicateCheckLoading, setDuplicateCheckLoading] = useState(false)
   const [duplicateCheckError, setDuplicateCheckError] = useState<string | null>(null)
+  const [updateFileLoading, setUpdateFileLoading] = useState(false)
 
-  const disableAdminAll = !ctxLoading && coachId === null // Admin All-coaches → read-only
+  const disableAdminAll = isAdmin && !ctxLoading && coachId === null // Admin All-coaches → read-only
 
   const headers = useMemo(() => (rows[headerIndex] || []).map(h => (h || '').trim()), [rows, headerIndex])
   const dataRows = useMemo(() => rows.slice(headerIndex + 1), [rows, headerIndex])
@@ -210,6 +229,7 @@ export default function BulkImportPage() {
         if (idx >= 0) { suggest[key] = idx; break }
       }
     }
+    tryMap('competitor_id', ['competitor id', 'competitor_id', 'competitor uuid', 'competitor_uuid'])
     tryMap('first_name', ['first name', 'first', 'fname'])
     tryMap('last_name', ['last name', 'last', 'lname'])
     tryMap('is_18_or_over', ['adult', 'is adult', 'is_18', '18', 'is 18 or over'])
@@ -277,6 +297,9 @@ export default function BulkImportPage() {
   const [invalid, setInvalid] = useState<Record<number, Partial<Record<FieldKey, boolean>>>>({})
 
   const fieldGuide = useMemo(() => ({
+    competitor_id: {
+      description: 'Optional. If provided, the import updates the existing competitor with this UUID instead of creating a new record.',
+    },
     first_name: {
       description: 'Required. At least two characters; letters, spaces, hyphens, apostrophes, and periods are allowed.',
     },
@@ -332,6 +355,7 @@ export default function BulkImportPage() {
     ethnicity: allowedEthnicities,
     level_of_technology: allowedLevels,
     grade: allowedGrades,
+    competitor_id: null,
     first_name: null,
     last_name: null,
     is_18_or_over: null,
@@ -357,6 +381,10 @@ export default function BulkImportPage() {
     const mark = (i: number, k: FieldKey) => { (invalidMap[i] ||= {} as any)[k] = true }
     currentRows.forEach((row, i) => {
       const rowErr: string[] = []
+      if (row.competitor_id && !isValidUuid(row.competitor_id)) {
+        rowErr.push('Competitor ID must be a valid UUID')
+        mark(i, 'competitor_id')
+      }
       if (!row.first_name) { rowErr.push('First name required'); mark(i, 'first_name') }
       else if (!isValidName(row.first_name)) { rowErr.push('First name must be at least 2 letters and contain only letters, spaces, hyphens, apostrophes, or periods'); mark(i, 'first_name') }
       if (!row.last_name) { rowErr.push('Last name required'); mark(i, 'last_name') }
@@ -447,6 +475,7 @@ export default function BulkImportPage() {
               rowIndex: index,
               email_school: row.email_school,
               email_personal: row.email_personal,
+              competitor_id: row.competitor_id,
             })),
           }),
         })
@@ -636,6 +665,190 @@ export default function BulkImportPage() {
     }
   }
 
+  const handleCreateUpdateFile = async () => {
+    if (isAdmin || disableAdminAll || updateFileLoading) return
+    setUpdateFileLoading(true)
+    try {
+      const res = await fetch('/api/competitors')
+      if (!res.ok) throw new Error('Failed to load competitors')
+      const payload = await res.json().catch(() => ({}))
+      const competitors = Array.isArray(payload?.competitors) ? payload.competitors : []
+      if (competitors.length === 0) {
+        alert('No competitors found to export.')
+        return
+      }
+      const rowsToExport = competitors.slice(0, MAX_TEMPLATE_ROWS)
+      if (competitors.length > MAX_TEMPLATE_ROWS) {
+        alert(`Found ${competitors.length} competitors. The update file includes the first ${MAX_TEMPLATE_ROWS} rows.`)
+      }
+      const { Workbook } = await import('exceljs')
+      const wb = new Workbook()
+      const ws = wb.addWorksheet('Competitor Updates')
+      const headers = UPDATE_COLUMN_ORDER.map((key) => FIELD_LOOKUP[key]?.label ?? key)
+      const docRow = UPDATE_COLUMN_ORDER.map((key) => {
+        const fieldConfig = FIELD_LOOKUP[key]
+        const doc = fieldGuide[key]
+        const allowedValues = allowedValueLookup[key]
+        const parts: string[] = []
+        if (fieldConfig?.required) parts.push('[Required]')
+        if (doc?.description) parts.push(doc.description)
+        else if (fieldConfig?.hint) parts.push(fieldConfig.hint)
+        if (allowedValues) parts.push(`Allowed: ${allowedValues.join(' | ')}`)
+        return parts.join(' ')
+      })
+      ws.addRow(docRow)
+      const headerRow = ws.addRow(headers)
+      headerRow.font = { bold: true }
+      headerRow.alignment = { wrapText: true }
+
+      const dataRowStart = 3
+      const dataRowEnd = dataRowStart + MAX_TEMPLATE_ROWS - 1
+      const columnIndexFor = (key: FieldKey) => UPDATE_COLUMN_ORDER.indexOf(key) + 1
+      const columnLetter = (index: number) => {
+        let letter = ''
+        let value = index
+        while (value > 0) {
+          const mod = (value - 1) % 26
+          letter = String.fromCharCode(65 + mod) + letter
+          value = Math.floor((value - 1) / 26)
+        }
+        return letter
+      }
+
+      for (const competitor of rowsToExport) {
+        const division = normalizeEnumValue(competitor.division ?? '')
+        const programTrackRaw = normalizeProgramTrack(competitor.program_track ?? '')
+        const programTrack = division === 'college'
+          ? (programTrackRaw || 'traditional')
+          : ''
+        const row = UPDATE_COLUMN_ORDER.map((key) => {
+          switch (key) {
+            case 'competitor_id':
+              return competitor.id || ''
+            case 'first_name':
+              return competitor.first_name || ''
+            case 'last_name':
+              return competitor.last_name || ''
+            case 'is_18_or_over':
+              return competitor.is_18_or_over === true ? 'yes' : (competitor.is_18_or_over === false ? 'no' : '')
+            case 'grade':
+              return normalizeGrade(competitor.grade ?? '') || ''
+            case 'email_school':
+              return competitor.email_school || ''
+            case 'email_personal':
+              return competitor.email_personal || ''
+            case 'parent_name':
+              return competitor.parent_name || ''
+            case 'parent_email':
+              return competitor.parent_email || ''
+            case 'division':
+              return division || ''
+            case 'program_track':
+              return programTrack
+            case 'gender':
+              return normalizeEnumValue(competitor.gender ?? '') || ''
+            case 'race':
+              return normalizeEnumValue(competitor.race ?? '') || ''
+            case 'ethnicity':
+              return normalizeEnumValue(competitor.ethnicity ?? '') || ''
+            case 'level_of_technology':
+              return normalizeEnumValue(competitor.level_of_technology ?? '') || ''
+            case 'years_competing':
+              return competitor.years_competing != null ? String(competitor.years_competing) : ''
+            default:
+              return ''
+          }
+        })
+        ws.addRow(row)
+      }
+
+      const validationSheet = wb.addWorksheet('Validation')
+      validationSheet.state = 'veryHidden'
+      const addValidationList = (name: string, values: readonly string[], columnIndex: number) => {
+        values.forEach((value, idx) => {
+          validationSheet.getCell(idx + 1, columnIndex).value = value
+        })
+        const column = columnLetter(columnIndex)
+        const range = `'Validation'!$${column}$1:$${column}$${values.length}`
+        wb.definedNames.add(range, name)
+        return name
+      }
+      const addBlankValidationList = (name: string, columnIndex: number) => {
+        validationSheet.getCell(1, columnIndex).value = ''
+        const column = columnLetter(columnIndex)
+        const range = `'Validation'!$${column}$1:$${column}$1`
+        wb.definedNames.add(range, name)
+        return name
+      }
+      const yesNoList = addValidationList('yes_no_list', ['yes', 'no'], 1)
+      const gradeList = addValidationList('grade_list', allowedGrades, 2)
+      const divisionList = addValidationList('division_list', allowedDivisions, 3)
+      const genderList = addValidationList('gender_list', allowedGenders, 4)
+      const raceList = addValidationList('race_list', allowedRaces, 5)
+      const ethnicityList = addValidationList('ethnicity_list', allowedEthnicities, 6)
+      const levelList = addValidationList('level_of_technology_list', allowedLevels, 7)
+      const programTrackCollegeList = addValidationList('program_track_college', allowedProgramTracks, 8)
+      const programTrackEmptyList = addBlankValidationList('program_track_empty', 9)
+      const applyListValidation = (columnIndex: number, listName: string, allowBlank: boolean) => {
+        for (let row = dataRowStart; row <= dataRowEnd; row++) {
+          const cell = ws.getCell(row, columnIndex)
+          cell.dataValidation = {
+            type: 'list',
+            allowBlank,
+            formulae: [listName],
+          }
+        }
+      }
+      applyListValidation(columnIndexFor('is_18_or_over'), yesNoList, false)
+      applyListValidation(columnIndexFor('grade'), gradeList, false)
+      applyListValidation(columnIndexFor('division'), divisionList, true)
+      applyListValidation(columnIndexFor('gender'), genderList, true)
+      applyListValidation(columnIndexFor('race'), raceList, true)
+      applyListValidation(columnIndexFor('ethnicity'), ethnicityList, true)
+      applyListValidation(columnIndexFor('level_of_technology'), levelList, true)
+      const divisionColumnLetter = columnLetter(columnIndexFor('division'))
+      const programTrackColumnIndex = columnIndexFor('program_track')
+      for (let row = dataRowStart; row <= dataRowEnd; row++) {
+        const cell = ws.getCell(row, programTrackColumnIndex)
+        const formula = `INDIRECT(IF($${divisionColumnLetter}${row}="college","${programTrackCollegeList}","${programTrackEmptyList}"))`
+        cell.dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [formula],
+        }
+      }
+
+      ws.columns = headers.map(() => ({ width: 40 }))
+      const ws2 = wb.addWorksheet('Cheat Sheet')
+      ws2.addRow(['Field','Allowed Values'])
+      ws2.getRow(1).font = { bold: true }
+      const add = (name: string, values: readonly string[]) => ws2.addRow([name, values.join(' | ')])
+      add('grade', allowedGrades)
+      add('division', allowedDivisions)
+      add('program_track (college only)', allowedProgramTracks)
+      add('gender', allowedGenders)
+      add('race', allowedRaces)
+      add('ethnicity', allowedEthnicities)
+      add('level_of_technology', allowedLevels)
+
+      const buf = await wb.xlsx.writeBuffer()
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'competitor-update-file.xlsx'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('Update file generation failed', e)
+      alert('Failed to create update file. Please try again.')
+    } finally {
+      setUpdateFileLoading(false)
+    }
+  }
+
 
   return (
     <div className="space-y-6">
@@ -717,6 +930,74 @@ export default function BulkImportPage() {
                       const headerRow = ws.addRow(headers)
                       headerRow.font = { bold: true }
                       headerRow.alignment = { wrapText: true }
+                      const dataRowStart = 3
+                      const dataRowEnd = dataRowStart + MAX_TEMPLATE_ROWS - 1
+                      const columnIndexFor = (key: FieldKey) => COLUMN_ORDER.indexOf(key) + 1
+                      const columnLetter = (index: number) => {
+                        let letter = ''
+                        let value = index
+                        while (value > 0) {
+                          const mod = (value - 1) % 26
+                          letter = String.fromCharCode(65 + mod) + letter
+                          value = Math.floor((value - 1) / 26)
+                        }
+                        return letter
+                      }
+                      const validationSheet = wb.addWorksheet('Validation')
+                      validationSheet.state = 'veryHidden'
+                      const addValidationList = (name: string, values: readonly string[], columnIndex: number) => {
+                        values.forEach((value, idx) => {
+                          validationSheet.getCell(idx + 1, columnIndex).value = value
+                        })
+                        const column = columnLetter(columnIndex)
+                        const range = `'Validation'!$${column}$1:$${column}$${values.length}`
+                        wb.definedNames.add(range, name)
+                        return name
+                      }
+                      const addBlankValidationList = (name: string, columnIndex: number) => {
+                        validationSheet.getCell(1, columnIndex).value = ''
+                        const column = columnLetter(columnIndex)
+                        const range = `'Validation'!$${column}$1:$${column}$1`
+                        wb.definedNames.add(range, name)
+                        return name
+                      }
+                      const yesNoList = addValidationList('yes_no_list', ['yes', 'no'], 1)
+                      const gradeList = addValidationList('grade_list', allowedGrades, 2)
+                      const divisionList = addValidationList('division_list', allowedDivisions, 3)
+                      const genderList = addValidationList('gender_list', allowedGenders, 4)
+                      const raceList = addValidationList('race_list', allowedRaces, 5)
+                      const ethnicityList = addValidationList('ethnicity_list', allowedEthnicities, 6)
+                      const levelList = addValidationList('level_of_technology_list', allowedLevels, 7)
+                      const programTrackCollegeList = addValidationList('program_track_college', allowedProgramTracks, 8)
+                      const programTrackEmptyList = addBlankValidationList('program_track_empty', 9)
+                      const applyListValidation = (columnIndex: number, listName: string, allowBlank: boolean) => {
+                        for (let row = dataRowStart; row <= dataRowEnd; row++) {
+                          const cell = ws.getCell(row, columnIndex)
+                          cell.dataValidation = {
+                            type: 'list',
+                            allowBlank,
+                            formulae: [listName],
+                          }
+                        }
+                      }
+                      applyListValidation(columnIndexFor('is_18_or_over'), yesNoList, false)
+                      applyListValidation(columnIndexFor('grade'), gradeList, false)
+                      applyListValidation(columnIndexFor('division'), divisionList, true)
+                      applyListValidation(columnIndexFor('gender'), genderList, true)
+                      applyListValidation(columnIndexFor('race'), raceList, true)
+                      applyListValidation(columnIndexFor('ethnicity'), ethnicityList, true)
+                      applyListValidation(columnIndexFor('level_of_technology'), levelList, true)
+                      const divisionColumnLetter = columnLetter(columnIndexFor('division'))
+                      const programTrackColumnIndex = columnIndexFor('program_track')
+                      for (let row = dataRowStart; row <= dataRowEnd; row++) {
+                        const cell = ws.getCell(row, programTrackColumnIndex)
+                        const formula = `INDIRECT(IF($${divisionColumnLetter}${row}="college","${programTrackCollegeList}","${programTrackEmptyList}"))`
+                        cell.dataValidation = {
+                          type: 'list',
+                          allowBlank: true,
+                          formulae: [formula],
+                        }
+                      }
                       ws.columns = headers.map(() => ({ width: 40 }))
                       const ws2 = wb.addWorksheet('Cheat Sheet')
                       ws2.addRow(['Field','Allowed Values'])
@@ -745,6 +1026,16 @@ export default function BulkImportPage() {
                   }}
                 >
                   Download XLSX Template + Cheat Sheet
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="text-meta-light border-meta-border"
+                  onClick={handleCreateUpdateFile}
+                  disabled={isAdmin || disableAdminAll || updateFileLoading}
+                  title={isAdmin || disableAdminAll ? 'Update file is coach-only' : undefined}
+                >
+                  {updateFileLoading ? 'Building Update File…' : 'Create Competitor Update File'}
                 </Button>
               </div>
               <div className="flex items-center gap-2">

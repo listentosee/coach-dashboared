@@ -10,6 +10,7 @@ import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 import { enqueueJob } from '@/lib/jobs/queue';
 
 type IncomingRow = {
+  competitor_id?: string
   first_name?: string
   last_name?: string
   is_18_or_over?: string | boolean
@@ -40,6 +41,13 @@ function isValidEmail(email?: string | null) {
   if (!email) return false
   const e = email.trim().toLowerCase()
   return /.+@.+\..+/.test(e)
+}
+
+function isValidUuid(value?: string | null) {
+  if (!value) return false
+  const v = value.trim()
+  if (!v) return false
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
 }
 
 export async function POST(req: NextRequest) {
@@ -79,6 +87,7 @@ export async function POST(req: NextRequest) {
       try {
         const first_name = (raw.first_name || '').trim()
         const last_name = (raw.last_name || '').trim()
+        const competitor_id = (raw.competitor_id || '').trim()
         const grade = normalizeGrade(raw.grade)
         const isAdult = parseBoolean(raw.is_18_or_over)
         const email_school = (raw.email_school || '').trim().toLowerCase()
@@ -111,6 +120,7 @@ export async function POST(req: NextRequest) {
 
         // Validate
         if (!first_name || !last_name || !grade || isAdult === null) throw new Error('Missing required fields')
+        if (competitor_id && !isValidUuid(competitor_id)) throw new Error('Competitor ID must be a valid UUID')
         if (!allowedGrades.includes(grade)) throw new Error('Invalid grade')
         // School email is required for all participants
         if (!isValidEmail(email_school)) throw new Error('School email is required and must be valid')
@@ -131,7 +141,18 @@ export async function POST(req: NextRequest) {
         const dedupeEmail = email_school || email_personal || parent_email || null
         let existingId: string | null = null
         let existingParentEmail: string | null = null
-        if (dedupeEmail) {
+        if (competitor_id) {
+          const { data: existing, error: existingError } = await supabase
+            .from('competitors')
+            .select('id, parent_email, coach_id')
+            .eq('id', competitor_id)
+            .maybeSingle()
+          if (existingError) throw existingError
+          if (!existing) throw new Error('Competitor ID not found')
+          if (existing.coach_id !== coachId) throw new Error('Competitor ID does not belong to this coach')
+          existingId = existing.id || null
+          existingParentEmail = existing?.parent_email ? String(existing.parent_email).trim().toLowerCase() : null
+        } else if (dedupeEmail) {
           const { data: existing } = await supabase
             .from('competitors')
             .select('id, email_school, email_personal, coach_id, parent_email')
@@ -158,8 +179,9 @@ export async function POST(req: NextRequest) {
           throw error;
         }
 
+        const forceUpdate = Boolean(competitor_id && existingId)
         if (existingId) {
-          if (onConflict === 'skip') { skipped++; duplicates++; continue }
+          if (!forceUpdate && onConflict === 'skip') { skipped++; duplicates++; continue }
           const incomingParentEmail = parent_email ? String(parent_email).trim().toLowerCase() : null
           const parentEmailChanged = existingParentEmail !== incomingParentEmail
           const { error: updErr } = await supabase

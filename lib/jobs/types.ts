@@ -28,6 +28,7 @@ export interface GamePlatformOnboardCompetitorsPayload {
   coachId?: string | null;
   onlyActive?: boolean;
   source?: 'bulk_import' | 'backfill' | 'manual';
+  forceReonboard?: boolean;
 }
 
 export interface NotificationJobPayload {

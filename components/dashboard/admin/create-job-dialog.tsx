@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/lib/supabase/client';
 
 const TASK_TYPES = [
@@ -67,6 +68,8 @@ export function CreateJobDialog() {
     coachId: '',
     forceFullSync: false,
     forceNotifications: false,
+    competitorIds: '',
+    forceReonboard: false,
   });
 
   useEffect(() => {
@@ -88,6 +91,19 @@ export function CreateJobDialog() {
     setIsSubmitting(true);
 
     try {
+      const parsedCompetitorIds = formData.competitorIds
+        .split(/[\s,]+/)
+        .map((id) => id.trim())
+        .filter(Boolean);
+
+      if (formData.task_type === 'game_platform_onboard_competitors' && parsedCompetitorIds.length > 0 && !formData.coachId) {
+        throw new Error('Select a coach when targeting specific competitor IDs.');
+      }
+
+      if (formData.task_type === 'game_platform_onboard_competitors' && formData.forceReonboard && parsedCompetitorIds.length === 0) {
+        throw new Error('Force re-onboard requires at least one competitor ID.');
+      }
+
       const payload = (() => {
         switch (formData.task_type) {
           case 'game_platform_sync':
@@ -101,7 +117,9 @@ export function CreateJobDialog() {
               batchSize: 50,
               coachId: formData.coachId || null,
               onlyActive: true,
-              source: 'backfill',
+              source: parsedCompetitorIds.length > 0 ? 'manual' : 'backfill',
+              competitorIds: parsedCompetitorIds.length > 0 ? parsedCompetitorIds : undefined,
+              forceReonboard: formData.forceReonboard && parsedCompetitorIds.length > 0,
             };
           case 'release_parent_email_verification':
             return {
@@ -172,6 +190,8 @@ export function CreateJobDialog() {
         coachId: '',
         forceFullSync: false,
         forceNotifications: false,
+        competitorIds: '',
+        forceReonboard: false,
       });
       router.refresh();
     } catch (error) {
@@ -233,6 +253,36 @@ export function CreateJobDialog() {
               </select>
               <p className="text-xs text-gray-500 mt-1">Leave empty to target everyone</p>
             </div>
+          )}
+
+          {formData.task_type === 'game_platform_onboard_competitors' && (
+            <>
+              <div>
+                <Label htmlFor="competitor_ids" className="text-gray-900">Competitor IDs (optional)</Label>
+                <Textarea
+                  id="competitor_ids"
+                  value={formData.competitorIds}
+                  onChange={(e) => setFormData({ ...formData, competitorIds: e.target.value })}
+                  placeholder="Paste competitor UUIDs (comma or newline separated)"
+                  className="bg-white text-gray-900 border-gray-300"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Leave empty to scan all eligible competitors for the selected coach.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 p-3 border rounded bg-gray-50">
+                <Switch
+                  checked={formData.forceReonboard}
+                  onCheckedChange={(checked) => setFormData({ ...formData, forceReonboard: checked })}
+                />
+                <div>
+                  <Label className="text-gray-900">Force Re-onboard</Label>
+                  <p className="text-xs text-gray-600">
+                    Clears local game platform mapping before onboarding (use only with specific competitor IDs).
+                  </p>
+                </div>
+              </div>
+            </>
           )}
 
           {formData.task_type === 'admin_alert_dispatch' && (

@@ -1,4 +1,5 @@
 import { onboardCompetitorToGamePlatform } from '@/lib/integrations/game-platform/service';
+import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 import type { JobHandler } from '../types';
 
 const DEFAULT_BATCH_SIZE = 50;
@@ -21,6 +22,7 @@ export const handleGamePlatformOnboardCompetitors: JobHandler<'game_platform_onb
   const onlyActive = payload.onlyActive !== false;
   const coachId = payload.coachId ?? null;
   const source = payload.source ?? (competitorIds.length ? 'bulk_import' : 'backfill');
+  const forceReonboard = payload.forceReonboard === true;
 
   const results: {
     processed: number;
@@ -38,9 +40,52 @@ export const handleGamePlatformOnboardCompetitors: JobHandler<'game_platform_onb
 
   const resolvedLogger = logger ?? console;
 
+  if (forceReonboard && competitorIds.length === 0) {
+    return { status: 'failed', error: 'forceReonboard requires explicit competitorIds' };
+  }
+
+  const resetCompetitorGamePlatformState = async (competitorId: string) => {
+    const { data: competitor, error } = await supabase
+      .from('competitors')
+      .select('*')
+      .eq('id', competitorId)
+      .maybeSingle();
+
+    if (error || !competitor) {
+      throw new Error(`Competitor ${competitorId} not found`);
+    }
+
+    const { error: deleteError } = await supabase
+      .from('game_platform_profiles')
+      .delete()
+      .eq('competitor_id', competitorId);
+
+    if (deleteError) {
+      throw new Error(`Failed to clear game platform profile: ${deleteError.message}`);
+    }
+
+    const nextStatus = calculateCompetitorStatus({ ...competitor, game_platform_id: null });
+    const { error: updateError } = await supabase
+      .from('competitors')
+      .update({
+        game_platform_id: null,
+        game_platform_synced_at: null,
+        game_platform_sync_error: null,
+        status: nextStatus,
+      })
+      .eq('id', competitorId);
+
+    if (updateError) {
+      throw new Error(`Failed to reset competitor game platform state: ${updateError.message}`);
+    }
+  };
+
   const processCompetitor = async (competitorId: string) => {
     results.processed += 1;
     try {
+      if (forceReonboard) {
+        await resetCompetitorGamePlatformState(competitorId);
+      }
       const result = await onboardCompetitorToGamePlatform({
         supabase,
         competitorId,

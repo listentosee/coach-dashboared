@@ -27,6 +27,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PlusCircle, Copy, Plus } from 'lucide-react';
 import { normalizeEmail } from '@/lib/validation/email-uniqueness';
+import { deriveDivisionFromGrade } from '@/lib/utils/competitor-division';
 
 const formSchema = z.object({
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
@@ -54,6 +55,7 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
   const [existingCompetitors, setExistingCompetitors] = useState<any[]>([]);
   const [emailValidation, setEmailValidation] = useState<{ school?: string; personal?: string; summary?: string }>({});
   const [isCheckingEmails, setIsCheckingEmails] = useState(false);
+  const [divisionTouched, setDivisionTouched] = useState(false);
   
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -80,33 +82,27 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
   const isAdultWatch = form.watch('is_18_or_over');
 
   useEffect(() => {
-    if (isAdultWatch) {
-      if (divisionWatch !== 'college') {
-        form.setValue('division', 'college', { shouldDirty: false });
-      }
-      if (programTrackWatch !== 'traditional') {
-        form.setValue('program_track', 'traditional', { shouldDirty: false });
-      }
+    const derivedDivision = deriveDivisionFromGrade(gradeWatch, false);
+    const defaultDivision = isAdultWatch ? 'college' : derivedDivision;
+    if (!divisionTouched && defaultDivision && divisionWatch !== defaultDivision) {
+      form.setValue('division', defaultDivision, { shouldDirty: false });
+    }
+    if (divisionWatch === 'college') {
       if (gradeWatch !== 'college') {
         form.setValue('grade', 'college', { shouldDirty: false });
       }
-      return;
-    }
-
-    if (divisionWatch === 'college') {
       if (!programTrackWatch || programTrackWatch === '') {
         form.setValue('program_track', 'traditional', { shouldDirty: false });
       }
-      if (gradeWatch !== 'college') {
-        form.setValue('grade', 'college', { shouldDirty: false });
+    } else {
+      if (programTrackWatch) {
+        form.setValue('program_track', null, { shouldDirty: false });
       }
-    } else if (programTrackWatch) {
-      form.setValue('program_track', null, { shouldDirty: false });
       if (gradeWatch === 'college') {
         form.setValue('grade', '', { shouldDirty: false });
       }
     }
-  }, [isAdultWatch, divisionWatch, programTrackWatch, gradeWatch, form]);
+  }, [isAdultWatch, divisionWatch, programTrackWatch, gradeWatch, divisionTouched, form]);
   useEffect(() => {
     const checkDuplicates = async () => {
       const first_name = (firstNameWatch || '').trim();
@@ -208,6 +204,12 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
     };
   }, [emailSchoolWatch, emailPersonalWatch, form]);
 
+  useEffect(() => {
+    if (!open) {
+      setDivisionTouched(false);
+    }
+  }, [open]);
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
     try {
@@ -260,6 +262,7 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
       
       // Reset form
       form.reset();
+      setDivisionTouched(false);
       
     } catch (error: any) {
       console.error('Error creating competitor:', error);
@@ -284,12 +287,14 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
     setProfileLink(null);
     form.reset();
     setEmailValidation({});
+    setDivisionTouched(false);
   };
 
   const handleAddAnother = () => {
     setProfileLink(null);
     form.reset();
     setEmailValidation({});
+    setDivisionTouched(false);
     // Keep modal open for another entry
   };
 
@@ -434,22 +439,31 @@ export function CompetitorForm({ onSuccess, variant = 'default', disabled = fals
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-gray-700">Division</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="bg-white border-gray-300 text-gray-900">
-                          <SelectValue placeholder="Select division" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent className="bg-white border-gray-300 text-gray-900">
-                        <SelectItem value="middle_school">Middle School</SelectItem>
-                        <SelectItem value="high_school">High School</SelectItem>
-                        <SelectItem value="college">College</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <Select
+                  onValueChange={(value) => {
+                    setDivisionTouched(true);
+                    field.onChange(value);
+                  }}
+                  value={field.value}
+                >
+                  <FormControl>
+                    <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                      <SelectValue placeholder="Select division" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent className="bg-white border-gray-300 text-gray-900">
+                    <SelectItem value="middle_school">Middle School</SelectItem>
+                    <SelectItem value="high_school">High School</SelectItem>
+                    <SelectItem value="college">College</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormDescription className="text-xs text-gray-600">
+                  Division defaults based on grade (adults default to college), but you can adjust it.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
               {divisionWatch === 'college' && (
                 <FormField

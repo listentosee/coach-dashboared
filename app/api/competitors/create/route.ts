@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { logger } from '@/lib/logging/safe-logger';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
 import { upsertGamePlatformProfile } from '@/lib/integrations/game-platform/repository';
+import { deriveDivisionFromGrade } from '@/lib/utils/competitor-division';
 
 const CompetitorSchema = z.object({
   first_name: z.string().min(1),
@@ -17,7 +18,7 @@ const CompetitorSchema = z.object({
   email_school: z.string({ required_error: 'School email is required' }).email('Invalid school email'),
   // Optional at creation; may be assigned later in the lifecycle
   game_platform_id: z.string().min(1).optional(),
-  division: z.enum(['middle_school','high_school','college']).optional(),
+  division: z.enum(['middle_school','high_school','college'], { required_error: 'Division is required' }),
   program_track: z.enum(['traditional','adult_ed']).optional().or(z.literal('')).or(z.null()),
 });
 
@@ -80,19 +81,26 @@ export async function POST(request: NextRequest) {
     }
 
     // Create competitor record
-    const division = validatedData.division || null;
+    const isAdult = typeof validatedData.is_18_or_over === 'boolean' ? validatedData.is_18_or_over : null;
+    const derivedDivision = deriveDivisionFromGrade(validatedData.grade, isAdult === true);
+    const division = validatedData.division || derivedDivision;
+    if (!division) {
+      return NextResponse.json({ error: 'Division is required' }, { status: 400 });
+    }
     let programTrack: string | null = null;
     if (division === 'college') {
       const incoming = (validatedData.program_track || '').trim().toLowerCase();
       programTrack = incoming === 'adult_ed' ? 'adult_ed' : 'traditional';
     }
+    const baseGrade = validatedData.grade || null;
+    const resolvedGrade = !baseGrade && division === 'college' ? 'college' : baseGrade;
 
     const insertData = {
       coach_id: isAdmin ? (actingCoachId as string) : user.id,
       first_name: validatedData.first_name,
       last_name: validatedData.last_name,
       is_18_or_over: typeof validatedData.is_18_or_over === 'boolean' ? validatedData.is_18_or_over : null,
-      grade: validatedData.grade || null,
+      grade: resolvedGrade,
       email_personal: validatedData.email_personal || null,
       email_school: validatedData.email_school,
       game_platform_id: validatedData.game_platform_id || null,

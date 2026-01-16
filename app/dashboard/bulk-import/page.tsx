@@ -9,6 +9,7 @@ import { ALLOWED_DIVISIONS, ALLOWED_ETHNICITIES, ALLOWED_GENDERS, ALLOWED_GRADES
 import { normalizeEnumValue, normalizeGrade, normalizeProgramTrack } from '@/lib/utils/import-normalize'
 import { supabase } from '@/lib/supabase/client'
 import { useAdminCoachContext } from '@/lib/admin/useAdminCoachContext'
+import { deriveDivisionFromGrade } from '@/lib/utils/competitor-division'
 
 type FieldKey =
   | 'competitor_id'
@@ -40,12 +41,12 @@ const FIELDS: FieldConfig[] = [
   { key: 'first_name', label: 'First Name', required: true, hint: 'At least two characters; letters, spaces, hyphens, apostrophes, and periods allowed.' },
   { key: 'last_name', label: 'Last Name', required: true, hint: 'At least two characters; letters, spaces, hyphens, apostrophes, and periods allowed.' },
   { key: 'is_18_or_over', label: 'Is Adult', required: true, hint: 'Accepts Y/N, Yes/No, True/False, or 1/0.' },
-  { key: 'grade', label: 'Grade', required: true, hint: 'Use 6–12 for middle/high school. College division auto-sets to "college".' },
+  { key: 'grade', label: 'Grade', required: true, hint: 'Use 6–12 for middle/high school. College division auto-sets to "college" if blank.' },
   { key: 'email_school', label: 'School Email', required: true, hint: 'Must be a valid email for the competitor.' },
   { key: 'email_personal', label: 'Personal Email', hint: 'Optional; must be a valid email if provided.' },
   { key: 'parent_name', label: 'Parent Name', hint: 'Optional; provide for minors when available.' },
   { key: 'parent_email', label: 'Parent Email', hint: 'Required if parent name provided; must be a valid email.' },
-  { key: 'division', label: 'Division', hint: 'Allowed: middle_school | high_school | college' },
+  { key: 'division', label: 'Division', required: true, hint: 'Allowed: middle_school | high_school | college (defaults based on grade if blank).' },
   { key: 'program_track', label: 'Program Track', hint: 'College only. Allowed: traditional | adult_ed. Blank defaults to traditional.' },
   { key: 'gender', label: 'Gender', hint: 'Allowed: male | female | other | prefer_not_to_say' },
   { key: 'race', label: 'Race', hint: 'Allowed: white | black | hispanic | asian | native | pacific | other | declined_to_answer' },
@@ -89,12 +90,16 @@ type ParsedRow = string[]
 
 const serializeRowForApi = (row: Row) => {
   const isAdult = parseBoolean(row.is_18_or_over)
-  const normalizedDivision = normalizeEnumValue(row.division)
   const normalizedGrade = normalizeGrade(row.grade)
   const normalizedProgramTrack = normalizeProgramTrack(row.program_track)
-  const enforcedDivision = isAdult === true ? 'college' : normalizedDivision
-  const enforcedGrade = isAdult === true ? 'college' : normalizedGrade
-  const enforcedProgramTrack = isAdult === true ? 'traditional' : normalizedProgramTrack
+  const normalizedDivision = normalizeEnumValue(row.division)
+  const derivedDivision = deriveDivisionFromGrade(normalizedGrade, false)
+  const defaultDivision = isAdult === true ? 'college' : derivedDivision
+  const enforcedDivision = normalizedDivision || defaultDivision || ''
+  const enforcedGrade = !normalizedGrade && enforcedDivision === 'college' ? 'college' : normalizedGrade
+  const enforcedProgramTrack = enforcedDivision === 'college'
+    ? (normalizedProgramTrack || 'traditional')
+    : normalizedProgramTrack
 
   return {
     ...row,
@@ -275,15 +280,24 @@ export default function BulkImportPage() {
     return mapped.map((m, i) => {
       const row = { ...m, ...(edited[i] || {}) }
       const isAdult = parseBoolean(row.is_18_or_over)
-      if (isAdult === true) {
-        return {
-          ...row,
-          division: 'college',
-          grade: 'college',
-          program_track: 'traditional',
+      const normalizedGrade = normalizeGrade(row.grade)
+      const normalizedDivision = normalizeEnumValue(row.division)
+      const derivedDivision = deriveDivisionFromGrade(normalizedGrade, false)
+      const defaultDivision = isAdult === true ? 'college' : derivedDivision
+      const nextDivision = normalizedDivision || defaultDivision
+      const next = { ...row }
+      if (nextDivision && !normalizedDivision) {
+        next.division = nextDivision
+      }
+      if (nextDivision === 'college') {
+        if (!normalizedGrade) {
+          next.grade = 'college'
+        }
+        if (!normalizeProgramTrack(row.program_track)) {
+          next.program_track = 'traditional'
         }
       }
-      return row
+      return next
     })
   }, [mapped, edited])
 
@@ -347,7 +361,7 @@ export default function BulkImportPage() {
       description: 'Optional. Required when a parent name is provided; must be a valid email address.',
     },
     division: {
-      description: 'Optional but recommended. Controls roster grouping and available program tracks. Leave blank to assign later in the UI.',
+      description: 'Required. Auto-set from grade (6-8 = middle school, 9-12 = high school). Adults (18+) default to college.',
     },
     program_track: {
       description: 'Optional. Only used when Division is college. Use "traditional" for current college students or "adult_ed" for Adult Ed/Continuing Ed learners. Leave blank to default to traditional.',
@@ -430,7 +444,8 @@ export default function BulkImportPage() {
       }
       // Optional enumerations (if provided, must be valid)
       const div = normalizeEnumValue(row.division)
-      if (row.division && !allowedDivisions.includes(div as any)) { rowErr.push('Invalid division'); mark(i, 'division') }
+      if (!row.division) { rowErr.push('Division required'); mark(i, 'division') }
+      else if (!allowedDivisions.includes(div as any)) { rowErr.push('Invalid division'); mark(i, 'division') }
       const track = normalizeProgramTrack(row.program_track)
       if (div === 'college') {
         if (track && !allowedProgramTracks.includes(track as any)) {

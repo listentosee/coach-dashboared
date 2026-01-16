@@ -26,6 +26,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Edit } from 'lucide-react';
 import { normalizeEmail } from '@/lib/validation/email-uniqueness';
+import { deriveDivisionFromGrade } from '@/lib/utils/competitor-division';
 
 const editFormSchema = z.object({
   first_name: z.string().min(2, 'First name must be at least 2 characters'),
@@ -35,7 +36,7 @@ const editFormSchema = z.object({
   email_school: z.string({ required_error: 'School email is required' }).email('Invalid email'),
   is_18_or_over: z.boolean(),
   grade: z.string().optional(),
-  division: z.enum(['middle_school','high_school','college']).optional(),
+  division: z.enum(['middle_school','high_school','college'], { required_error: 'Division is required' }),
   program_track: z.enum(['traditional','adult_ed']).optional().or(z.literal('')).or(z.null()),
 });
 
@@ -50,6 +51,7 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailValidation, setEmailValidation] = useState<{ school?: string; personal?: string; summary?: string }>({});
   const [isCheckingEmails, setIsCheckingEmails] = useState(false);
+  const [divisionTouched, setDivisionTouched] = useState(false);
   
   
   const form = useForm<z.infer<typeof editFormSchema>>({
@@ -74,33 +76,27 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
   const isAdultWatch = form.watch('is_18_or_over');
 
   useEffect(() => {
-    if (isAdultWatch) {
-      if (divisionWatch !== 'college') {
-        form.setValue('division', 'college', { shouldDirty: false });
-      }
-      if (programTrackWatch !== 'traditional') {
-        form.setValue('program_track', 'traditional', { shouldDirty: false });
-      }
+    const derivedDivision = deriveDivisionFromGrade(gradeWatch, false);
+    const defaultDivision = isAdultWatch ? 'college' : derivedDivision;
+    if (!divisionTouched && defaultDivision && divisionWatch !== defaultDivision) {
+      form.setValue('division', defaultDivision, { shouldDirty: false });
+    }
+    if (divisionWatch === 'college') {
       if (gradeWatch !== 'college') {
         form.setValue('grade', 'college', { shouldDirty: false });
       }
-      return;
-    }
-
-    if (divisionWatch === 'college') {
       if (!programTrackWatch || programTrackWatch === '') {
         form.setValue('program_track', 'traditional', { shouldDirty: false });
       }
-      if (gradeWatch !== 'college') {
-        form.setValue('grade', 'college', { shouldDirty: false });
+    } else {
+      if (programTrackWatch) {
+        form.setValue('program_track', null, { shouldDirty: false });
       }
-    } else if (programTrackWatch) {
-      form.setValue('program_track', null, { shouldDirty: false });
       if (gradeWatch === 'college') {
         form.setValue('grade', '', { shouldDirty: false });
       }
     }
-  }, [isAdultWatch, divisionWatch, programTrackWatch, gradeWatch, form]);
+  }, [isAdultWatch, divisionWatch, programTrackWatch, gradeWatch, divisionTouched, form]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -186,6 +182,7 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
         program_track: (competitor as any).program_track || ((competitor as any).division === 'college' ? 'traditional' : null),
       });
       setEmailValidation({});
+      setDivisionTouched(false);
     }
   }, [competitor, form]);
 
@@ -196,6 +193,7 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
     } else {
       setEmailValidation({});
       setIsCheckingEmails(false);
+      setDivisionTouched(false);
     }
   }, [open]);
 
@@ -365,7 +363,13 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-gray-700">Division</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select
+                        onValueChange={(value) => {
+                          setDivisionTouched(true);
+                          field.onChange(value);
+                        }}
+                        value={field.value}
+                      >
                         <FormControl>
                           <SelectTrigger className="bg-white border-gray-300 text-gray-900">
                             <SelectValue placeholder="Select division" />
@@ -377,6 +381,9 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
                           <SelectItem value="college">College</SelectItem>
                         </SelectContent>
                       </Select>
+                      <FormDescription className="text-xs text-gray-600">
+                        Division defaults based on grade (adults default to college), but you can adjust it.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

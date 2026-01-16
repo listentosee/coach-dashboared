@@ -7,6 +7,7 @@ import { isUserAdmin } from '@/lib/utils/admin-check';
 import { logger } from '@/lib/logging/safe-logger';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
 import { maybeAutoOnboardCompetitor } from '@/lib/integrations/game-platform/auto-onboard';
+import { deriveDivisionFromGrade } from '@/lib/utils/competitor-division';
 export const dynamic = 'force-dynamic';
 
 const UpdateCompetitorSchema = z.object({
@@ -17,7 +18,7 @@ const UpdateCompetitorSchema = z.object({
   last_name: z.string().min(2, 'Last name must be at least 2 characters'),
   is_18_or_over: z.coerce.boolean().optional(),
   grade: z.string().optional().or(z.null()),
-  division: z.enum(['middle_school','high_school','college']).optional(),
+  division: z.enum(['middle_school','high_school','college'], { required_error: 'Division is required' }),
   program_track: z.enum(['traditional','adult_ed']).optional().or(z.literal('')).or(z.null()),
 });
 
@@ -48,7 +49,7 @@ export async function PUT(
     }
     let verifyQuery = supabase
       .from('competitors')
-      .select('id, division, program_track')
+      .select('id, division, program_track, grade, is_18_or_over')
       .eq('id', id);
     if (!isAdmin) verifyQuery = verifyQuery.eq('coach_id', user.id);
     else verifyQuery = verifyQuery.eq('coach_id', actingCoachId as string);
@@ -83,15 +84,28 @@ export async function PUT(
       // if not provided, leave unchanged
       updated_at: new Date().toISOString(),
     }
+    const effectiveIsAdult = typeof validatedData.is_18_or_over !== 'undefined'
+      ? validatedData.is_18_or_over
+      : (existingCompetitor as any)?.is_18_or_over
+    const effectiveGrade = typeof validatedData.grade !== 'undefined'
+      ? validatedData.grade
+      : (existingCompetitor as any)?.grade
+    const derivedDivision = deriveDivisionFromGrade(effectiveGrade, effectiveIsAdult === true)
+    const selectedDivision = validatedData.division || (existingCompetitor as any)?.division || derivedDivision
+    if (!selectedDivision) {
+      return NextResponse.json({ error: 'Division is required' }, { status: 400 })
+    }
     if (typeof validatedData.is_18_or_over !== 'undefined') {
       updatePayload.is_18_or_over = validatedData.is_18_or_over as boolean
     }
     if (typeof validatedData.grade !== 'undefined') {
       updatePayload.grade = validatedData.grade || null
+    } else if (!effectiveGrade && selectedDivision === 'college') {
+      updatePayload.grade = 'college'
     }
+    updatePayload.division = selectedDivision
 
     let programTrackUpdate: string | null | undefined = undefined
-    const existingDivision = (existingCompetitor as any)?.division || null
     const existingProgramTrack = (existingCompetitor as any)?.program_track || null
 
     if (typeof validatedData.program_track !== 'undefined') {
@@ -105,15 +119,11 @@ export async function PUT(
       }
     }
 
-    if (typeof validatedData.division !== 'undefined') {
-      updatePayload.division = validatedData.division
-      if (validatedData.division !== 'college') {
-        programTrackUpdate = null
-      } else if (typeof programTrackUpdate === 'undefined') {
+    if (selectedDivision === 'college') {
+      if (typeof programTrackUpdate === 'undefined' || programTrackUpdate === null) {
         programTrackUpdate = existingProgramTrack ?? 'traditional'
       }
-    } else if (typeof programTrackUpdate !== 'undefined' && existingDivision !== 'college') {
-      // Safety: if competitor is not college, ignore incoming program track
+    } else {
       programTrackUpdate = null
     }
 

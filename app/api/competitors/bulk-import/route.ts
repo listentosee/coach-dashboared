@@ -3,6 +3,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { ALLOWED_DIVISIONS, ALLOWED_ETHNICITIES, ALLOWED_GENDERS, ALLOWED_GRADES, ALLOWED_LEVELS_OF_TECHNOLOGY, ALLOWED_RACES, ALLOWED_PROGRAM_TRACKS } from '@/lib/constants/enums'
 import { normalizeEnumValue, normalizeGrade, normalizeProgramTrack } from '@/lib/utils/import-normalize'
+import { deriveDivisionFromGrade } from '@/lib/utils/competitor-division'
 import { AuditLogger } from '@/lib/audit/audit-logger';
 import { logger } from '@/lib/logging/safe-logger';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
@@ -103,29 +104,31 @@ export async function POST(req: NextRequest) {
         const years_competing = years_competing_raw === '' ? null : Number.parseInt(String(years_competing_raw), 10)
         const rawProgramTrack = normalizeProgramTrack(raw.program_track)
         let program_track: string | null = null
-        if (isAdult === true) {
-          division = 'college'
+        const derivedDivision = deriveDivisionFromGrade(grade, false)
+        const defaultDivision = isAdult === true ? 'college' : derivedDivision
+        if (!division && defaultDivision) {
+          division = defaultDivision
+        }
+        if (!grade && division === 'college') {
           grade = 'college'
-          program_track = 'traditional'
-        } else {
-          if (division === 'college') {
-            if (rawProgramTrack === 'adult_ed') {
-              program_track = 'adult_ed'
-            } else if (rawProgramTrack === 'traditional') {
-              program_track = 'traditional'
-            } else if ((raw.program_track || '').trim() === '') {
-              program_track = 'traditional'
-            } else {
-              throw new Error('Invalid program track for college competitor')
-            }
+        }
+        if (division === 'college') {
+          if (rawProgramTrack === 'adult_ed') {
+            program_track = 'adult_ed'
+          } else if (rawProgramTrack === 'traditional') {
+            program_track = 'traditional'
+          } else if ((raw.program_track || '').trim() === '') {
+            program_track = 'traditional'
+          } else {
+            throw new Error('Invalid program track for college competitor')
           }
-          if (division !== 'college' && rawProgramTrack) {
-            program_track = null
-          }
+        }
+        if (division !== 'college' && rawProgramTrack) {
+          program_track = null
         }
 
         // Validate
-        if (!first_name || !last_name || !grade || isAdult === null) throw new Error('Missing required fields')
+        if (!first_name || !last_name || !grade || !division || isAdult === null) throw new Error('Missing required fields')
         if (competitor_id && !isValidUuid(competitor_id)) throw new Error('Competitor ID must be a valid UUID')
         if (!allowedGrades.includes(grade)) throw new Error('Invalid grade')
         // School email is required for all participants

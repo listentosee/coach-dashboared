@@ -60,13 +60,21 @@ function CustomTooltip({ active, payload }: TooltipProps<number, string>) {
   );
 }
 
-export function DemographicCharts({ charts }: { charts: DemographicChartConfig[] }) {
+export function DemographicCharts({
+  charts,
+  columns = 3,
+}: {
+  charts: DemographicChartConfig[]
+  columns?: 1 | 2 | 3
+}) {
   if (!charts.length) {
     return <EmptyState message="No demographic data available." />;
   }
 
+  const columnClass = columns === 1 ? 'lg:grid-cols-1' : columns === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-3';
+
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <div className={`grid grid-cols-1 gap-6 ${columnClass}`}>
       {charts.map((chart) => (
         <div key={chart.title} className="rounded border border-meta-border bg-meta-card/80 p-4">
           <div className="mb-4">

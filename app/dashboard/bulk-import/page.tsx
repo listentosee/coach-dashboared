@@ -87,17 +87,27 @@ const MAX_TEMPLATE_ROWS = 500
 type Row = Record<FieldKey, string>
 type ParsedRow = string[]
 
-const serializeRowForApi = (row: Row) => ({
-  ...row,
-  competitor_id: row.competitor_id?.trim() || undefined,
-  grade: normalizeGrade(row.grade),
-  division: normalizeEnumValue(row.division),
-  gender: normalizeEnumValue(row.gender),
-  race: normalizeEnumValue(row.race),
-  ethnicity: normalizeEnumValue(row.ethnicity),
-  level_of_technology: normalizeEnumValue(row.level_of_technology),
-  program_track: normalizeProgramTrack(row.program_track),
-})
+const serializeRowForApi = (row: Row) => {
+  const isAdult = parseBoolean(row.is_18_or_over)
+  const normalizedDivision = normalizeEnumValue(row.division)
+  const normalizedGrade = normalizeGrade(row.grade)
+  const normalizedProgramTrack = normalizeProgramTrack(row.program_track)
+  const enforcedDivision = isAdult === true ? 'college' : normalizedDivision
+  const enforcedGrade = isAdult === true ? 'college' : normalizedGrade
+  const enforcedProgramTrack = isAdult === true ? 'traditional' : normalizedProgramTrack
+
+  return {
+    ...row,
+    competitor_id: row.competitor_id?.trim() || undefined,
+    grade: enforcedGrade,
+    division: enforcedDivision,
+    gender: normalizeEnumValue(row.gender),
+    race: normalizeEnumValue(row.race),
+    ethnicity: normalizeEnumValue(row.ethnicity),
+    level_of_technology: normalizeEnumValue(row.level_of_technology),
+    program_track: enforcedProgramTrack,
+  }
+}
 
 function parseBoolean(input: string): boolean | null {
   const v = (input || '').trim().toLowerCase()
@@ -262,7 +272,19 @@ export default function BulkImportPage() {
 
   // Merge edits
   const currentRows: Row[] = useMemo(() => {
-    return mapped.map((m, i) => ({ ...m, ...(edited[i] || {}) }))
+    return mapped.map((m, i) => {
+      const row = { ...m, ...(edited[i] || {}) }
+      const isAdult = parseBoolean(row.is_18_or_over)
+      if (isAdult === true) {
+        return {
+          ...row,
+          division: 'college',
+          grade: 'college',
+          program_track: 'traditional',
+        }
+      }
+      return row
+    })
   }, [mapped, edited])
 
   const duplicateCheckKey = useMemo(() => {

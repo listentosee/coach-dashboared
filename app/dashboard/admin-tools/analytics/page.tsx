@@ -92,11 +92,19 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
 
   // Demographic breakdowns
   const eligibleStatuses: string[] = ['profile', 'in_the_game_not_compliant', 'complete', 'compliance']
-  let demographicRows: Array<{ gender: string | null; race: string | null; ethnicity: string | null; level_of_technology: string | null; years_competing: number | null }> = []
+  let demographicRows: Array<{
+    gender: string | null
+    race: string | null
+    ethnicity: string | null
+    level_of_technology: string | null
+    years_competing: number | null
+    division: string | null
+    program_track: string | null
+  }> = []
   {
     let demoQuery = supabase
       .from('competitors')
-      .select('gender, race, ethnicity, level_of_technology, years_competing')
+      .select('gender, race, ethnicity, level_of_technology, years_competing, division, program_track')
       .in('status', eligibleStatuses)
 
     if (coachId) {
@@ -158,6 +166,32 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
       data: buildChartData('level_of_technology', 'Not provided'),
     },
   ]
+
+  const divisionCounts = new Map<string, number>()
+  if (demographicRows.length) {
+    for (const row of demographicRows) {
+      const division = (row.division || '').trim().toLowerCase()
+      if (division === 'college') {
+        const track = (row.program_track || 'traditional').trim().toLowerCase()
+        const label = track === 'adult_ed' ? 'ROP College' : 'Traditional College'
+        divisionCounts.set(label, (divisionCounts.get(label) ?? 0) + 1)
+      } else if (division === 'middle_school') {
+        divisionCounts.set('Middle School', (divisionCounts.get('Middle School') ?? 0) + 1)
+      } else if (division === 'high_school') {
+        divisionCounts.set('High School', (divisionCounts.get('High School') ?? 0) + 1)
+      } else {
+        divisionCounts.set('Unassigned', (divisionCounts.get('Unassigned') ?? 0) + 1)
+      }
+    }
+  }
+
+  const divisionChart: DemographicChartConfig = {
+    title: 'Division Mix',
+    description: 'Middle school, high school, and college tracks.',
+    data: Array.from(divisionCounts.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value),
+  }
 
   // Years competing histogram (grouped buckets)
   const yearsCounts = new Map<string, number>()
@@ -277,6 +311,14 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
               <div className="flex items-center justify-between"><span className="text-meta-muted">Complete</span><span className="text-meta-light font-semibold">{completeRelease || 0}</span></div>
             </div>
           </div>
+        </div>
+
+        <div className="rounded border border-meta-border bg-meta-card p-5">
+          <div className="mb-4">
+            <div className="text-sm text-meta-muted">Division & College Track</div>
+            <div className="text-meta-light text-lg font-semibold">Enrollment Mix</div>
+          </div>
+          <DemographicCharts charts={[divisionChart]} columns={1} />
         </div>
 
         <div className="rounded border border-meta-border bg-meta-card p-5">

@@ -88,13 +88,13 @@ export async function POST(req: NextRequest) {
         const first_name = (raw.first_name || '').trim()
         const last_name = (raw.last_name || '').trim()
         const competitor_id = (raw.competitor_id || '').trim()
-        const grade = normalizeGrade(raw.grade)
+        let grade = normalizeGrade(raw.grade)
         const isAdult = parseBoolean(raw.is_18_or_over)
         const email_school = (raw.email_school || '').trim().toLowerCase()
         const email_personal = (raw.email_personal || '').trim().toLowerCase()
         const parent_name = (raw.parent_name || '').trim()
         const parent_email = (raw.parent_email || '').trim().toLowerCase()
-        const division = normalizeEnumValue(raw.division)
+        let division = normalizeEnumValue(raw.division)
         const gender = normalizeEnumValue(raw.gender)
         const race = normalizeEnumValue(raw.race)
         const ethnicity = normalizeEnumValue(raw.ethnicity)
@@ -103,19 +103,25 @@ export async function POST(req: NextRequest) {
         const years_competing = years_competing_raw === '' ? null : Number.parseInt(String(years_competing_raw), 10)
         const rawProgramTrack = normalizeProgramTrack(raw.program_track)
         let program_track: string | null = null
-        if (division === 'college') {
-          if (rawProgramTrack === 'adult_ed') {
-            program_track = 'adult_ed'
-          } else if (rawProgramTrack === 'traditional') {
-            program_track = 'traditional'
-          } else if ((raw.program_track || '').trim() === '') {
-            program_track = 'traditional'
-          } else {
-            throw new Error('Invalid program track for college competitor')
+        if (isAdult === true) {
+          division = 'college'
+          grade = 'college'
+          program_track = 'traditional'
+        } else {
+          if (division === 'college') {
+            if (rawProgramTrack === 'adult_ed') {
+              program_track = 'adult_ed'
+            } else if (rawProgramTrack === 'traditional') {
+              program_track = 'traditional'
+            } else if ((raw.program_track || '').trim() === '') {
+              program_track = 'traditional'
+            } else {
+              throw new Error('Invalid program track for college competitor')
+            }
           }
-        }
-        if (division !== 'college' && rawProgramTrack) {
-          program_track = null
+          if (division !== 'college' && rawProgramTrack) {
+            program_track = null
+          }
         }
 
         // Validate

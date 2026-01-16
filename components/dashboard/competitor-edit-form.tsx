@@ -71,8 +71,22 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
   const divisionWatch = form.watch('division');
   const programTrackWatch = form.watch('program_track');
   const gradeWatch = form.watch('grade');
+  const isAdultWatch = form.watch('is_18_or_over');
 
   useEffect(() => {
+    if (isAdultWatch) {
+      if (divisionWatch !== 'college') {
+        form.setValue('division', 'college', { shouldDirty: false });
+      }
+      if (programTrackWatch !== 'traditional') {
+        form.setValue('program_track', 'traditional', { shouldDirty: false });
+      }
+      if (gradeWatch !== 'college') {
+        form.setValue('grade', 'college', { shouldDirty: false });
+      }
+      return;
+    }
+
     if (divisionWatch === 'college') {
       if (!programTrackWatch || programTrackWatch === '') {
         form.setValue('program_track', 'traditional', { shouldDirty: false });
@@ -86,7 +100,7 @@ export function CompetitorEditForm({ competitor, open, onOpenChange, onSuccess }
         form.setValue('grade', '', { shouldDirty: false });
       }
     }
-  }, [divisionWatch, programTrackWatch, gradeWatch, form]);
+  }, [isAdultWatch, divisionWatch, programTrackWatch, gradeWatch, form]);
 
   useEffect(() => {
     const controller = new AbortController();

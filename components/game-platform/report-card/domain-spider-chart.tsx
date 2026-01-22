@@ -27,12 +27,54 @@ export default function DomainSpiderChart({ domains }: Props) {
       'miscellaneous'
     ];
 
+    const categoryAliases: Record<string, string> = {
+      web: 'web',
+      web_exploitation: 'web',
+      cryptography: 'cryptography',
+      crypto: 'cryptography',
+      osint: 'osint',
+      reconnaissance: 'osint',
+      forensics: 'forensics',
+      reverse_engineering: 'reverse_engineering',
+      reversing: 'reverse_engineering',
+      binary_exploitation: 'binary_exploitation',
+      binary: 'binary_exploitation',
+      pwn: 'binary_exploitation',
+      networking: 'networking',
+      network: 'networking',
+      operating_systems: 'operating_systems',
+      operating: 'operating_systems',
+      os: 'operating_systems',
+      miscellaneous: 'miscellaneous',
+      misc: 'miscellaneous',
+      other: 'miscellaneous'
+    };
+
+    const normalizeCategory = (value: string) =>
+      value.toLowerCase().replace(/[\s-]+/g, '_');
+
+    const totals = new Map<string, { challengesCompleted: number; totalPoints: number }>();
+
+    for (const domain of domains) {
+      const raw = normalizeCategory(String(domain.category || ''));
+      const canonical = categoryAliases[raw] || raw;
+
+      if (!domainCategories.includes(canonical)) {
+        continue;
+      }
+
+      const existing = totals.get(canonical) || { challengesCompleted: 0, totalPoints: 0 };
+      existing.challengesCompleted += Number(domain.challengesCompleted || 0);
+      existing.totalPoints += Number(domain.totalPoints || 0);
+      totals.set(canonical, existing);
+    }
+
     return domainCategories.map(category => {
-      const existingDomain = domains.find(d => d.category === category);
-      return existingDomain || {
+      const entry = totals.get(category);
+      return {
         category,
-        challengesCompleted: 0,
-        totalPoints: 0
+        challengesCompleted: entry?.challengesCompleted || 0,
+        totalPoints: entry?.totalPoints || 0
       };
     });
   }, [domains]);

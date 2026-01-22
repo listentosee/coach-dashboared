@@ -87,7 +87,6 @@ export default function ReleaseManagementPage() {
   const [selectedAgreement, setSelectedAgreement] = useState<Agreement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [canceling, setCanceling] = useState<string | null>(null);
-  const [restarting, setRestarting] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [visibleCount, setVisibleCount] = useState(40)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
@@ -488,82 +487,6 @@ export default function ReleaseManagementPage() {
         alert(message);
       } finally {
         setCanceling(null);
-      }
-    },
-    [fetchData],
-  );
-
-  const restartAgreement = useCallback(
-    async (agreement: Agreement, competitor: Competitor) => {
-      const displayName = `${competitor.first_name} ${competitor.last_name}`;
-      const isPrintMode =
-        agreement.metadata?.mode === 'print' ||
-        agreement.status === 'print_ready' ||
-        !!(agreement.metadata as any)?.isPrintMode;
-
-      if (isPrintMode) {
-        alert('Restart is only available for email-mode releases. For print releases, cancel and re-create the print packet instead.');
-        return;
-      }
-
-      if (agreement.status !== 'declined' && agreement.status !== 'expired') {
-        alert('Restart is only available for declined/expired releases.');
-        return;
-      }
-
-      const confirmMessage = `Send a new release request for ${displayName}? This creates a new Zoho request and signing link.`;
-
-      if (typeof window !== 'undefined' && !window.confirm(confirmMessage)) {
-        return;
-      }
-
-      const emailRegex = /.+@.+\..+/;
-      if (competitor.is_18_or_over) {
-        if (!emailRegex.test((competitor.email_school || '').trim())) {
-          alert('Adult competitor requires a valid school email before restarting.');
-          return;
-        }
-      } else {
-        if (!emailRegex.test((competitor.parent_email || '').trim())) {
-          alert('Parent email is required and must be valid before restarting.');
-          return;
-        }
-      }
-
-      let needsRefresh = false;
-
-      try {
-        setRestarting(competitor.id);
-
-        const sendRes = await fetch('/api/zoho/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ competitorId: competitor.id, mode: 'email' }),
-        });
-
-        if (!sendRes.ok) {
-          let message = 'Failed to restart release';
-          try {
-            const payload = await sendRes.json();
-            if (payload?.error) message = payload.error;
-            if (payload?.details) message = `${message}: ${payload.details}`;
-          } catch {
-            // ignore parse errors
-          }
-          throw new Error(message);
-        }
-
-        needsRefresh = true;
-      } catch (error) {
-        console.error('Error restarting release:', error);
-        const message =
-          error instanceof Error ? error.message : 'Failed to restart release. Please try again.';
-        alert(message);
-      } finally {
-        if (needsRefresh) {
-          await fetchData({ reset: true });
-        }
-        setRestarting(null);
       }
     },
     [fetchData],
@@ -1021,11 +944,10 @@ export default function ReleaseManagementPage() {
         const { competitor, agreement, hasLegacySigned } = row.original;
         const disableAdminAll = isAdmin && !ctxLoading && coachId === null // admin in All-coaches → disable
         const isSignedStatus = agreement?.status === 'completed' || agreement?.status === 'completed_manual'
-        const isPrintMode = !!agreement && (
-          agreement.metadata?.mode === 'print' ||
-          agreement.status === 'print_ready' ||
-          !!(agreement.metadata as any)?.isPrintMode
-        )
+        const canStartNewRelease =
+          !hasLegacySigned &&
+          !isSignedStatus &&
+          (!agreement || ['declined', 'expired'].includes(agreement.status))
         
         return (
           <div className="flex items-center space-x-2">
@@ -1097,34 +1019,12 @@ export default function ReleaseManagementPage() {
               </Button>
             )}
 
-            {agreement &&
-              !isPrintMode &&
-              !isSignedStatus &&
-              !hasLegacySigned &&
-              ['declined', 'expired'].includes(agreement.status) && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => restartAgreement(agreement, competitor)}
-                  disabled={disableAdminAll || restarting === competitor.id}
-                  className="text-meta-light border-meta-border hover:bg-meta-accent"
-                  title={disableAdminAll ? 'Select a coach to edit' : 'Cancel (if needed) and re-initiate the release'}
-                >
-                  {restarting === competitor.id ? (
-                    <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4 mr-1" />
-                  )}
-                  Restart
-                </Button>
-              )}
-
             {agreement && ['sent', 'viewed', 'print_ready'].includes(agreement.status) && (
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => cancelAgreement(agreement, competitor)}
-                disabled={disableAdminAll || canceling === agreement.id || restarting === competitor.id}
+                disabled={disableAdminAll || canceling === agreement.id}
                 className="text-meta-light border-meta-border hover:bg-meta-accent"
                 title={disableAdminAll ? 'Select a coach to edit' : 'Cancel digital flow and reset'}
               >
@@ -1137,7 +1037,7 @@ export default function ReleaseManagementPage() {
               </Button>
             )}
             
-            {!agreement && !hasLegacySigned && (
+            {canStartNewRelease && (
               <>
                 <Button
                   size="sm"

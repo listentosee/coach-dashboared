@@ -150,7 +150,36 @@ export async function GET(
         .sort((a, b) => b.totalPoints - a.totalPoints)
         .map((d, i) => ({ ...d, rank: i + 1 }));
     } else {
-      domains = domainData || [];
+      const normalizedDomains = (domainData || []).map((domain: any, index: number) => {
+        const category = domain.category ?? domain.challenge_category ?? 'miscellaneous';
+        const challengesCompleted = Number(
+          domain.challengesCompleted ?? domain.challenges_completed ?? domain.challenges ?? 0,
+        ) || 0;
+        const totalPointsValue = Number(
+          domain.totalPoints ?? domain.total_points ?? domain.points ?? 0,
+        ) || 0;
+        const avgDifficulty = domain.avgDifficulty ?? domain.avg_difficulty ?? 'easy';
+        const strength = domain.strength
+          ?? (totalPointsValue > totalPoints / 5
+            ? 'strong'
+            : challengesCompleted < 3
+              ? 'growth_area'
+              : 'developing');
+        const rank = Number(domain.rank) || index + 1;
+
+        return {
+          category,
+          challengesCompleted,
+          totalPoints: totalPointsValue,
+          avgDifficulty,
+          strength,
+          rank,
+        };
+      });
+
+      domains = normalizedDomains
+        .sort((a, b) => b.totalPoints - a.totalPoints)
+        .map((domain, index) => ({ ...domain, rank: index + 1 }));
     }
 
     // Fetch ALL challenges for NIST role calculation

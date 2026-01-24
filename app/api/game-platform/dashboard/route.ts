@@ -480,7 +480,7 @@ export async function GET(request: NextRequest) {
       })
       .filter((entry) => !!entry.error);
 
-    const actionRequired = (competitors || [])
+    const approvalConflicts = (competitors || [])
       .map((c) => {
         const mapping = mappingByCompetitorId.get(c.id);
         const syncedUserId = c.game_platform_id || mapping?.synced_user_id || null;
@@ -498,11 +498,44 @@ export async function GET(request: NextRequest) {
           name: `${c.first_name} ${c.last_name}`.trim(),
           coachName: c.coach?.full_name ?? null,
           syncedUserId,
+          type: 'approval',
           message,
           lastAttemptAt: toIsoOrNull(syncState.last_attempt_at),
         };
       })
       .filter(Boolean);
+
+    const activationNeeded = (competitors || [])
+      .map((c) => {
+        const mapping = mappingByCompetitorId.get(c.id);
+        if (!mapping || mapping.status !== 'user_created') return null;
+        const syncedUserId = c.game_platform_id || mapping.synced_user_id || null;
+        if (!syncedUserId) return null;
+
+        return {
+          competitorId: c.id,
+          name: `${c.first_name} ${c.last_name}`.trim(),
+          coachName: c.coach?.full_name ?? null,
+          syncedUserId,
+          type: 'activation',
+          message: 'Activation needed: confirm the competitor received their MetaCTF welcome email and activated their account.',
+          lastAttemptAt: null,
+        };
+      })
+      .filter(Boolean);
+
+    const actionRequired = (() => {
+      const merged = new Map<string, any>();
+      for (const item of approvalConflicts) {
+        if (item?.competitorId) merged.set(item.competitorId, item);
+      }
+      for (const item of activationNeeded) {
+        if (item?.competitorId && !merged.has(item.competitorId)) {
+          merged.set(item.competitorId, item);
+        }
+      }
+      return Array.from(merged.values());
+    })();
 
     const staleStats = leaderboard.filter((entry) => {
       if (!entry.lastActivity) return true;

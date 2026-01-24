@@ -336,7 +336,13 @@ export async function onboardCompetitorToGamePlatform({
       lastSyncedAt: competitorSyncTime,
     });
 
-    const updatedCompetitor = await persistCompetitorSyncSuccess(supabase, competitorId, competitor, remoteUserId);
+    const updatedCompetitor = await persistCompetitorSyncSuccess(
+      supabase,
+      competitorId,
+      competitor,
+      remoteUserId,
+      competitorRemoteStatus,
+    );
 
     // Create initial stats row immediately after onboarding
     const statsClient: AnySupabaseClient = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
@@ -809,6 +815,7 @@ async function persistCompetitorSyncSuccess(
   competitorId: string,
   competitor: any,
   remoteUserId: string,
+  remoteStatus?: GamePlatformSyncStatus,
 ) {
   const nextStatus = calculateCompetitorStatus({ ...competitor, game_platform_id: remoteUserId });
   const syncedAt = new Date().toISOString();
@@ -832,7 +839,7 @@ async function persistCompetitorSyncSuccess(
     supabase,
     { competitorId },
     {
-      status: 'approved',
+      status: remoteStatus ?? 'approved',
       syncError: null,
       lastSyncedAt: syncedAt,
       syncedUserId: remoteUserId,
@@ -844,7 +851,7 @@ async function persistCompetitorSyncSuccess(
       competitorId,
       metactfRole: 'user',
       syncedUserId: remoteUserId,
-      status: 'approved',
+      status: remoteStatus ?? 'approved',
       syncError: null,
       lastSyncedAt: syncedAt,
     });
@@ -1054,6 +1061,16 @@ export async function syncCompetitorGameStats({
         const rawStatus = (user as any)?.metactf_user_status;
         if (typeof rawStatus === 'string' && rawStatus.length) {
           message = `${message} (metactf_user_status: ${rawStatus})`;
+          await updateGamePlatformProfile(
+            supabase,
+            { competitorId },
+            {
+              status: normalizeSyncStatus(rawStatus),
+              syncError: message,
+              lastSyncedAt: new Date().toISOString(),
+              syncedUserId,
+            },
+          );
         }
       } catch (lookupError: any) {
         logger?.warn?.(`Failed to fetch MetaCTF user status for ${syncedUserId}`, { error: lookupError });

@@ -1083,7 +1083,7 @@ export default function GamePlatformDashboard() {
             <CardHeader>
               <CardTitle>Action Required</CardTitle>
               <CardDescription>
-                Competitors blocked by MetaCTF approval (pending merge / not approved).
+                Competitors needing MetaCTF approval or activation.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
@@ -1095,7 +1095,18 @@ export default function GamePlatformDashboard() {
                       className="rounded border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-amber-100"
                     >
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <div className="font-medium text-meta-light">{item.name}</div>
+                        <div className="font-medium text-meta-light">
+                          {item.name}
+                          {item.type === 'activation' ? (
+                            <span className="ml-2 inline-flex rounded-full bg-amber-500/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-100">
+                              Activation needed
+                            </span>
+                          ) : (
+                            <span className="ml-2 inline-flex rounded-full bg-amber-500/30 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-100">
+                              Approval required
+                            </span>
+                          )}
+                        </div>
                         {dashboard?.controller?.isAdmin && item.coachName ? (
                           <div className="text-xs text-meta-muted">Coach: {item.coachName}</div>
                         ) : null}

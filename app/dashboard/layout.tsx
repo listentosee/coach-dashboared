@@ -232,6 +232,19 @@ function DashboardLayoutInner({
                         </span>
                       </a>
                     </Button>
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm"
+                    >
+                      <a href="/api/metactf/sso" target="_blank" rel="noopener noreferrer">
+                        <span className="flex w-full items-center justify-between">
+                          <span>Goto MetaCTF</span>
+                          <ExternalLink className="h-4 w-4" />
+                        </span>
+                      </a>
+                    </Button>
                   </div>
                 )}
               </div>

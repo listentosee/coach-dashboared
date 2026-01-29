@@ -350,8 +350,11 @@ function summarizePayload(job: JobQueueRow) {
     return `Audience: ${(payload.roles as string[]).join(', ')}`;
   }
 
-  if (payload.forceFullSync) {
-    return 'Force full sync';
+  if (payload.forceFullSync || payload.forceFlashCtfSync) {
+    const parts: string[] = [];
+    if (payload.forceFullSync) parts.push('ODL');
+    if (payload.forceFlashCtfSync) parts.push('CTF');
+    return `Force sync: ${parts.join(' + ')}`;
   }
 
   if (payload.force) {

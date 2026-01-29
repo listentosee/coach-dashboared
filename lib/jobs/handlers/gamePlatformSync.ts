@@ -9,15 +9,22 @@ export const handleGamePlatformSync: JobHandler<'game_platform_sync'> = async (j
     dryRun: payload.dryRun ?? false,
     coachId: payload.coachId ?? null,
     forceFullSync: payload.forceFullSync ?? false,
+    forceFlashCtfSync: payload.forceFlashCtfSync ?? false,
     logger: logger ?? console,
   });
 
-  const teamSummary = await syncAllTeamsWithGamePlatform({
-    supabase,
-    dryRun: payload.dryRun ?? false,
-    coachId: payload.coachId ?? null,
-    logger: logger ?? console,
-  });
+  const hasForceScope = Boolean(payload.forceFullSync || payload.forceFlashCtfSync);
+  const isFullForce = Boolean(payload.forceFullSync && payload.forceFlashCtfSync);
+  const shouldSyncTeams = !hasForceScope || isFullForce;
+
+  const teamSummary = shouldSyncTeams
+    ? await syncAllTeamsWithGamePlatform({
+        supabase,
+        dryRun: payload.dryRun ?? false,
+        coachId: payload.coachId ?? null,
+        logger: logger ?? console,
+      })
+    : { total: 0, synced: 0, skipped: 0, results: [] };
 
   return {
     status: 'succeeded',

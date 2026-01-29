@@ -14,6 +14,7 @@ export interface GamePlatformSyncPayload {
   dryRun?: boolean;
   coachId?: string | null;
   forceFullSync?: boolean;
+  forceFlashCtfSync?: boolean;
 }
 
 export interface GamePlatformTotalsSweepPayload {

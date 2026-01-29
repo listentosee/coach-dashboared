@@ -66,7 +66,7 @@ export function CreateJobDialog() {
     duration: 'forever',
     run_at: '',
     coachId: '',
-    forceFullSync: false,
+    forceSyncScope: 'none',
     forceNotifications: false,
     competitorIds: '',
     forceReonboard: false,
@@ -106,12 +106,17 @@ export function CreateJobDialog() {
 
       const payload = (() => {
         switch (formData.task_type) {
-          case 'game_platform_sync':
+          case 'game_platform_sync': {
+            const forceSyncScope = formData.forceSyncScope;
+            const forceFullSync = forceSyncScope === 'odl' || forceSyncScope === 'both';
+            const forceFlashCtfSync = forceSyncScope === 'ctf' || forceSyncScope === 'both';
             return {
               dryRun: false,
               coachId: formData.coachId || null,
-              forceFullSync: formData.forceFullSync,
+              forceFullSync,
+              forceFlashCtfSync,
             };
+          }
           case 'game_platform_onboard_competitors':
             return {
               batchSize: 50,
@@ -188,7 +193,7 @@ export function CreateJobDialog() {
         duration: 'forever',
         run_at: '',
         coachId: '',
-        forceFullSync: false,
+        forceSyncScope: 'none',
         forceNotifications: false,
         competitorIds: '',
         forceReonboard: false,
@@ -293,15 +298,22 @@ export function CreateJobDialog() {
           )}
 
           {formData.task_type === 'game_platform_sync' && (
-            <div className="flex items-center gap-3 p-3 border rounded bg-gray-50">
-              <Switch
-                checked={formData.forceFullSync}
-                onCheckedChange={(checked) => setFormData({ ...formData, forceFullSync: checked })}
-              />
-              <div>
-                <Label className="text-gray-900">Force Full Sync</Label>
-                <p className="text-xs text-gray-600">Ignore last sync timestamp and pull all historical data</p>
-              </div>
+            <div className="p-3 border rounded bg-gray-50">
+              <Label htmlFor="force_sync_scope" className="text-gray-900">Force Sync Scope</Label>
+              <select
+                id="force_sync_scope"
+                value={formData.forceSyncScope}
+                onChange={(e) => setFormData({ ...formData, forceSyncScope: e.target.value })}
+                className="mt-2 w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900"
+              >
+                <option value="none">None (incremental)</option>
+                <option value="odl">ODL only</option>
+                <option value="ctf">CTF only</option>
+                <option value="both">ODL + CTF</option>
+              </select>
+              <p className="text-xs text-gray-600 mt-2">
+                Choose which data to fully resync. ODL resets the incremental timestamp; CTF forces Flash CTF refresh.
+              </p>
             </div>
           )}
 

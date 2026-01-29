@@ -57,11 +57,13 @@ export interface SyncCompetitorStatsParams extends ServiceOptions {
   competitorId: string;
   globalAfterTimeUnix?: number | null;
   skipFlashCtfSync?: boolean; // Skip Flash CTF API call if no new events detected
+  ctfOnly?: boolean; // Force Flash CTF sync without touching ODL state
 }
 
 export interface SyncAllCompetitorStatsParams extends ServiceOptions {
   coachId?: string | null;
   forceFullSync?: boolean;
+  forceFlashCtfSync?: boolean;
 }
 
 export interface SyncCompetitorStatsResult {
@@ -964,6 +966,7 @@ export async function syncCompetitorGameStats({
   logger,
   globalAfterTimeUnix,
   skipFlashCtfSync,
+  ctfOnly,
 }: SyncCompetitorStatsParams): Promise<SyncCompetitorStatsResult> {
   const { data: competitor, error } = await supabase
     .from('competitors')
@@ -1002,133 +1005,152 @@ export async function syncCompetitorGameStats({
 
   // Use global sync timestamp if provided, otherwise fall back to per-user timestamp
   let afterTimeUnix: number | null = null;
+  let existingSyncState: { last_odl_synced_at: string | null; last_remote_accessed_at: string | null } | null = null;
 
   if (globalAfterTimeUnix !== undefined) {
     // Global timestamp provided by batch sync
     afterTimeUnix = globalAfterTimeUnix;
+    if (ctfOnly) {
+      const { data: syncState } = await supabase
+        .from('game_platform_sync_state')
+        .select('last_odl_synced_at, last_remote_accessed_at')
+        .eq('synced_user_id', syncedUserId)
+        .maybeSingle();
+      existingSyncState = syncState ?? null;
+    }
   } else {
     // Fall back to per-user timestamp (for standalone competitor syncs)
     const { data: syncState } = await supabase
       .from('game_platform_sync_state')
-      .select('last_odl_synced_at')
+      .select('last_odl_synced_at, last_remote_accessed_at')
       .eq('synced_user_id', syncedUserId)
       .maybeSingle();
 
-    const lastOdlSyncedAt = syncState?.last_odl_synced_at;
-    afterTimeUnix = lastOdlSyncedAt ? Math.floor(new Date(lastOdlSyncedAt).getTime() / 1000) : null;
+    existingSyncState = syncState ?? null;
+    if (!ctfOnly) {
+      const lastOdlSyncedAt = syncState?.last_odl_synced_at;
+      afterTimeUnix = lastOdlSyncedAt ? Math.floor(new Date(lastOdlSyncedAt).getTime() / 1000) : null;
+    }
   }
 
-  logger?.info?.(
-    afterTimeUnix
-      ? `Incremental ODL sync for ${syncedUserId} after ${new Date(afterTimeUnix * 1000).toISOString()}`
-      : `Full ODL sync for ${syncedUserId} (first sync)`
-  );
+  if (!ctfOnly) {
+    logger?.info?.(
+      afterTimeUnix
+        ? `Incremental ODL sync for ${syncedUserId} after ${new Date(afterTimeUnix * 1000).toISOString()}`
+        : `Full ODL sync for ${syncedUserId} (first sync)`
+    );
+  } else {
+    logger?.info?.(`CTF-only sync for ${syncedUserId} (skipping ODL)`);
+  }
 
   let scores: any = null;
   let scoresError: unknown = null;
   let blockedStatus: 'missing_user' | 'not_approved' | null = null;
   let blockedMessage: string | null = null;
-  try {
-    scores = await resolvedClient.getScores({
-      syned_user_id: syncedUserId,
-      after_time_unix: afterTimeUnix,
-    });
-  } catch (err: any) {
-    if (err?.status === 404) {
-      blockedStatus = 'missing_user';
-      blockedMessage = typeof err?.message === 'string'
-        ? err.message
-        : `ODL scores unavailable for ${syncedUserId}`;
-      logger?.info?.(`ODL scores missing for ${syncedUserId}`);
-    } else if (err?.status === 403) {
-      blockedStatus = 'not_approved';
-      blockedMessage = typeof err?.message === 'string'
-        ? err.message
-        : `ODL scores forbidden for ${syncedUserId}`;
-      logger?.info?.(`ODL scores forbidden for ${syncedUserId}`);
-    } else {
-      scoresError = err;
-      logger?.warn?.(`Failed to fetch ODL scores for ${syncedUserId}`, { error: err });
-    }
-  }
 
-  if (blockedStatus) {
-    let message = blockedMessage ?? `ODL scores unavailable for ${syncedUserId}`;
-
-    if (blockedStatus === 'not_approved') {
-      try {
-        const user = await resolvedClient.getUser({ syned_user_id: syncedUserId });
-        const rawStatus = (user as any)?.metactf_user_status;
-        if (typeof rawStatus === 'string' && rawStatus.length) {
-          message = `${message} (metactf_user_status: ${rawStatus})`;
-          await updateGamePlatformProfile(
-            supabase,
-            { competitorId },
-            {
-              status: normalizeSyncStatus(rawStatus),
-              syncError: message,
-              lastSyncedAt: new Date().toISOString(),
-              syncedUserId,
-            },
-          );
-        }
-      } catch (lookupError: any) {
-        logger?.warn?.(`Failed to fetch MetaCTF user status for ${syncedUserId}`, { error: lookupError });
+  if (!ctfOnly) {
+    try {
+      scores = await resolvedClient.getScores({
+        syned_user_id: syncedUserId,
+        after_time_unix: afterTimeUnix,
+      });
+    } catch (err: any) {
+      if (err?.status === 404) {
+        blockedStatus = 'missing_user';
+        blockedMessage = typeof err?.message === 'string'
+          ? err.message
+          : `ODL scores unavailable for ${syncedUserId}`;
+        logger?.info?.(`ODL scores missing for ${syncedUserId}`);
+      } else if (err?.status === 403) {
+        blockedStatus = 'not_approved';
+        blockedMessage = typeof err?.message === 'string'
+          ? err.message
+          : `ODL scores forbidden for ${syncedUserId}`;
+        logger?.info?.(`ODL scores forbidden for ${syncedUserId}`);
+      } else {
+        scoresError = err;
+        logger?.warn?.(`Failed to fetch ODL scores for ${syncedUserId}`, { error: err });
       }
     }
 
-    await updateCompetitorSyncError(supabase, competitorId, message);
+    if (blockedStatus) {
+      let message = blockedMessage ?? `ODL scores unavailable for ${syncedUserId}`;
 
-    const { error: syncStateMissingError } = await statsClient
-      .from('game_platform_sync_state')
-      .upsert({
+      if (blockedStatus === 'not_approved') {
+        try {
+          const user = await resolvedClient.getUser({ syned_user_id: syncedUserId });
+          const rawStatus = (user as any)?.metactf_user_status;
+          if (typeof rawStatus === 'string' && rawStatus.length) {
+            message = `${message} (metactf_user_status: ${rawStatus})`;
+            await updateGamePlatformProfile(
+              supabase,
+              { competitorId },
+              {
+                status: normalizeSyncStatus(rawStatus),
+                syncError: message,
+                lastSyncedAt: new Date().toISOString(),
+                syncedUserId,
+              },
+            );
+          }
+        } catch (lookupError: any) {
+          logger?.warn?.(`Failed to fetch MetaCTF user status for ${syncedUserId}`, { error: lookupError });
+        }
+      }
+
+      await updateCompetitorSyncError(supabase, competitorId, message);
+
+      const { error: syncStateMissingError } = await statsClient
+        .from('game_platform_sync_state')
+        .upsert({
+          synced_user_id: syncedUserId,
+          last_attempt_at: new Date().toISOString(),
+          last_result: 'failure',
+          error_message: message.slice(0, 500),
+        });
+
+      if (syncStateMissingError) {
+        throw new Error(`Failed to persist sync failure state: ${syncStateMissingError.message}`);
+      }
+
+      return {
+        competitorId,
+        status: blockedStatus === 'missing_user' ? 'skipped_remote_missing' : 'error',
+        message,
+      };
+    }
+
+    if (scoresError) {
+      const message = scoresError instanceof Error
+        ? scoresError.message
+        : 'Failed to fetch ODL scores';
+
+      const syncStateFailurePayload = {
         synced_user_id: syncedUserId,
         last_attempt_at: new Date().toISOString(),
-        last_result: 'failure',
+        last_result: 'failure' as const,
         error_message: message.slice(0, 500),
-      });
+      };
 
-    if (syncStateMissingError) {
-      throw new Error(`Failed to persist sync failure state: ${syncStateMissingError.message}`);
+      const { error: syncStateFailureError } = await statsClient
+        .from('game_platform_sync_state')
+        .upsert(syncStateFailurePayload);
+
+      if (syncStateFailureError) {
+        throw new Error(`Failed to persist sync failure state: ${syncStateFailureError.message}`);
+      }
+
+      const status = (scoresError as any)?.status;
+      if (typeof status === 'number' && status < 500) {
+        await updateCompetitorSyncError(supabase, competitorId, message);
+      }
+
+      return {
+        competitorId,
+        status: 'error',
+        message,
+      };
     }
-
-    return {
-      competitorId,
-      status: blockedStatus === 'missing_user' ? 'skipped_remote_missing' : 'error',
-      message,
-    };
-  }
-
-  if (scoresError) {
-    const message = scoresError instanceof Error
-      ? scoresError.message
-      : 'Failed to fetch ODL scores';
-
-    const syncStateFailurePayload = {
-      synced_user_id: syncedUserId,
-      last_attempt_at: new Date().toISOString(),
-      last_result: 'failure' as const,
-      error_message: message.slice(0, 500),
-    };
-
-    const { error: syncStateFailureError } = await statsClient
-      .from('game_platform_sync_state')
-      .upsert(syncStateFailurePayload);
-
-    if (syncStateFailureError) {
-      throw new Error(`Failed to persist sync failure state: ${syncStateFailureError.message}`);
-    }
-
-    const status = (scoresError as any)?.status;
-    if (typeof status === 'number' && status < 500) {
-      await updateCompetitorSyncError(supabase, competitorId, message);
-    }
-
-    return {
-      competitorId,
-      status: 'error',
-      message,
-    };
   }
 
   let flash: any = null;
@@ -1151,7 +1173,7 @@ export async function syncCompetitorGameStats({
     ? normalizedScores.challenge_solves
     : [];
 
-  const hasNewOdlSolves = odlSolves.length > 0;
+  const hasNewOdlSolves = !ctfOnly && odlSolves.length > 0;
 
   // Skip calculating totals here - handled by separate sweep job
   const lastActivityUnix = normalizedScores?.last_accessed_unix_timestamp ?? null;
@@ -1161,7 +1183,9 @@ export async function syncCompetitorGameStats({
   const syncedTeamId = Array.isArray((competitor as any).team_members) && (competitor as any).team_members[0]?.teams?.game_platform_id
     ? (competitor as any).team_members[0].teams.game_platform_id
     : null;
-  const metactfUserId = normalizedScores?.metactf_user_id ?? null;
+  const metactfUserId = normalizedScores?.metactf_user_id
+    ?? (await getGamePlatformProfile(supabase, { competitorId }).catch(() => null))?.metactf_user_id
+    ?? null;
 
   const flashSolveRows: any[] = [];
   const flashEventRows: any[] = [];
@@ -1231,7 +1255,7 @@ export async function syncCompetitorGameStats({
     })
     .filter(Boolean) as any[];
 
-  if (odlSolveRows.length) {
+  if (!ctfOnly && odlSolveRows.length) {
     const { error: upsertOdlError } = await statsClient
       .from('game_platform_challenge_solves')
       .upsert(odlSolveRows, { onConflict: 'synced_user_id,challenge_solve_id' });
@@ -1285,9 +1309,13 @@ export async function syncCompetitorGameStats({
 
   const syncStatePayload = {
     synced_user_id: syncedUserId,
-    last_odl_synced_at: new Date().toISOString(),
+    last_odl_synced_at: ctfOnly
+      ? existingSyncState?.last_odl_synced_at ?? null
+      : new Date().toISOString(),
     last_flash_ctf_synced_at: latestFlashStart,
-    last_remote_accessed_at: lastActivity,
+    last_remote_accessed_at: ctfOnly
+      ? existingSyncState?.last_remote_accessed_at ?? null
+      : lastActivity,
     last_attempt_at: new Date().toISOString(),
     last_result: 'success' as const,
     error_message: null as string | null,
@@ -1583,6 +1611,7 @@ export async function syncAllCompetitorGameStats({
   logger,
   coachId,
   forceFullSync,
+  forceFlashCtfSync,
 }: SyncAllCompetitorStatsParams) {
   const statsClient: AnySupabaseClient = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
@@ -1655,7 +1684,7 @@ export async function syncAllCompetitorGameStats({
   let hasNewFlashCtfEvent = false;
   const resolvedClient = resolveClient(client, logger);
 
-  if (competitors && competitors.length > 0) {
+  if (!forceFlashCtfSync && competitors && competitors.length > 0) {
     const sentinelUser = competitors[0]; // Use first competitor as sentinel
 
     try {
@@ -1695,6 +1724,13 @@ export async function syncAllCompetitorGameStats({
     }
   }
 
+  const ctfOnly = Boolean(forceFlashCtfSync && !forceFullSync);
+
+  if (forceFlashCtfSync) {
+    hasNewFlashCtfEvent = true;
+    logger?.info?.('forceFlashCtfSync enabled - syncing Flash CTF for all competitors');
+  }
+
   const results: SyncCompetitorStatsResult[] = [];
 
   logger?.info?.(`Starting incremental sync for ${competitors?.length ?? 0} competitors`);
@@ -1707,6 +1743,7 @@ export async function syncAllCompetitorGameStats({
       dryRun,
       logger,
       globalAfterTimeUnix: globalAfterTime,
+      ctfOnly,
       skipFlashCtfSync: !hasNewFlashCtfEvent, // Skip Flash CTF if no new events
     });
     results.push(result);

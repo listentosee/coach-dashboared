@@ -24,10 +24,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No valid message IDs' }, { status: 400 })
     }
 
-    const { data, error } = await supabase.rpc('mark_messages_read', { p_message_ids: ids as any })
+    const rows = ids.map((messageId) => ({
+      message_id: messageId,
+      user_id: user.id,
+    }))
+
+    const { data, error } = await supabase
+      .from('message_read_receipts')
+      .upsert(rows, { onConflict: 'message_id,user_id' })
+      .select('message_id')
+
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
-    return NextResponse.json({ success: true, marked_count: data })
+    return NextResponse.json({ success: true, marked_count: data?.length ?? 0 })
   } catch (e) {
     console.error('Read receipts POST error', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

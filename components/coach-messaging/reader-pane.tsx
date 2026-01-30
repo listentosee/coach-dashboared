@@ -16,7 +16,8 @@ export type CoachReaderPaneProps = {
 }
 
 export function CoachReaderPane({ selection, currentUserId = '', userRole = 'coach', onReply, onForward, subscribeToThread }: CoachReaderPaneProps) {
-  const [showNotSeen, setShowNotSeen] = useState(true)
+  const [roster, setRoster] = useState<{ seen: string[] }>({ seen: [] })
+  const [rosterLoading, setRosterLoading] = useState(false)
 
   useEffect(() => {
     if (!subscribeToThread || !selection) return
@@ -26,24 +27,40 @@ export function CoachReaderPane({ selection, currentUserId = '', userRole = 'coa
     }
   }, [selection?.conversation.id, selection?.threadId, subscribeToThread, selection])
 
-  const roster = useMemo(() => {
-    if (!selection) return { seen: [] as string[], notSeen: [] as string[] }
-    const uniqueSenders = new Map<string, string>()
-    for (const message of selection.threadMessages) {
-      const name = message.sender_name || message.sender_email || 'Unknown sender'
-      if (message.sender_id) uniqueSenders.set(message.sender_id, name)
+  useEffect(() => {
+    let active = true
+    if (!selection || userRole !== 'admin') {
+      setRoster({ seen: [] })
+      return
     }
-    uniqueSenders.delete(currentUserId)
-    const allParticipants = Array.from(uniqueSenders.values())
-    const midpoint = Math.ceil(allParticipants.length / 2)
-    return {
-      seen: allParticipants.slice(0, midpoint),
-      notSeen: allParticipants.slice(midpoint),
-    }
-  }, [selection, currentUserId])
 
-  const list = showNotSeen ? roster.notSeen : roster.seen
-  const label = showNotSeen ? 'Not seen by' : 'Seen by'
+    const fetchRoster = async () => {
+      setRosterLoading(true)
+      try {
+        const res = await fetch(`/api/messaging/read-status?messageId=${selection.message.id}`)
+        if (!res.ok) {
+          setRoster({ seen: [] })
+          return
+        }
+        const data = await res.json()
+        if (!active) return
+        setRoster({
+          seen: Array.isArray(data.seen) ? data.seen : [],
+        })
+      } catch {
+        if (!active) return
+        setRoster({ seen: [] })
+      } finally {
+        if (active) setRosterLoading(false)
+      }
+    }
+
+    void fetchRoster()
+    return () => {
+      active = false
+    }
+  }, [selection?.message?.id, selection, userRole])
+
   const disabled = !selection
 
   return (
@@ -72,15 +89,21 @@ export function CoachReaderPane({ selection, currentUserId = '', userRole = 'coa
       </div>
       {selection && userRole === 'admin' ? (
         <div className="flex items-center gap-2 border-b border-meta-border bg-meta-card/40 px-4 py-2 text-[11px] text-meta-muted">
-          <span className="uppercase tracking-wide">{label}:</span>
-          <span className="whitespace-pre-wrap break-words">
-            {list.length > 0 ? list.join(', ') : (showNotSeen ? 'Everyone has seen this' : 'No viewers yet')}
-          </span>
-          <span className="ml-auto">
-            <button className="underline hover:text-meta-light" onClick={() => setShowNotSeen((prev) => !prev)}>
-              {showNotSeen ? 'Show seen' : 'Show not seen'}
-            </button>
-          </span>
+          <span className="uppercase tracking-wide">Seen by:</span>
+          {rosterLoading ? (
+            <span>Loading...</span>
+          ) : roster.seen.length === 0 ? (
+            <span>No viewers yet</span>
+          ) : (
+            <details className="cursor-pointer select-none">
+              <summary className="underline">
+                {roster.seen.length} reader{roster.seen.length === 1 ? '' : 's'}
+              </summary>
+              <div className="mt-2 whitespace-pre-wrap break-words text-xs text-meta-light">
+                {roster.seen.join(', ')}
+              </div>
+            </details>
+          )}
         </div>
       ) : null}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">

@@ -58,12 +58,30 @@ export interface SyncCompetitorStatsParams extends ServiceOptions {
   globalAfterTimeUnix?: number | null;
   skipFlashCtfSync?: boolean; // Skip Flash CTF API call if no new events detected
   ctfOnly?: boolean; // Force Flash CTF sync without touching ODL state
+  forceFlashCtfSync?: boolean; // Force refresh of Flash CTF data (replaces existing rows)
 }
 
 export interface SyncAllCompetitorStatsParams extends ServiceOptions {
   coachId?: string | null;
   forceFullSync?: boolean;
   forceFlashCtfSync?: boolean;
+}
+
+export interface RefreshGamePlatformProfilesParams extends ServiceOptions {
+  coachId?: string | null;
+}
+
+export interface RefreshGamePlatformProfilesSummary {
+  total: number;
+  refreshed: number;
+  skipped: number;
+  failed: number;
+  results: Array<{
+    competitorId: string;
+    syncedUserId?: string | null;
+    status: 'refreshed' | 'skipped_no_platform_id' | 'dry-run' | 'error';
+    message?: string;
+  }>;
 }
 
 export interface SyncCompetitorStatsResult {
@@ -95,6 +113,41 @@ function resolveClient(client?: GamePlatformClient, logger?: Pick<Console, 'erro
     return new GamePlatformClient({ logger });
   } catch (error) {
     throw error;
+  }
+}
+
+function normalizeChallengeCategoryLabel(raw?: string | null): string | null {
+  if (!raw) return null;
+  const cleaned = raw.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return null;
+
+  switch (cleaned) {
+    case 'crypto':
+    case 'cryptography':
+      return 'Cryptography';
+    case 'foren':
+    case 'forensics':
+      return 'Forensics';
+    case 'reven':
+    case 'reverse engineering':
+    case 'reversing':
+      return 'Reverse Engineering';
+    case 'binexp':
+    case 'binary exploitation':
+      return 'Binary Exploitation';
+    case 'osint':
+      return 'OSINT';
+    case 'web':
+      return 'Web';
+    case 'operating systems':
+    case 'operating system':
+    case 'os':
+      return 'Operating Systems';
+    case 'misc':
+    case 'miscellaneous':
+      return 'Miscellaneous';
+    default:
+      return cleaned.replace(/\b\w/g, (match) => match.toUpperCase());
   }
 }
 
@@ -967,6 +1020,7 @@ export async function syncCompetitorGameStats({
   globalAfterTimeUnix,
   skipFlashCtfSync,
   ctfOnly,
+  forceFlashCtfSync,
 }: SyncCompetitorStatsParams): Promise<SyncCompetitorStatsResult> {
   const { data: competitor, error } = await supabase
     .from('competitors')
@@ -1005,7 +1059,11 @@ export async function syncCompetitorGameStats({
 
   // Use global sync timestamp if provided, otherwise fall back to per-user timestamp
   let afterTimeUnix: number | null = null;
-  let existingSyncState: { last_odl_synced_at: string | null; last_remote_accessed_at: string | null } | null = null;
+  let existingSyncState: {
+    last_odl_synced_at: string | null;
+    last_remote_accessed_at: string | null;
+    last_login_at?: string | null;
+  } | null = null;
 
   if (globalAfterTimeUnix !== undefined) {
     // Global timestamp provided by batch sync
@@ -1013,7 +1071,7 @@ export async function syncCompetitorGameStats({
     if (ctfOnly) {
       const { data: syncState } = await supabase
         .from('game_platform_sync_state')
-        .select('last_odl_synced_at, last_remote_accessed_at')
+        .select('last_odl_synced_at, last_remote_accessed_at, last_login_at')
         .eq('synced_user_id', syncedUserId)
         .maybeSingle();
       existingSyncState = syncState ?? null;
@@ -1022,7 +1080,7 @@ export async function syncCompetitorGameStats({
     // Fall back to per-user timestamp (for standalone competitor syncs)
     const { data: syncState } = await supabase
       .from('game_platform_sync_state')
-      .select('last_odl_synced_at, last_remote_accessed_at')
+      .select('last_odl_synced_at, last_remote_accessed_at, last_login_at')
       .eq('synced_user_id', syncedUserId)
       .maybeSingle();
 
@@ -1030,6 +1088,35 @@ export async function syncCompetitorGameStats({
     if (!ctfOnly) {
       const lastOdlSyncedAt = syncState?.last_odl_synced_at;
       afterTimeUnix = lastOdlSyncedAt ? Math.floor(new Date(lastOdlSyncedAt).getTime() / 1000) : null;
+    }
+  }
+
+  const profileMapping = await getGamePlatformProfile(supabase, { competitorId }).catch(() => null);
+  let lastLoginAt: string | null = existingSyncState?.last_login_at ?? null;
+  let userSnapshot: any = null;
+  const shouldFetchLastLogin = !lastLoginAt || profileMapping?.status === 'user_created';
+
+  if (shouldFetchLastLogin) {
+    try {
+      userSnapshot = await resolvedClient.getUser({ syned_user_id: syncedUserId });
+      const lastLoginUnix = (userSnapshot as any)?.last_login_unix_timestamp;
+      if (typeof lastLoginUnix === 'number') {
+        lastLoginAt = new Date(lastLoginUnix * 1000).toISOString();
+      }
+    } catch (err: any) {
+      logger?.warn?.('Failed to fetch MetaCTF user for last_login', { error: err });
+    }
+  }
+
+  if (lastLoginAt && profileMapping?.status === 'user_created') {
+    try {
+      await updateGamePlatformProfile(
+        supabase,
+        { competitorId },
+        { status: 'approved', syncError: null },
+      );
+    } catch (err: any) {
+      logger?.warn?.('Failed to promote MetaCTF status after login', { error: err });
     }
   }
 
@@ -1076,13 +1163,13 @@ export async function syncCompetitorGameStats({
     if (blockedStatus) {
       let message = blockedMessage ?? `ODL scores unavailable for ${syncedUserId}`;
 
-      if (blockedStatus === 'not_approved') {
-        try {
-          const user = await resolvedClient.getUser({ syned_user_id: syncedUserId });
-          const rawStatus = (user as any)?.metactf_user_status;
-          if (typeof rawStatus === 'string' && rawStatus.length) {
-            message = `${message} (metactf_user_status: ${rawStatus})`;
-            await updateGamePlatformProfile(
+    if (blockedStatus === 'not_approved') {
+      try {
+        const user = userSnapshot ?? await resolvedClient.getUser({ syned_user_id: syncedUserId });
+        const rawStatus = (user as any)?.metactf_user_status;
+        if (typeof rawStatus === 'string' && rawStatus.length) {
+          message = `${message} (metactf_user_status: ${rawStatus})`;
+          await updateGamePlatformProfile(
               supabase,
               { competitorId },
               {
@@ -1100,14 +1187,15 @@ export async function syncCompetitorGameStats({
 
       await updateCompetitorSyncError(supabase, competitorId, message);
 
-      const { error: syncStateMissingError } = await statsClient
-        .from('game_platform_sync_state')
-        .upsert({
-          synced_user_id: syncedUserId,
-          last_attempt_at: new Date().toISOString(),
-          last_result: 'failure',
-          error_message: message.slice(0, 500),
-        });
+    const { error: syncStateMissingError } = await statsClient
+      .from('game_platform_sync_state')
+      .upsert({
+        synced_user_id: syncedUserId,
+        last_attempt_at: new Date().toISOString(),
+        last_result: 'failure',
+        error_message: message.slice(0, 500),
+        last_login_at: lastLoginAt ?? existingSyncState?.last_login_at ?? null,
+      });
 
       if (syncStateMissingError) {
         throw new Error(`Failed to persist sync failure state: ${syncStateMissingError.message}`);
@@ -1125,12 +1213,13 @@ export async function syncCompetitorGameStats({
         ? scoresError.message
         : 'Failed to fetch ODL scores';
 
-      const syncStateFailurePayload = {
-        synced_user_id: syncedUserId,
-        last_attempt_at: new Date().toISOString(),
-        last_result: 'failure' as const,
-        error_message: message.slice(0, 500),
-      };
+    const syncStateFailurePayload = {
+      synced_user_id: syncedUserId,
+      last_attempt_at: new Date().toISOString(),
+      last_result: 'failure' as const,
+      error_message: message.slice(0, 500),
+      last_login_at: lastLoginAt ?? existingSyncState?.last_login_at ?? null,
+    };
 
       const { error: syncStateFailureError } = await statsClient
         .from('game_platform_sync_state')
@@ -1168,6 +1257,23 @@ export async function syncCompetitorGameStats({
     }
   }
 
+  if (forceFlashCtfSync && flash && !ctfOnly) {
+    logger?.info?.(`Force refreshing Flash CTF data for ${syncedUserId}`);
+  }
+
+  if (forceFlashCtfSync && flash) {
+    await statsClient
+      .from('game_platform_challenge_solves')
+      .delete()
+      .eq('synced_user_id', syncedUserId)
+      .eq('source', 'flash_ctf');
+
+    await statsClient
+      .from('game_platform_flash_ctf_events')
+      .delete()
+      .eq('synced_user_id', syncedUserId);
+  }
+
   const normalizedScores = Array.isArray(scores) ? scores[0] : scores;
   const odlSolves = Array.isArray(normalizedScores?.challenge_solves)
     ? normalizedScores.challenge_solves
@@ -1184,7 +1290,7 @@ export async function syncCompetitorGameStats({
     ? (competitor as any).team_members[0].teams.game_platform_id
     : null;
   const metactfUserId = normalizedScores?.metactf_user_id
-    ?? (await getGamePlatformProfile(supabase, { competitorId }).catch(() => null))?.metactf_user_id
+    ?? profileMapping?.metactf_user_id
     ?? null;
 
   const flashSolveRows: any[] = [];
@@ -1205,6 +1311,7 @@ export async function syncCompetitorGameStats({
       challenges_solved: entry?.challenges_solved ?? 0,
       points_earned: entry?.points_earned ?? null,
       rank: entry?.rank ?? null,
+      max_points_possible: entry?.max_points_possible ?? null,
       started_at: start,
       ended_at: end,
       raw_payload: entry,
@@ -1225,7 +1332,7 @@ export async function syncCompetitorGameStats({
           challenge_solve_id: solveId,
           challenge_id: solve?.challenge_id ?? null,
           challenge_title: solve?.challenge_title ?? null,
-          challenge_category: solve?.challenge_category ?? null,
+          challenge_category: normalizeChallengeCategoryLabel(solve?.challenge_category) ?? null,
           challenge_points: solve?.challenge_points ?? null,
           solved_at: solve?.timestamp_unix ? new Date(solve.timestamp_unix * 1000).toISOString() : null,
           source: 'flash_ctf',
@@ -1246,7 +1353,7 @@ export async function syncCompetitorGameStats({
         challenge_solve_id: solveId,
         challenge_id: solve?.challenge_id ?? null,
         challenge_title: solve?.challenge_title ?? null,
-        challenge_category: solve?.challenge_category ?? null,
+        challenge_category: normalizeChallengeCategoryLabel(solve?.challenge_category) ?? null,
         challenge_points: solve?.challenge_points ?? null,
         solved_at: solve?.timestamp_unix ? new Date(solve.timestamp_unix * 1000).toISOString() : null,
         source: 'odl',
@@ -1319,6 +1426,7 @@ export async function syncCompetitorGameStats({
     last_attempt_at: new Date().toISOString(),
     last_result: 'success' as const,
     error_message: null as string | null,
+    last_login_at: lastLoginAt ?? existingSyncState?.last_login_at ?? null,
     // Set refresh flag to true if new activity detected OR if stats row doesn't exist, otherwise false
     needs_totals_refresh: needsRefresh || needsStatsRowCreation,
   };
@@ -1744,6 +1852,7 @@ export async function syncAllCompetitorGameStats({
       logger,
       globalAfterTimeUnix: globalAfterTime,
       ctfOnly,
+      forceFlashCtfSync,
       skipFlashCtfSync: !hasNewFlashCtfEvent, // Skip Flash CTF if no new events
     });
     results.push(result);
@@ -1846,6 +1955,185 @@ export async function syncAllTeamsWithGamePlatform({
     total: teams?.length ?? 0,
     synced: results.filter((r) => r.status === 'synced').length,
     skipped: results.filter((r) => r.status !== 'synced').length,
+    results,
+  };
+}
+
+export async function refreshGamePlatformProfiles({
+  supabase,
+  client,
+  dryRun,
+  logger,
+  coachId,
+}: RefreshGamePlatformProfilesParams): Promise<RefreshGamePlatformProfilesSummary> {
+  const effectiveDryRun = isDryRunOverride(dryRun);
+  const resolvedClient = resolveClient(client, logger);
+  const statsClient: AnySupabaseClient = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
+    : supabase;
+
+  let competitorQuery = supabase
+    .from('competitors')
+    .select('id, coach_id, game_platform_id')
+    .order('id', { ascending: true });
+
+  if (coachId) {
+    competitorQuery = competitorQuery.eq('coach_id', coachId);
+  }
+
+  const { data: competitors, error } = await competitorQuery;
+  if (error) {
+    throw new Error(`Failed to list competitors for profile refresh: ${error.message}`);
+  }
+
+  const competitorIds = (competitors || []).map((c: any) => c.id);
+  let profileMappings: Array<{
+    competitor_id: string | null;
+    synced_user_id: string | null;
+    metactf_user_id: number | null;
+    metactf_username: string | null;
+    status: GamePlatformSyncStatus;
+  }> = [];
+
+  if (competitorIds.length) {
+    const { data: mappingData, error: mappingError } = await supabase
+      .from('game_platform_profiles')
+      .select('competitor_id, synced_user_id, metactf_user_id, metactf_username, status')
+      .in('competitor_id', competitorIds);
+    if (mappingError) {
+      throw new Error(`Failed to load game platform profiles: ${mappingError.message}`);
+    }
+    profileMappings = mappingData || [];
+  }
+
+  const mappingByCompetitorId = new Map<string, typeof profileMappings[number]>();
+  for (const mapping of profileMappings) {
+    if (mapping.competitor_id) {
+      mappingByCompetitorId.set(mapping.competitor_id, mapping);
+    }
+  }
+
+  const syncedUserIds = (competitors || [])
+    .map((competitor: any) => {
+      const mapping = mappingByCompetitorId.get(competitor.id);
+      return competitor.game_platform_id || mapping?.synced_user_id || null;
+    })
+    .filter((value): value is string => Boolean(value));
+
+  const uniqueSyncedUserIds = Array.from(new Set(syncedUserIds));
+  const syncStateByUserId = new Map<string, { last_login_at: string | null }>();
+  if (uniqueSyncedUserIds.length) {
+    const { data: syncStateData, error: syncStateError } = await statsClient
+      .from('game_platform_sync_state')
+      .select('synced_user_id, last_login_at')
+      .in('synced_user_id', uniqueSyncedUserIds);
+    if (syncStateError) {
+      throw new Error(`Failed to load sync state for profile refresh: ${syncStateError.message}`);
+    }
+    for (const state of syncStateData || []) {
+      if (state?.synced_user_id) {
+        syncStateByUserId.set(state.synced_user_id, { last_login_at: state.last_login_at ?? null });
+      }
+    }
+  }
+
+  const results: RefreshGamePlatformProfilesSummary['results'] = [];
+  let refreshed = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const competitor of competitors || []) {
+    const mapping = mappingByCompetitorId.get(competitor.id);
+    const syncedUserId = competitor.game_platform_id || mapping?.synced_user_id || null;
+
+    if (!syncedUserId) {
+      skipped += 1;
+      results.push({
+        competitorId: competitor.id,
+        syncedUserId: null,
+        status: 'skipped_no_platform_id',
+      });
+      continue;
+    }
+
+    if (effectiveDryRun) {
+      results.push({
+        competitorId: competitor.id,
+        syncedUserId,
+        status: 'dry-run',
+      });
+      continue;
+    }
+
+    const existingSyncState = syncStateByUserId.get(syncedUserId) ?? null;
+    let lastLoginAt: string | null = existingSyncState?.last_login_at ?? null;
+
+    try {
+      const user = await resolvedClient.getUser({ syned_user_id: syncedUserId });
+      const lastLoginUnix = (user as any)?.last_login_unix_timestamp;
+      if (typeof lastLoginUnix === 'number') {
+        lastLoginAt = new Date(lastLoginUnix * 1000).toISOString();
+      }
+
+      const status = normalizeSyncStatus((user as any)?.metactf_user_status);
+      const shouldPromote = Boolean(lastLoginAt && (mapping?.status ?? status) === 'user_created');
+      const nextStatus: GamePlatformSyncStatus = shouldPromote ? 'approved' : status;
+
+      await upsertGamePlatformProfile(supabase, {
+        competitorId: competitor.id,
+        metactfRole: 'user',
+        syncedUserId,
+        metactfUserId: (user as any)?.metactf_user_id ?? mapping?.metactf_user_id ?? null,
+        metactfUsername: (user as any)?.metactf_username ?? mapping?.metactf_username ?? null,
+        status: nextStatus,
+        syncError: null,
+      });
+
+      await statsClient
+        .from('game_platform_sync_state')
+        .upsert({
+          synced_user_id: syncedUserId,
+          last_login_at: lastLoginAt ?? existingSyncState?.last_login_at ?? null,
+          last_attempt_at: new Date().toISOString(),
+          last_result: 'success',
+          error_message: null,
+        });
+
+      refreshed += 1;
+      results.push({
+        competitorId: competitor.id,
+        syncedUserId,
+        status: 'refreshed',
+      });
+    } catch (err: any) {
+      failed += 1;
+      const message = err?.message ?? 'Failed to refresh profile';
+      logger?.warn?.('Failed to refresh game platform profile', { competitorId: competitor.id, error: err });
+
+      await statsClient
+        .from('game_platform_sync_state')
+        .upsert({
+          synced_user_id: syncedUserId,
+          last_login_at: lastLoginAt ?? existingSyncState?.last_login_at ?? null,
+          last_attempt_at: new Date().toISOString(),
+          last_result: 'failure',
+          error_message: message.slice(0, 500),
+        });
+
+      results.push({
+        competitorId: competitor.id,
+        syncedUserId,
+        status: 'error',
+        message,
+      });
+    }
+  }
+
+  return {
+    total: competitors?.length ?? 0,
+    refreshed,
+    skipped,
+    failed,
     results,
   };
 }

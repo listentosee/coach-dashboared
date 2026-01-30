@@ -124,7 +124,8 @@ export async function GET(
       const domainMap = new Map<string, { challenges: number; points: number; minPoints: number; maxPoints: number }>();
 
       for (const challenge of summaryData) {
-        const category = (challenge as any).challenge_category || 'miscellaneous';
+        const categoryRaw = (challenge as any).challenge_category || 'miscellaneous';
+        const category = normalizeChallengeCategoryLabel(categoryRaw);
         const points = challenge.challenge_points || 0;
 
         if (!domainMap.has(category)) {
@@ -151,7 +152,8 @@ export async function GET(
         .map((d, i) => ({ ...d, rank: i + 1 }));
     } else {
       const normalizedDomains = (domainData || []).map((domain: any, index: number) => {
-        const category = domain.category ?? domain.challenge_category ?? 'miscellaneous';
+        const categoryRaw = domain.category ?? domain.challenge_category ?? 'miscellaneous';
+        const category = normalizeChallengeCategoryLabel(categoryRaw);
         const challengesCompleted = Number(
           domain.challengesCompleted ?? domain.challenges_completed ?? domain.challenges ?? 0,
         ) || 0;
@@ -308,9 +310,10 @@ export async function GET(
         eventId: e.event_id,
         name: e.flash_ctf_name,
         date: e.started_at,
-        rank: e.rank,
+        rank: e.rank ?? (e.raw_payload as any)?.rank ?? null,
         challengesSolved: e.challenges_solved,
         pointsEarned: e.points_earned,
+        pointsPossible: e.max_points_possible ?? (e.raw_payload as any)?.max_points_possible ?? null,
         topCategory: null, // Would need to calculate from challenge solves
       })),
       activityTimeline,
@@ -357,23 +360,81 @@ function generateInsights({
   }
 
   // Growth areas
-  const weakDomains = domains.filter(d => d.challengesCompleted < 3);
+  const weakDomains = domains
+    .filter(d => d.challengesCompleted > 0 && d.challengesCompleted < 3)
+    .sort((a, b) => a.challengesCompleted - b.challengesCompleted);
   const allCategories = [
     'web', 'cryptography', 'osint', 'forensics',
     'binary_exploitation', 'reverse_engineering',
     'networking', 'operating_systems', 'miscellaneous'
   ];
-  const missingCategories = allCategories.filter(c => !domains.find(d => d.category === c));
+  const normalizeCategoryKey = (raw?: string | null) => {
+    if (!raw) return null;
+    const cleaned = raw.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!cleaned) return null;
+    switch (cleaned) {
+      case 'crypto':
+      case 'cryptography':
+        return 'cryptography';
+      case 'foren':
+      case 'forensics':
+        return 'forensics';
+      case 'reven':
+      case 'reverse engineering':
+      case 'reversing':
+        return 'reverse_engineering';
+      case 'binexp':
+      case 'binary exploitation':
+        return 'binary_exploitation';
+      case 'osint':
+        return 'osint';
+      case 'web':
+        return 'web';
+      case 'operating systems':
+      case 'operating system':
+      case 'os':
+        return 'operating_systems';
+      case 'misc':
+      case 'miscellaneous':
+        return 'miscellaneous';
+      default:
+        return cleaned.replace(/\s+/g, '_');
+    }
+  };
+
+  const exploredCategories = new Set(
+    domains
+      .filter(d => d.challengesCompleted > 0)
+      .map(d => normalizeCategoryKey(d.category))
+      .filter((value): value is string => Boolean(value))
+  );
+  const missingCategories = allCategories.filter(c => !exploredCategories.has(c));
 
   if (missingCategories.length > 0) {
     const formattedDomains = missingCategories
       .map(c => c.replace('_', ' '))
       .map(c => c.charAt(0).toUpperCase() + c.slice(1))
+      .slice(0, 5)
+      .join(', ');
+    const extraCount = Math.max(missingCategories.length - 5, 0);
+
+    insights.push({
+      type: 'growth_area',
+      message: `${missingCategories.length} domain${missingCategories.length > 1 ? 's' : ''} not yet explored: ${formattedDomains}${extraCount ? ` (+${extraCount} more)` : ''}. Try one starter challenge in a new domain this week.`,
+      priority: 'medium'
+    });
+  }
+
+  if (weakDomains.length > 0) {
+    const focus = weakDomains
+      .slice(0, 3)
+      .map(d => `${d.category.replace('_', ' ')} (${d.challengesCompleted})`)
+      .map(c => c.charAt(0).toUpperCase() + c.slice(1))
       .join(', ');
 
     insights.push({
       type: 'growth_area',
-      message: `${missingCategories.length} domain${missingCategories.length > 1 ? 's' : ''} not yet explored: ${formattedDomains}`,
+      message: `Lightly explored: ${focus}. Aim for 2–3 more challenges to build momentum.`,
       priority: 'medium'
     });
   }
@@ -443,4 +504,38 @@ function generateInsights({
       priority: 'medium'
     }
   ];
+}
+
+function normalizeChallengeCategoryLabel(raw?: string | null) {
+  if (!raw) return 'Miscellaneous';
+  const cleaned = raw.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return 'Miscellaneous';
+  switch (cleaned) {
+    case 'crypto':
+    case 'cryptography':
+      return 'Cryptography';
+    case 'foren':
+    case 'forensics':
+      return 'Forensics';
+    case 'reven':
+    case 'reverse engineering':
+    case 'reversing':
+      return 'Reverse Engineering';
+    case 'binexp':
+    case 'binary exploitation':
+      return 'Binary Exploitation';
+    case 'osint':
+      return 'OSINT';
+    case 'web':
+      return 'Web';
+    case 'operating systems':
+    case 'operating system':
+    case 'os':
+      return 'Operating Systems';
+    case 'misc':
+    case 'miscellaneous':
+      return 'Miscellaneous';
+    default:
+      return cleaned.replace(/\b\w/g, (match) => match.toUpperCase());
+  }
 }

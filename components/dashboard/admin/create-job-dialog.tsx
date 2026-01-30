@@ -21,6 +21,7 @@ import { supabase } from '@/lib/supabase/client';
 const TASK_TYPES = [
   { value: 'game_platform_sync', label: 'Incremental Sync (game_platform_sync)' },
   { value: 'game_platform_totals_sweep', label: 'Totals Sweep (game_platform_totals_sweep)' },
+  { value: 'game_platform_profile_refresh', label: 'Profile Refresh (game_platform_profile_refresh)' },
   { value: 'game_platform_onboard_competitors', label: 'Onboard Competitors (game_platform_onboard_competitors)' },
   { value: 'sms_digest_processor', label: 'Coach Alert Digest (sms_digest_processor)' },
   { value: 'admin_alert_dispatch', label: 'Admin Instant Alerts (admin_alert_dispatch)' },
@@ -31,6 +32,7 @@ const TASK_TYPES = [
 const TASKS_WITH_COACH_FILTER = new Set([
   'game_platform_sync',
   'game_platform_totals_sweep',
+  'game_platform_profile_refresh',
   'game_platform_onboard_competitors',
   'sms_digest_processor',
 ]);
@@ -117,6 +119,11 @@ export function CreateJobDialog() {
               forceFlashCtfSync,
             };
           }
+          case 'game_platform_profile_refresh':
+            return {
+              dryRun: false,
+              coachId: formData.coachId || null,
+            };
           case 'game_platform_onboard_competitors':
             return {
               batchSize: 50,

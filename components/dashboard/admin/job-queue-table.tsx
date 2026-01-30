@@ -325,6 +325,8 @@ function formatTaskLabel(taskType: string) {
       return 'Game Platform Sync';
     case 'game_platform_totals_sweep':
       return 'Totals Sweep';
+    case 'game_platform_profile_refresh':
+      return 'Profile Refresh';
     case 'game_platform_onboard_competitors':
       return 'Onboard Competitors';
     case 'sms_digest_processor':

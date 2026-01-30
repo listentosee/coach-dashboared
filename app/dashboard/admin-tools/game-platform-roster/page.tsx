@@ -40,6 +40,7 @@ type SyncStateRow = {
   last_result: string | null;
   last_attempt_at: string | null;
   last_remote_accessed_at: string | null;
+  last_login_at: string | null;
   error_message: string | null;
 };
 
@@ -133,7 +134,7 @@ export default async function GamePlatformRosterPage({
         const fetchSyncStates = async (client: any) => {
           const { data: syncStateData, error: syncStateError } = await client
             .from('game_platform_sync_state')
-            .select('synced_user_id, last_result, last_attempt_at, last_remote_accessed_at, error_message')
+            .select('synced_user_id, last_result, last_attempt_at, last_remote_accessed_at, last_login_at, error_message')
             .in('synced_user_id', uniqueSyncedIds);
 
           if (syncStateError) {
@@ -180,6 +181,7 @@ export default async function GamePlatformRosterPage({
           last_result: syncState?.last_result ?? null,
           last_attempt_at: syncState?.last_attempt_at ?? null,
           last_accessed_at: syncState?.last_remote_accessed_at ?? null,
+          last_login_at: syncState?.last_login_at ?? null,
           error_message: syncState?.error_message ?? null,
         };
       });

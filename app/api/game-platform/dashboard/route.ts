@@ -10,6 +10,40 @@ function toIsoOrNull(value?: string | null) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function normalizeChallengeCategoryLabel(raw?: string | null) {
+  if (!raw) return 'Uncategorized';
+  const cleaned = raw.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return 'Uncategorized';
+  switch (cleaned) {
+    case 'crypto':
+    case 'cryptography':
+      return 'Cryptography';
+    case 'foren':
+    case 'forensics':
+      return 'Forensics';
+    case 'reven':
+    case 'reverse engineering':
+    case 'reversing':
+      return 'Reverse Engineering';
+    case 'binexp':
+    case 'binary exploitation':
+      return 'Binary Exploitation';
+    case 'osint':
+      return 'OSINT';
+    case 'web':
+      return 'Web';
+    case 'operating systems':
+    case 'operating system':
+    case 'os':
+      return 'Operating Systems';
+    case 'misc':
+    case 'miscellaneous':
+      return 'Miscellaneous';
+    default:
+      return cleaned.replace(/\b\w/g, (match) => match.toUpperCase());
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -114,7 +148,7 @@ export async function GET(request: NextRequest) {
       if (gamePlatformIds.length > 0) {
         const { data: syncStateData, error: syncStateError } = await statsClient
           .from('game_platform_sync_state')
-          .select('synced_user_id, last_attempt_at, last_result, error_message')
+          .select('synced_user_id, last_attempt_at, last_result, last_login_at, error_message')
           .in('synced_user_id', gamePlatformIds);
 
         if (syncStateError) {
@@ -139,7 +173,7 @@ export async function GET(request: NextRequest) {
         // Query Flash CTF events from the normalized table
         const { data: flashData, error: flashError } = await statsClient
           .from('game_platform_flash_ctf_events')
-          .select('synced_user_id, event_id, flash_ctf_name, challenges_solved, points_earned, started_at')
+          .select('synced_user_id, event_id, flash_ctf_name, challenges_solved, points_earned, max_points_possible, rank, started_at')
           .in('synced_user_id', gamePlatformIds);
 
         if (flashError) {
@@ -219,7 +253,7 @@ export async function GET(request: NextRequest) {
       const categoryPoints: Record<string, number> = {};
 
       competitorSolves.forEach((solve: any) => {
-        const category = solve?.challenge_category || 'Uncategorized';
+        const category = normalizeChallengeCategoryLabel(solve?.challenge_category);
         categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
         categoryPoints[category] = (categoryPoints[category] ?? 0) + (solve?.challenge_points ?? 0);
       });
@@ -511,6 +545,8 @@ export async function GET(request: NextRequest) {
         if (!mapping || mapping.status !== 'user_created') return null;
         const syncedUserId = c.game_platform_id || mapping.synced_user_id || null;
         if (!syncedUserId) return null;
+        const syncState = syncStateByUserId.get(syncedUserId) ?? null;
+        if (syncState?.last_login_at) return null;
 
         return {
           competitorId: c.id,
@@ -658,7 +694,7 @@ export async function GET(request: NextRequest) {
 
       const { data: flashEvents } = await flashClient
           .from('game_platform_flash_ctf_events')
-          .select('synced_user_id, event_id, flash_ctf_name, challenges_solved, points_earned, started_at, raw_payload')
+          .select('synced_user_id, event_id, flash_ctf_name, challenges_solved, points_earned, max_points_possible, rank, started_at, raw_payload')
           .in('synced_user_id', syncedCompetitorIds)
         .gte('started_at', twelveMonthsAgo.toISOString())
         .order('started_at', { ascending: false });
@@ -801,18 +837,27 @@ export async function GET(request: NextRequest) {
           event.raw_payload.challenge_solves.forEach((ch: any) => {
             challengeDetails.push({
               name: ch.challenge_title || 'Unknown Challenge',
-              category: ch.challenge_category || 'Uncategorized',
+              category: normalizeChallengeCategoryLabel(ch.challenge_category),
               points: ch.challenge_points || 0,
               solvedAt: ch.timestamp_unix ? new Date(ch.timestamp_unix * 1000).toISOString() : event.started_at,
             });
           });
         }
 
+        const payloadMaxPoints = typeof event?.raw_payload?.max_points_possible === 'number'
+          ? event.raw_payload.max_points_possible
+          : null;
+        const payloadRank = typeof event?.raw_payload?.rank === 'number'
+          ? event.raw_payload.rank
+          : null;
+
         eventsByCompetitor.get(competitor.id)!.push({
           eventName: event.flash_ctf_name,
           date: event.started_at,
           challenges: event.challenges_solved || 0,
           points: event.points_earned || 0,
+          pointsPossible: event.max_points_possible ?? payloadMaxPoints ?? null,
+          rank: event.rank ?? payloadRank ?? null,
           challengeDetails,
         });
       });

@@ -3,7 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Edit, UserCheck, Gamepad2, Ban, Link as LinkIcon, ChevronDown, ChevronUp, ChevronsUpDown, Send, FileText, Trophy } from "lucide-react"
+import { Edit, UserCheck, Gamepad2, Ban, Link as LinkIcon, ChevronDown, ChevronUp, ChevronsUpDown, Send, FileText, Trophy, Zap } from "lucide-react"
 import { emailTemplates } from "@/components/ui/email-composer"
 import { getStatusDisplayLabel } from "@/lib/utils/competitor-status"
 
@@ -43,6 +43,7 @@ export interface Competitor {
   game_platform_synced_at?: string;
   game_platform_sync_error?: string | null;
   game_platform_status?: string | null;
+  game_platform_last_login_at?: string | null;
   team_id?: string;
   team_name?: string;
   team_position?: number;
@@ -174,11 +175,23 @@ export const createCompetitorColumns = (
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
       const displayLabel = getStatusDisplayLabel(status);
+      const competitor = row.original;
+      const hasActivated = Boolean(competitor.game_platform_last_login_at);
       return (
         <div className="text-center">
-          <Badge className={getStatusColor(status)}>
-            {displayLabel}
-          </Badge>
+          <div className="relative inline-flex items-center">
+            <Badge className={getStatusColor(status)}>
+              {displayLabel}
+            </Badge>
+            {hasActivated && (
+              <span
+                className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-amber-950 shadow-sm"
+                title="MetaCTF account activated"
+              >
+                <Zap className="h-2.5 w-2.5" />
+              </span>
+            )}
+          </div>
         </div>
       );
     },

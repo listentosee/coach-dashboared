@@ -93,6 +93,8 @@ export async function GET(request: NextRequest) {
     let agreementsData: any[] = [];
     
     let profileMappings: GamePlatformProfileRecord[] = [];
+    let syncStates: Array<{ synced_user_id: string; last_login_at: string | null }> = [];
+    const mappingByCompetitorId = new Map<string, GamePlatformProfileRecord>();
 
     if (competitorIds.length > 0) {
       const { data: teamMembers, error: teamMembersError } = await supabase
@@ -127,12 +129,39 @@ export async function GET(request: NextRequest) {
       } else {
         profileMappings = mappingData || [];
       }
+
+      for (const mapping of profileMappings) {
+        if (mapping.competitor_id) {
+          mappingByCompetitorId.set(mapping.competitor_id, mapping);
+        }
+      }
+
+      const syncedIds = (competitors || [])
+        .map((c) => {
+          const mapping = mappingByCompetitorId.get(c.id);
+          return c.game_platform_id || mapping?.synced_user_id || null;
+        })
+        .filter((value): value is string => Boolean(value));
+
+      const uniqueSyncedIds = Array.from(new Set(syncedIds));
+      if (uniqueSyncedIds.length) {
+        const { data: syncStateData, error: syncStateError } = await supabase
+          .from('game_platform_sync_state')
+          .select('synced_user_id, last_login_at')
+          .in('synced_user_id', uniqueSyncedIds);
+
+        if (syncStateError) {
+          logger.error('Failed to load game platform sync state', { error: syncStateError.message });
+        } else {
+          syncStates = syncStateData || [];
+        }
+      }
     }
 
-    const mappingByCompetitorId = new Map<string, GamePlatformProfileRecord>();
-    for (const mapping of profileMappings) {
-      if (mapping.competitor_id) {
-        mappingByCompetitorId.set(mapping.competitor_id, mapping);
+    const syncStateByUserId = new Map<string, { last_login_at: string | null }>();
+    for (const state of syncStates) {
+      if (state?.synced_user_id) {
+        syncStateByUserId.set(state.synced_user_id, { last_login_at: state.last_login_at ?? null });
       }
     }
 
@@ -146,6 +175,7 @@ export async function GET(request: NextRequest) {
       const coachLabel = coachFullName || coachProfile?.email || null
       const mapping = mappingByCompetitorId.get(competitor.id) ?? null
       const syncedUserId = competitor.game_platform_id || mapping?.synced_user_id || null;
+      const syncState = syncedUserId ? syncStateByUserId.get(syncedUserId) : null;
 
       return {
         id: competitor.id,
@@ -166,6 +196,7 @@ export async function GET(request: NextRequest) {
         game_platform_synced_at: competitor.game_platform_synced_at ?? mapping?.last_synced_at ?? null,
         game_platform_sync_error: (competitor as any).game_platform_sync_error || mapping?.sync_error || null,
         game_platform_status: mapping?.status ?? null,
+        game_platform_last_login_at: syncState?.last_login_at ?? null,
         profile_update_token: competitor.profile_update_token,
         profile_update_token_expires: competitor.profile_update_token_expires,
         created_at: competitor.created_at,

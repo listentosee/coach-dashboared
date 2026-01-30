@@ -105,7 +105,7 @@ interface DashboardData {
       month: string;
       participants: number;
     }>;
-    eventsByCompetitor?: Record<string, Array<{ eventName: string; date: string; challenges: number; points: number; challengeDetails?: Array<{ name: string; category: string; points: number; solvedAt: string }> }>>;
+    eventsByCompetitor?: Record<string, Array<{ eventName: string; date: string; challenges: number; points: number; pointsPossible?: number | null; rank?: number | null; challengeDetails?: Array<{ name: string; category: string; points: number; solvedAt: string }> }>>;
   };
 }
 
@@ -165,7 +165,7 @@ export default function GamePlatformDashboard() {
     competitorId: string;
     name: string;
     eventName?: string;
-    events: Array<{ eventName: string; date: string; challenges: number; points: number }>;
+    events: Array<{ eventName: string; date: string; challenges: number; points: number; pointsPossible?: number | null; rank?: number | null }>;
     challenges?: Array<{ name: string; category: string; points: number; solvedAt: string }>;
   } | null>(null);
   const [flashCtfDrilldownOpen, setFlashCtfDrilldownOpen] = useState(false);
@@ -529,7 +529,7 @@ export default function GamePlatformDashboard() {
     []
   );
 
-  const flashCtfEventColumns = useMemo<ColumnDef<{ eventName: string; date: string; challenges: number; points: number }>[]>(
+  const flashCtfEventColumns = useMemo<ColumnDef<{ eventName: string; date: string; challenges: number; points: number; pointsPossible?: number | null; rank?: number | null }>[]>(
     () => [
       {
         accessorKey: 'eventName',
@@ -548,8 +548,26 @@ export default function GamePlatformDashboard() {
       },
       {
         accessorKey: 'points',
-        header: 'Points',
+        header: 'Points Achieved',
         cell: ({ row }) => <span className="text-meta-light">{formatNumber(row.original.points)}</span>,
+      },
+      {
+        accessorKey: 'pointsPossible',
+        header: 'Points Possible',
+        cell: ({ row }) => (
+          <span className="text-meta-light">
+            {typeof row.original.pointsPossible === 'number' ? formatNumber(row.original.pointsPossible) : '—'}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'rank',
+        header: 'Rank',
+        cell: ({ row }) => (
+          <span className="text-meta-light">
+            {typeof row.original.rank === 'number' ? `#${row.original.rank}` : '—'}
+          </span>
+        ),
       },
     ],
     []
@@ -818,7 +836,16 @@ export default function GamePlatformDashboard() {
           }
           description={
             flashCtfDrilldown?.challenges
-              ? `Challenges solved in ${flashCtfDrilldown.eventName}`
+              ? (() => {
+                  const eventMeta = flashCtfDrilldown.events?.[0];
+                  const points = typeof eventMeta?.points === 'number' ? formatNumber(eventMeta.points) : '—';
+                  const pointsPossible = typeof eventMeta?.pointsPossible === 'number'
+                    ? formatNumber(eventMeta.pointsPossible)
+                    : null;
+                  const rank = typeof eventMeta?.rank === 'number' ? `#${eventMeta.rank}` : '—';
+                  const pointsLabel = pointsPossible ? `${points} / ${pointsPossible} pts` : `${points} pts`;
+                  return `Challenges solved in ${flashCtfDrilldown.eventName} • ${pointsLabel} • Rank ${rank}`;
+                })()
               : 'All Flash CTF events this competitor has participated in'
           }
           datasets={flashCtfDrilldown ? (

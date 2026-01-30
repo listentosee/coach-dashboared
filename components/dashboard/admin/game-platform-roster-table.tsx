@@ -20,6 +20,7 @@ export interface GamePlatformRosterRow {
   last_result: string | null;
   last_attempt_at: string | null;
   last_accessed_at: string | null;
+  last_login_at: string | null;
   error_message: string | null;
 }
 
@@ -167,12 +168,26 @@ export function GamePlatformRosterTable({ rows }: { rows: GamePlatformRosterRow[
     },
     {
       accessorKey: "last_accessed_at",
-      header: sortHeader("Last Accessed"),
+      header: sortHeader("Last Activity"),
       cell: ({ row }) => {
         const lastAccessed = row.original.last_accessed_at;
         return lastAccessed ? (
           <div className="text-sm text-meta-light">
             {formatDate(lastAccessed)}
+          </div>
+        ) : (
+          <Badge className="bg-slate-600/40 text-slate-200">Never</Badge>
+        );
+      },
+    },
+    {
+      accessorKey: "last_login_at",
+      header: sortHeader("Last Login"),
+      cell: ({ row }) => {
+        const lastLogin = row.original.last_login_at;
+        return lastLogin ? (
+          <div className="text-sm text-meta-light">
+            {formatDate(lastLogin)}
           </div>
         ) : (
           <Badge className="bg-slate-600/40 text-slate-200">Never</Badge>

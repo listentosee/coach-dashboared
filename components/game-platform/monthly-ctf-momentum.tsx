@@ -24,6 +24,8 @@ interface CtfEvent {
   date: string;
   challenges: number;
   points: number;
+  pointsPossible?: number | null;
+  rank?: number | null;
   challengeDetails?: Array<{ name: string; category: string; points: number; solvedAt: string }>;
 }
 

@@ -34,6 +34,7 @@ interface Competitor {
   game_platform_synced_at?: string;
   game_platform_sync_error?: string | null;
   game_platform_status?: string | null;
+  game_platform_last_login_at?: string | null;
   team_id?: string;
   team_name?: string;
   team_position?: number;

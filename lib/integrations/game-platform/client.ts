@@ -79,6 +79,7 @@ const UserResponseSchema = z.object({
   metactf_username: z.string(),
   syned_user_id: z.string(),
   metactf_user_status: z.enum(['user_created', 'pending_approval', 'approved', 'denied']),
+  last_login_unix_timestamp: z.number().nullable().optional(),
 });
 
 const CreateUserResponseSchema = z.object({
@@ -134,6 +135,7 @@ const FlashCtfEntrySchema = z.object({
   flash_ctf_time_end_unix: z.number().optional(), // Not in spec but included for forward compatibility
   challenges_solved: z.number(),
   points_earned: z.number(),
+  max_points_possible: z.number().optional(),
   rank: z.number(),
   challenge_solves: z.array(ChallengeSolveSchema), // Required per API spec
 });

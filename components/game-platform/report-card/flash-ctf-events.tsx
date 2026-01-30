@@ -8,6 +8,7 @@ interface FlashCtfEvent {
   rank: number | null;
   challengesSolved: number;
   pointsEarned: number;
+  pointsPossible?: number | null;
   topCategory?: string | null;
 }
 
@@ -25,6 +26,7 @@ export default function FlashCtfEvents({ events }: Props) {
   const displayEvents = sortedEvents.slice(0, 5);
   const totalChallenges = events.reduce((sum, e) => sum + e.challengesSolved, 0);
   const totalPoints = events.reduce((sum, e) => sum + e.pointsEarned, 0);
+  const totalPossible = events.reduce((sum, e) => sum + (e.pointsPossible ?? 0), 0);
 
   const getRankBadgeColor = (rank: number | null): string => {
     if (!rank) return 'bg-gray-100 text-gray-600';
@@ -59,7 +61,9 @@ export default function FlashCtfEvents({ events }: Props) {
             </div>
             <div>
               <div className="text-xs text-blue-700">Total Points</div>
-              <div className="text-lg font-bold text-blue-900">{totalPoints}</div>
+              <div className="text-lg font-bold text-blue-900">
+                {totalPossible ? `${totalPoints} / ${totalPossible}` : totalPoints}
+              </div>
             </div>
           </div>
 
@@ -92,7 +96,9 @@ export default function FlashCtfEvents({ events }: Props) {
                         </span>
                         <span className="flex items-center gap-1">
                           <Trophy className="h-2.5 w-2.5" />
-                          {event.pointsEarned} pts
+                          {event.pointsPossible
+                            ? `${event.pointsEarned}/${event.pointsPossible} pts`
+                            : `${event.pointsEarned} pts`}
                         </span>
                       </div>
                     </div>

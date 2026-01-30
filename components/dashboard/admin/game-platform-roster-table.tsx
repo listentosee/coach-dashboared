@@ -203,8 +203,6 @@ export function GamePlatformRosterTable({ rows }: { rows: GamePlatformRosterRow[
       ),
     },
     {
-      
-    {
       accessorKey: "error_message",
       header: sortHeader("Error Message"),
       cell: ({ row }) => {

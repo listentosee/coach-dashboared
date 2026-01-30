@@ -167,12 +167,18 @@ export default async function GamePlatformRosterPage({
         const mapping = mappingByCompetitorId.get(competitor.id);
         const syncedUserId = competitor.game_platform_id || mapping?.synced_user_id || null;
         const syncState = syncedUserId ? syncStateByUserId.get(syncedUserId) : null;
+        const onboardedEmailType = competitor.email_personal
+          ? 'personal'
+          : competitor.email_school
+          ? 'school'
+          : null;
 
         return {
           competitor_id: competitor.id,
           competitor_name: formatCompetitorName(competitor.first_name, competitor.last_name),
           email_school: competitor.email_school ?? null,
           email_personal: competitor.email_personal ?? null,
+          onboarded_email_type: onboardedEmailType,
           game_platform_id: competitor.game_platform_id ?? mapping?.synced_user_id ?? null,
           metactf_role: mapping?.metactf_role ?? null,
           metactf_user_id: mapping?.metactf_user_id ?? null,

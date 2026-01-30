@@ -12,6 +12,7 @@ export interface GamePlatformRosterRow {
   competitor_name: string;
   email_school: string | null;
   email_personal: string | null;
+  onboarded_email_type: 'personal' | 'school' | null;
   game_platform_id: string | null;
   metactf_role: string | null;
   metactf_user_id: number | null;
@@ -74,16 +75,51 @@ export function GamePlatformRosterTable({ rows }: { rows: GamePlatformRosterRow[
       cell: ({ row }) => {
         const schoolEmail = row.original.email_school;
         const personalEmail = row.original.email_personal;
+        const onboardedType = row.original.onboarded_email_type;
         return (
           <div className="min-w-[260px]">
             <div className="font-medium text-meta-light">{row.original.competitor_name || "-"}</div>
             {schoolEmail && (
-              <div className="text-xs text-meta-muted">S: {schoolEmail}</div>
+              <div className="text-xs text-meta-muted">
+                S: {schoolEmail}
+                {onboardedType === 'school' && <span className="ml-1 text-amber-300">*</span>}
+              </div>
             )}
             {personalEmail && (
-              <div className="text-xs text-meta-muted">P: {personalEmail}</div>
+              <div className="text-xs text-meta-muted">
+                P: {personalEmail}
+                {onboardedType === 'personal' && <span className="ml-1 text-amber-300">*</span>}
+              </div>
             )}
           </div>
+        );
+      },
+    },
+    {
+      accessorKey: "last_accessed_at",
+      header: sortHeader("Last Activity"),
+      cell: ({ row }) => {
+        const lastAccessed = row.original.last_accessed_at;
+        return lastAccessed ? (
+          <div className="text-sm text-meta-light">
+            {formatDate(lastAccessed)}
+          </div>
+        ) : (
+          <Badge className="bg-slate-600/40 text-slate-200">Never</Badge>
+        );
+      },
+    },
+    {
+      accessorKey: "last_login_at",
+      header: sortHeader("Last Login"),
+      cell: ({ row }) => {
+        const lastLogin = row.original.last_login_at;
+        return lastLogin ? (
+          <div className="text-sm text-meta-light">
+            {formatDate(lastLogin)}
+          </div>
+        ) : (
+          <Badge className="bg-slate-600/40 text-slate-200">Never</Badge>
         );
       },
     },
@@ -167,33 +203,7 @@ export function GamePlatformRosterTable({ rows }: { rows: GamePlatformRosterRow[
       ),
     },
     {
-      accessorKey: "last_accessed_at",
-      header: sortHeader("Last Activity"),
-      cell: ({ row }) => {
-        const lastAccessed = row.original.last_accessed_at;
-        return lastAccessed ? (
-          <div className="text-sm text-meta-light">
-            {formatDate(lastAccessed)}
-          </div>
-        ) : (
-          <Badge className="bg-slate-600/40 text-slate-200">Never</Badge>
-        );
-      },
-    },
-    {
-      accessorKey: "last_login_at",
-      header: sortHeader("Last Login"),
-      cell: ({ row }) => {
-        const lastLogin = row.original.last_login_at;
-        return lastLogin ? (
-          <div className="text-sm text-meta-light">
-            {formatDate(lastLogin)}
-          </div>
-        ) : (
-          <Badge className="bg-slate-600/40 text-slate-200">Never</Badge>
-        );
-      },
-    },
+      
     {
       accessorKey: "error_message",
       header: sortHeader("Error Message"),

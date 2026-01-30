@@ -123,11 +123,18 @@ export const createCompetitorColumns = (
       const idFallback = competitor.coach_id ? `${competitor.coach_id.slice(0, 8)}…` : 'Unknown coach';
       const coachLabel = directoryEntry?.name || competitor.coach_name || directoryEntry?.email || competitor.coach_email || idFallback;
       const showCoachHint = !!showCoachContextHint && coachLabel;
+      const isOnboarded = Boolean(competitor.game_platform_id || competitor.game_platform_status);
+      const onboardedEmail = isOnboarded ? (competitor.email_personal || competitor.email_school) : null;
       return (
         <div title={showCoachHint ? `Coach: ${coachLabel}` : undefined}>
           <div className="font-medium text-meta-light">
             {competitor.first_name} {competitor.last_name}
           </div>
+          {onboardedEmail && (
+            <div className="text-xs text-meta-muted">
+              {onboardedEmail}
+            </div>
+          )}
           {(() => {
             const divisionLabel = formatDivisionLabel(competitor.division);
             const gradeLabel = competitor.grade ? `G ${competitor.grade}` : null;

@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     const { data, error } = await supabase
       .from('message_read_receipts')
-      .upsert(rows, { onConflict: 'message_id,user_id' })
+      .upsert(rows, { onConflict: 'message_id,user_id', ignoreDuplicates: true })
       .select('message_id')
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })

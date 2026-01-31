@@ -86,6 +86,7 @@ export function CoachMessagingWorkspace() {
       const response = await fetch('/api/messaging/read-receipts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ messageIds: ids }),
       })
       if (!response.ok) {

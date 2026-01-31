@@ -37,18 +37,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Message not found' }, { status: 404 })
     }
 
-    const { data: membership, error: membershipError } = await supabase
-      .from('conversation_members')
-      .select('user_id')
-      .eq('conversation_id', message.conversation_id)
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    if (membershipError || !membership) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
     const isAdmin = await isUserAdmin(supabase, user.id)
+    if (!isAdmin) {
+      const { data: membership, error: membershipError } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .eq('conversation_id', message.conversation_id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (membershipError || !membership) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+    }
     const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     const readerClient = (isAdmin && serviceUrl && serviceKey)
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
 
     const { data: receipts, error: receiptsError } = await readerClient
       .from('message_read_receipts')
-      .select('user_id, read_at, profiles(id, first_name, last_name, full_name, email)')
+      .select('user_id, read_at')
       .eq('message_id', messageId)
       .order('read_at', { ascending: false })
 
@@ -65,8 +66,23 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: receiptsError.message }, { status: 400 })
     }
 
+    const userIds = Array.from(new Set((receipts || []).map((row: any) => row.user_id).filter(Boolean)))
+    if (userIds.length === 0) {
+      return NextResponse.json({ seen: [] })
+    }
+
+    const { data: profiles, error: profileError } = await readerClient
+      .from('profiles')
+      .select('id, first_name, last_name, full_name, email')
+      .in('id', userIds as any)
+
+    if (profileError) {
+      return NextResponse.json({ error: profileError.message }, { status: 400 })
+    }
+
+    const profileMap = new Map((profiles || []).map((profile: any) => [profile.id, profile]))
     const seen = (receipts || [])
-      .map((row: any) => formatDisplayName(row.profiles))
+      .map((row: any) => formatDisplayName(profileMap.get(row.user_id)))
       .filter((name: string) => !!name)
 
     return NextResponse.json({ seen })

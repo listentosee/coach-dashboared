@@ -69,6 +69,9 @@ export function CreateJobDialog() {
     run_at: '',
     coachId: '',
     forceSyncScope: 'none',
+    syncMode: 'standard',
+    syncTeamsMode: 'wrap',
+    batchSize: 50,
     forceNotifications: false,
     competitorIds: '',
     forceReonboard: false,
@@ -112,12 +115,19 @@ export function CreateJobDialog() {
             const forceSyncScope = formData.forceSyncScope;
             const forceFullSync = forceSyncScope === 'odl' || forceSyncScope === 'both';
             const forceFlashCtfSync = forceSyncScope === 'ctf' || forceSyncScope === 'both';
-            return {
+            const payload: any = {
               dryRun: false,
               coachId: formData.coachId || null,
               forceFullSync,
               forceFlashCtfSync,
             };
+            if (formData.syncMode === 'wave') {
+              payload.mode = 'wave';
+              payload.batchSize = Math.max(1, Math.min(200, Math.floor(Number(formData.batchSize) || 50)));
+              if (formData.syncTeamsMode === 'always') payload.syncTeams = true;
+              if (formData.syncTeamsMode === 'never') payload.syncTeams = false;
+            }
+            return payload;
           }
           case 'game_platform_profile_refresh':
             return {
@@ -201,6 +211,9 @@ export function CreateJobDialog() {
         run_at: '',
         coachId: '',
         forceSyncScope: 'none',
+        syncMode: 'standard',
+        syncTeamsMode: 'wrap',
+        batchSize: 50,
         forceNotifications: false,
         competitorIds: '',
         forceReonboard: false,
@@ -306,21 +319,72 @@ export function CreateJobDialog() {
 
           {formData.task_type === 'game_platform_sync' && (
             <div className="p-3 border rounded bg-gray-50">
-              <Label htmlFor="force_sync_scope" className="text-gray-900">Force Sync Scope</Label>
-              <select
-                id="force_sync_scope"
-                value={formData.forceSyncScope}
-                onChange={(e) => setFormData({ ...formData, forceSyncScope: e.target.value })}
-                className="mt-2 w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900"
-              >
-                <option value="none">None (incremental)</option>
-                <option value="odl">ODL only</option>
-                <option value="ctf">CTF only</option>
-                <option value="both">ODL + CTF</option>
-              </select>
-              <p className="text-xs text-gray-600 mt-2">
-                Choose which data to fully resync. ODL resets the incremental timestamp; CTF forces Flash CTF refresh.
-              </p>
+              <div>
+                <Label htmlFor="sync_mode" className="text-gray-900">Sync Mode</Label>
+                <select
+                  id="sync_mode"
+                  value={formData.syncMode}
+                  onChange={(e) => setFormData({ ...formData, syncMode: e.target.value })}
+                  className="mt-2 w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900"
+                >
+                  <option value="standard">Standard (all users)</option>
+                  <option value="wave">Wave (batch per run)</option>
+                </select>
+                <p className="text-xs text-gray-600 mt-2">
+                  Wave mode processes a small batch each run and wraps to the start when complete.
+                </p>
+              </div>
+
+              {formData.syncMode === 'wave' && (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="batch_size" className="text-gray-900">Batch Size</Label>
+                    <Input
+                      id="batch_size"
+                      type="number"
+                      min={1}
+                      max={200}
+                      value={formData.batchSize}
+                      onChange={(e) => {
+                        const nextValue = Number(e.target.value);
+                        setFormData({ ...formData, batchSize: Number.isFinite(nextValue) ? nextValue : 50 });
+                      }}
+                      className="mt-2 bg-white text-gray-900 border-gray-300"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="sync_teams_mode" className="text-gray-900">Team Sync</Label>
+                    <select
+                      id="sync_teams_mode"
+                      value={formData.syncTeamsMode}
+                      onChange={(e) => setFormData({ ...formData, syncTeamsMode: e.target.value })}
+                      className="mt-2 w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900"
+                    >
+                      <option value="wrap">On wave wrap (recommended)</option>
+                      <option value="always">Every batch</option>
+                      <option value="never">Never</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-3">
+                <Label htmlFor="force_sync_scope" className="text-gray-900">Force Sync Scope</Label>
+                <select
+                  id="force_sync_scope"
+                  value={formData.forceSyncScope}
+                  onChange={(e) => setFormData({ ...formData, forceSyncScope: e.target.value })}
+                  className="mt-2 w-full border border-gray-300 rounded px-3 py-2 bg-white text-gray-900"
+                >
+                  <option value="none">None (incremental)</option>
+                  <option value="odl">ODL only</option>
+                  <option value="ctf">CTF only</option>
+                  <option value="both">ODL + CTF</option>
+                </select>
+                <p className="text-xs text-gray-600 mt-2">
+                  Choose which data to fully resync. ODL resets the incremental timestamp; CTF forces Flash CTF refresh.
+                </p>
+              </div>
             </div>
           )}
 

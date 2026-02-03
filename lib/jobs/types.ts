@@ -16,6 +16,10 @@ export interface GamePlatformSyncPayload {
   coachId?: string | null;
   forceFullSync?: boolean;
   forceFlashCtfSync?: boolean;
+  batchSize?: number;
+  cursor?: { createdAt: string; id: string } | null;
+  mode?: 'wave' | 'full';
+  syncTeams?: boolean;
 }
 
 export interface GamePlatformTotalsSweepPayload {

@@ -65,6 +65,9 @@ export interface SyncAllCompetitorStatsParams extends ServiceOptions {
   coachId?: string | null;
   forceFullSync?: boolean;
   forceFlashCtfSync?: boolean;
+  batchSize?: number;
+  cursor?: { createdAt: string; id: string } | null;
+  wave?: boolean;
 }
 
 export interface RefreshGamePlatformProfilesParams extends ServiceOptions {
@@ -88,6 +91,16 @@ export interface SyncCompetitorStatsResult {
   competitorId: string;
   status: 'synced' | 'skipped_no_platform_id' | 'skipped_remote_missing' | 'skipped_no_new_data' | 'dry-run' | 'error';
   message?: string;
+}
+
+export interface SyncAllCompetitorStatsSummary {
+  total: number;
+  synced: number;
+  skipped: number;
+  results: SyncCompetitorStatsResult[];
+  nextCursor?: { createdAt: string; id: string } | null;
+  wrapped?: boolean;
+  batchSize?: number;
 }
 
 const FEATURE_ENABLED = process.env.GAME_PLATFORM_INTEGRATION_ENABLED === 'true';
@@ -1712,6 +1725,88 @@ export async function sweepPendingTotalsRefresh({
   };
 }
 
+type SyncWaveCursor = { createdAt: string; id: string };
+
+const DEFAULT_SYNC_WAVE_BATCH_SIZE = 50;
+const MAX_SYNC_WAVE_BATCH_SIZE = 200;
+
+function clampSyncWaveBatchSize(value?: number) {
+  if (!value || Number.isNaN(value)) return DEFAULT_SYNC_WAVE_BATCH_SIZE;
+  return Math.max(1, Math.min(MAX_SYNC_WAVE_BATCH_SIZE, Math.floor(value)));
+}
+
+function parseSyncWaveCursor(raw: unknown): SyncWaveCursor | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const createdAt = (raw as any).createdAt;
+  const id = (raw as any).id;
+  if (typeof createdAt !== 'string' || typeof id !== 'string') return null;
+  if (!createdAt || !id) return null;
+  return { createdAt, id };
+}
+
+async function fetchCompetitorBatch(params: {
+  supabase: AnySupabaseClient;
+  coachId?: string | null;
+  cursor: SyncWaveCursor | null;
+  batchSize: number;
+}) {
+  const { supabase, coachId, cursor, batchSize } = params;
+
+  let query = supabase
+    .from('competitors')
+    .select('id, coach_id, game_platform_id, created_at')
+    .not('game_platform_id', 'is', null)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(batchSize);
+
+  if (coachId) {
+    query = query.eq('coach_id', coachId);
+  }
+
+  if (cursor) {
+    query = query.or(
+      `created_at.gt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.gt.${cursor.id})`,
+    );
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw new Error(`Failed to list competitors for stats sync batch: ${error.message}`);
+  }
+
+  let rows = (data ?? []) as Array<any>;
+  let wrapped = false;
+
+  if (rows.length === 0 && cursor) {
+    wrapped = true;
+    let resetQuery = supabase
+      .from('competitors')
+      .select('id, coach_id, game_platform_id, created_at')
+      .not('game_platform_id', 'is', null)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .limit(batchSize);
+
+    if (coachId) {
+      resetQuery = resetQuery.eq('coach_id', coachId);
+    }
+
+    const { data: resetData, error: resetError } = await resetQuery;
+    if (resetError) {
+      throw new Error(`Failed to list competitors for stats sync batch (reset): ${resetError.message}`);
+    }
+    rows = (resetData ?? []) as Array<any>;
+  }
+
+  const last = rows.length > 0 ? rows[rows.length - 1] : null;
+  const nextCursor = last
+    ? { createdAt: String(last.created_at), id: String(last.id) }
+    : (wrapped ? null : cursor);
+
+  return { rows, nextCursor, wrapped };
+}
+
 export async function syncAllCompetitorGameStats({
   supabase,
   client,
@@ -1720,17 +1815,24 @@ export async function syncAllCompetitorGameStats({
   coachId,
   forceFullSync,
   forceFlashCtfSync,
-}: SyncAllCompetitorStatsParams) {
+  batchSize,
+  cursor,
+  wave,
+}: SyncAllCompetitorStatsParams): Promise<SyncAllCompetitorStatsSummary> {
   const statsClient: AnySupabaseClient = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
     : supabase;
+
+  const useWave = wave === true || typeof batchSize === 'number';
+  const resolvedBatchSize = useWave ? clampSyncWaveBatchSize(batchSize) : null;
+  const parsedCursor = useWave ? parseSyncWaveCursor(cursor ?? null) : null;
 
   // Create a sync run record to track this batch
   const { data: syncRun, error: syncRunError } = await statsClient
     .from('game_platform_sync_runs')
     .insert({
       status: 'running',
-      sync_type: 'incremental',
+      sync_type: useWave ? 'wave' : 'incremental',
     })
     .select()
     .single();
@@ -1742,15 +1844,17 @@ export async function syncAllCompetitorGameStats({
   const syncRunId = syncRun.id;
 
   // Get the last successful sync timestamp to use as after_time_unix for all competitors
-  let globalAfterTime: number | null = null;
+  let globalAfterTime: number | null | undefined = undefined;
 
   if (forceFullSync) {
+    globalAfterTime = null;
     logger?.info?.('forceFullSync enabled - performing full sync for all competitors (ignoring last sync timestamp)');
-  } else {
+  } else if (!useWave) {
     const { data: lastSync } = await statsClient
       .from('game_platform_sync_runs')
       .select('completed_at')
       .eq('status', 'completed')
+      .neq('sync_type', 'wave')
       .order('completed_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -1764,26 +1868,46 @@ export async function syncAllCompetitorGameStats({
     } else {
       logger?.info?.('No previous sync found - performing full sync for all competitors');
     }
+  } else {
+    logger?.info?.('Wave sync enabled - using per-competitor sync timestamps');
   }
 
-  let competitorQuery = supabase
-    .from('competitors')
-    .select('id, coach_id, game_platform_id')
-    .not('game_platform_id', 'is', null);
+  let competitors: Array<any> = [];
+  let nextCursor: SyncWaveCursor | null = null;
+  let wrapped = false;
 
-  if (coachId) {
-    competitorQuery = competitorQuery.eq('coach_id', coachId);
-  }
+  if (useWave && resolvedBatchSize) {
+    const batch = await fetchCompetitorBatch({
+      supabase,
+      coachId,
+      cursor: parsedCursor,
+      batchSize: resolvedBatchSize,
+    });
+    competitors = batch.rows;
+    nextCursor = batch.nextCursor;
+    wrapped = batch.wrapped;
+  } else {
+    let competitorQuery = supabase
+      .from('competitors')
+      .select('id, coach_id, game_platform_id')
+      .not('game_platform_id', 'is', null);
 
-  const { data: competitors, error } = await competitorQuery;
+    if (coachId) {
+      competitorQuery = competitorQuery.eq('coach_id', coachId);
+    }
 
-  if (error) {
-    // Mark sync run as failed
-    await statsClient
-      .from('game_platform_sync_runs')
-      .update({ status: 'failed', error_message: error.message })
-      .eq('id', syncRunId);
-    throw new Error(`Failed to list competitors for stats sync: ${error.message}`);
+    const { data, error } = await competitorQuery;
+
+    if (error) {
+      // Mark sync run as failed
+      await statsClient
+        .from('game_platform_sync_runs')
+        .update({ status: 'failed', error_message: error.message })
+        .eq('id', syncRunId);
+      throw new Error(`Failed to list competitors for stats sync: ${error.message}`);
+    }
+
+    competitors = data ?? [];
   }
 
   // Sentinel user detection for Flash CTF events
@@ -1841,7 +1965,11 @@ export async function syncAllCompetitorGameStats({
 
   const results: SyncCompetitorStatsResult[] = [];
 
-  logger?.info?.(`Starting incremental sync for ${competitors?.length ?? 0} competitors`);
+  if (useWave && resolvedBatchSize) {
+    logger?.info?.(`Starting wave sync for ${competitors?.length ?? 0} competitors (batch size ${resolvedBatchSize})`);
+  } else {
+    logger?.info?.(`Starting incremental sync for ${competitors?.length ?? 0} competitors`);
+  }
 
   for (const competitor of competitors || []) {
     const result = await syncCompetitorGameStats({
@@ -1883,6 +2011,9 @@ export async function syncAllCompetitorGameStats({
     synced,
     skipped,
     results,
+    nextCursor: useWave ? nextCursor : undefined,
+    wrapped: useWave ? wrapped : undefined,
+    batchSize: useWave ? resolvedBatchSize : undefined,
   };
 }
 

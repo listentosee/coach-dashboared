@@ -26,6 +26,10 @@ export interface OnboardCompetitorParams extends ServiceOptions {
   coachContextId?: string | null;
 }
 
+export interface OnboardCoachParams extends ServiceOptions {
+  coachId: string;
+}
+
 export interface SyncTeamParams extends ServiceOptions {
   teamId: string;
 }
@@ -33,6 +37,13 @@ export interface SyncTeamParams extends ServiceOptions {
 export interface OnboardResult {
   status: 'synced' | 'skipped_requires_profile' | 'skipped_already_synced' | 'dry_run';
   competitor: any;
+  remote?: any;
+}
+
+export interface OnboardCoachResult {
+  status: 'synced' | 'dry_run';
+  coachId: string;
+  syncedUserId?: string | null;
   remote?: any;
 }
 
@@ -255,6 +266,80 @@ async function ensureCoachGamePlatformId(
 function isDryRunOverride(dryRun?: boolean): boolean {
   // Respect feature flag: when integration is disabled, always treat as dry run
   return !FEATURE_ENABLED;
+}
+
+export async function onboardCoachToGamePlatform({
+  supabase,
+  client,
+  coachId,
+  dryRun,
+  logger,
+}: OnboardCoachParams): Promise<OnboardCoachResult> {
+  const effectiveDryRun = isDryRunOverride(dryRun);
+
+  const { data: coachProfile, error: coachError } = await supabase
+    .from('profiles')
+    .select('id, role, is_approved, email, first_name, last_name, full_name, school_name, division')
+    .eq('id', coachId)
+    .maybeSingle();
+
+  if (coachError || !coachProfile) {
+    throw new Error(`Coach ${coachId} not found: ${coachError?.message ?? 'unknown error'}`);
+  }
+
+  if (coachProfile.role !== 'coach') {
+    throw new Error(`Profile ${coachId} is not a coach`);
+  }
+
+  const firstName = coachProfile.first_name || coachProfile.full_name?.split(' ')[0] || 'Coach';
+  const lastName = coachProfile.last_name || coachProfile.full_name?.split(' ').slice(1).join(' ') || 'User';
+  const email = coachProfile.email || `${coachProfile.id}@mock.metactf.local`;
+
+  const payload: CreateUserPayload = {
+    first_name: firstName,
+    last_name: lastName || 'User',
+    email,
+    preferred_username: `${firstName}.${lastName}`.toLowerCase().replace(/[^a-z0-9._-]/g, '') || coachProfile.id,
+    role: 'coach',
+    syned_user_id: coachProfile.id,
+    syned_school_id: coachProfile.school_name || 'Unknown School',
+    syned_region_id: coachProfile.division || 'high_school',
+  };
+
+  if (effectiveDryRun) {
+    return {
+      status: 'dry_run',
+      coachId: coachProfile.id,
+      remote: {
+        dryRun: true,
+        expectedPayload: payload,
+      },
+    };
+  }
+
+  const resolvedClient = resolveClient(client, logger);
+  const syncedUserId = await ensureCoachGamePlatformId(supabase, resolvedClient, coachProfile, logger);
+
+  const { error: updateError } = await supabase
+    .from('profiles')
+    .update({
+      game_platform_user_id: syncedUserId,
+      game_platform_last_synced_at: new Date().toISOString(),
+    })
+    .eq('id', coachProfile.id);
+
+  if (updateError) {
+    logger?.warn?.('Failed to update coach profile with Game Platform user ID', {
+      coachId: coachProfile.id,
+      error: updateError.message,
+    });
+  }
+
+  return {
+    status: 'synced',
+    coachId: coachProfile.id,
+    syncedUserId,
+  };
 }
 
 export async function onboardCompetitorToGamePlatform({

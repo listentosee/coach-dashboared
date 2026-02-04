@@ -329,6 +329,8 @@ function formatTaskLabel(taskType: string) {
       return 'Profile Refresh';
     case 'game_platform_onboard_competitors':
       return 'Onboard Competitors';
+    case 'game_platform_onboard_coaches':
+      return 'Onboard Coaches';
     case 'sms_digest_processor':
       return 'Coach Alert Digest';
     case 'admin_alert_dispatch':

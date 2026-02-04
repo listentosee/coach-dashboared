@@ -23,6 +23,7 @@ const TASK_TYPES = [
   { value: 'game_platform_totals_sweep', label: 'Totals Sweep (game_platform_totals_sweep)' },
   { value: 'game_platform_profile_refresh', label: 'Profile Refresh (game_platform_profile_refresh)' },
   { value: 'game_platform_onboard_competitors', label: 'Onboard Competitors (game_platform_onboard_competitors)' },
+  { value: 'game_platform_onboard_coaches', label: 'Onboard Coaches (game_platform_onboard_coaches)' },
   { value: 'sms_digest_processor', label: 'Coach Alert Digest (sms_digest_processor)' },
   { value: 'admin_alert_dispatch', label: 'Admin Instant Alerts (admin_alert_dispatch)' },
   { value: 'release_parent_email_verification', label: 'Release Parent Email Verification (release_parent_email_verification)' },
@@ -34,6 +35,7 @@ const TASKS_WITH_COACH_FILTER = new Set([
   'game_platform_totals_sweep',
   'game_platform_profile_refresh',
   'game_platform_onboard_competitors',
+  'game_platform_onboard_coaches',
   'sms_digest_processor',
 ]);
 
@@ -142,6 +144,12 @@ export function CreateJobDialog() {
               source: parsedCompetitorIds.length > 0 ? 'manual' : 'backfill',
               competitorIds: parsedCompetitorIds.length > 0 ? parsedCompetitorIds : undefined,
               forceReonboard: formData.forceReonboard && parsedCompetitorIds.length > 0,
+            };
+          case 'game_platform_onboard_coaches':
+            return {
+              coachId: formData.coachId || null,
+              dryRun: false,
+              source: formData.coachId ? 'manual' : 'backfill',
             };
           case 'release_parent_email_verification':
             return {

@@ -6,6 +6,7 @@ export type JobTaskType =
   | 'game_platform_totals_sweep'
   | 'game_platform_profile_refresh'
   | 'game_platform_onboard_competitors'
+  | 'game_platform_onboard_coaches'
   | 'sms_digest_processor'
   | 'admin_alert_dispatch'
   | 'release_parent_email_verification'
@@ -42,6 +43,13 @@ export interface GamePlatformOnboardCompetitorsPayload {
   forceReonboard?: boolean;
 }
 
+export interface GamePlatformOnboardCoachesPayload {
+  coachId?: string | null;
+  coachIds?: string[];
+  dryRun?: boolean;
+  source?: 'backfill' | 'manual';
+}
+
 export interface NotificationJobPayload {
   dryRun?: boolean;
   coachId?: string | null; // Optional: process digest for specific recipient only
@@ -71,6 +79,7 @@ export interface JobPayloadMap {
   game_platform_totals_sweep: GamePlatformTotalsSweepPayload;
   game_platform_profile_refresh: GamePlatformProfileRefreshPayload;
   game_platform_onboard_competitors: GamePlatformOnboardCompetitorsPayload;
+  game_platform_onboard_coaches: GamePlatformOnboardCoachesPayload;
   sms_digest_processor: SmsDigestProcessorPayload;
   admin_alert_dispatch: AdminAlertDispatchPayload;
   release_parent_email_verification: ReleaseParentEmailVerificationPayload;

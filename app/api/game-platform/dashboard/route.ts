@@ -124,10 +124,16 @@ export async function GET(request: NextRequest) {
       .map((c) => c.game_platform_id || mappingByCompetitorId.get(c.id)?.synced_user_id)
       .filter((id): id is string => Boolean(id));
 
-    let stats: any[] = [];
     let challengeSolves: any[] = [];
     let flashCtfEvents: any[] = [];
     let syncStates: any[] = [];
+    let stats: any[] = [];
+    let categoryTotals: Array<{
+      synced_user_id: string;
+      challenge_category: string | null;
+      challenges: number;
+      points: number;
+    }> = [];
 
     if (competitorIds.length) {
       const statsClient = serviceClient ?? supabase;
@@ -138,13 +144,12 @@ export async function GET(request: NextRequest) {
         .in('competitor_id', competitorIds);
       if (statsError) {
         console.error('Dashboard stats query failed', statsError);
-        // Don't fail the whole request, just log and continue with empty stats
         stats = [];
       } else {
         stats = statsData || [];
       }
 
-      // Query challenge solves from the normalized table
+      // Query challenge solves from the normalized table (used for recent activity only)
       if (gamePlatformIds.length > 0) {
         const { data: syncStateData, error: syncStateError } = await statsClient
           .from('game_platform_sync_state')
@@ -170,6 +175,16 @@ export async function GET(request: NextRequest) {
           challengeSolves = solvesData || [];
         }
 
+        const { data: categoryData, error: categoryError } = await statsClient
+          .rpc('get_dashboard_category_totals', { p_synced_user_ids: gamePlatformIds });
+
+        if (categoryError) {
+          console.error('Dashboard category totals RPC failed', categoryError);
+          categoryTotals = [];
+        } else {
+          categoryTotals = categoryData || [];
+        }
+
         // Query Flash CTF events from the normalized table
         const { data: flashData, error: flashError } = await statsClient
           .from('game_platform_flash_ctf_events')
@@ -185,12 +200,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const statsMap = new Map<string, any>();
-    for (const stat of stats) {
-      statsMap.set(stat.competitor_id, stat);
-    }
-
-    // Group challenge solves by competitor
+    // Group challenge solves by competitor (for recent activity only)
     const solvesByCompetitor = new Map<string, any[]>();
     for (const solve of challengeSolves) {
       const key = solve.synced_user_id;
@@ -210,6 +220,23 @@ export async function GET(request: NextRequest) {
         flashEventsByCompetitor.set(key, []);
       }
       flashEventsByCompetitor.get(key)!.push(event);
+    }
+
+    const statsMap = new Map<string, any>();
+    for (const stat of stats) {
+      statsMap.set(stat.competitor_id, stat);
+    }
+
+    const categoryTotalsByUserId = new Map<string, Array<{ category: string; challenges: number; points: number }>>();
+    for (const row of categoryTotals) {
+      if (!row?.synced_user_id) continue;
+      const list = categoryTotalsByUserId.get(row.synced_user_id) ?? [];
+      list.push({
+        category: normalizeChallengeCategoryLabel(row.challenge_category),
+        challenges: row.challenges ?? 0,
+        points: row.points ?? 0,
+      });
+      categoryTotalsByUserId.set(row.synced_user_id, list);
     }
 
     const syncStateByUserId = new Map<string, any>();
@@ -242,21 +269,17 @@ export async function GET(request: NextRequest) {
       const stat = statsMap.get(competitor.id);
       const challengesCompleted = stat?.challenges_completed ?? 0;
       const monthlyCtf = stat?.monthly_ctf_challenges ?? 0;
+      const lastActivity = stat?.last_activity ? toIsoOrNull(stat.last_activity) : null;
 
-      // Get challenge solves from the normalized table instead of raw_data
-      const competitorSolves = syncedUserId
-        ? (solvesByCompetitor.get(syncedUserId) || [])
-        : [];
-
-      // Calculate category counts AND points from actual challenge solves
+      // Calculate category counts AND points from aggregated totals
       const categoryCounts: Record<string, number> = {};
       const categoryPoints: Record<string, number> = {};
 
-      competitorSolves.forEach((solve: any) => {
-        const category = normalizeChallengeCategoryLabel(solve?.challenge_category);
-        categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
-        categoryPoints[category] = (categoryPoints[category] ?? 0) + (solve?.challenge_points ?? 0);
-      });
+      const categoryRows = syncedUserId ? (categoryTotalsByUserId.get(syncedUserId) || []) : [];
+      for (const row of categoryRows) {
+        categoryCounts[row.category] = (categoryCounts[row.category] ?? 0) + row.challenges;
+        categoryPoints[row.category] = (categoryPoints[row.category] ?? 0) + row.points;
+      }
 
       competitorMap.set(competitor.id, {
         id: competitor.id,
@@ -273,6 +296,7 @@ export async function GET(request: NextRequest) {
         coach_school: competitor.coach?.school_name ?? null,
         challenges_completed: challengesCompleted,
         monthly_ctf_challenges: monthlyCtf,
+        last_activity: lastActivity,
         category_points: categoryPoints,
         category_counts: categoryCounts,
         game_platform_profile: profileMapping,
@@ -409,13 +433,12 @@ export async function GET(request: NextRequest) {
       categoryCounts: Record<string, number>;
     }> = [];
 
-    for (const stat of stats) {
-      const competitor = competitorMap.get(stat.competitor_id);
-      if (!competitor) continue;
+    for (const competitor of competitorMap.values()) {
+      if (!competitor?.game_platform_id) continue;
 
-      const challenges = stat.challenges_completed ?? 0;
-      const points = stat.total_score ?? 0;
-      const lastActivity = stat.last_activity ? new Date(stat.last_activity) : null;
+      const challenges = competitor.challenges_completed ?? 0;
+      const points = Object.values(competitor.category_points || {}).reduce((sum: number, value: number) => sum + value, 0);
+      const lastActivity = competitor.last_activity ? new Date(competitor.last_activity) : null;
 
       // Use category data already calculated from the database query
       const categoryCounts = competitor.category_counts || {};
@@ -430,11 +453,9 @@ export async function GET(request: NextRequest) {
 
       totalChallenges += challenges;
       if (lastActivity && lastActivity.getTime() >= fourteenDaysAgo) activeRecently += 1;
-      if (stat.synced_at) {
-        const syncedAtTime = new Date(stat.synced_at).toISOString();
-        if (!lastSyncedAt || syncedAtTime > lastSyncedAt) {
-          lastSyncedAt = syncedAtTime;
-        }
+      const syncedAtTime = toIsoOrNull(competitor.game_platform_synced_at);
+      if (syncedAtTime && (!lastSyncedAt || syncedAtTime > lastSyncedAt)) {
+        lastSyncedAt = syncedAtTime;
       }
 
       leaderboard.push({
@@ -873,7 +894,10 @@ export async function GET(request: NextRequest) {
     const response = {
       global: {
         totalCompetitors: competitors?.length ?? 0,
-        syncedCompetitors: stats.length,
+        syncedCompetitors: (competitors || []).filter((c) => {
+          const mapping = mappingByCompetitorId.get(c.id);
+          return Boolean(c.game_platform_id || mapping?.synced_user_id);
+        }).length,
         activeRecently,
         totalChallenges,
         monthlyCtfParticipants: monthlyCtfParticipantsFromEvents,

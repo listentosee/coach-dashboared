@@ -111,16 +111,9 @@ export async function GET(
     const daysActive = new Set(summaryData?.map(c => c.solved_at?.split('T')[0])).size || 0;
     const lastActivity = summaryData?.[0]?.solved_at || null;
 
-    // Fetch domain breakdown
-    const { data: domainData } = syncedUserId
-      ? await supabase.rpc('get_domain_stats', {
-          p_syned_user_id: syncedUserId
-        })
-      : { data: null };
-
-    // Fallback if RPC doesn't exist - calculate manually
+    // Calculate domain breakdown from challenge solves (source of truth)
     let domains = [];
-    if (!domainData && summaryData) {
+    if (summaryData) {
       const domainMap = new Map<string, { challenges: number; points: number; minPoints: number; maxPoints: number }>();
 
       for (const challenge of summaryData) {
@@ -150,38 +143,6 @@ export async function GET(
         }))
         .sort((a, b) => b.totalPoints - a.totalPoints)
         .map((d, i) => ({ ...d, rank: i + 1 }));
-    } else {
-      const normalizedDomains = (domainData || []).map((domain: any, index: number) => {
-        const categoryRaw = domain.category ?? domain.challenge_category ?? 'miscellaneous';
-        const category = normalizeChallengeCategoryLabel(categoryRaw);
-        const challengesCompleted = Number(
-          domain.challengesCompleted ?? domain.challenges_completed ?? domain.challenges ?? 0,
-        ) || 0;
-        const totalPointsValue = Number(
-          domain.totalPoints ?? domain.total_points ?? domain.points ?? 0,
-        ) || 0;
-        const avgDifficulty = domain.avgDifficulty ?? domain.avg_difficulty ?? 'easy';
-        const strength = domain.strength
-          ?? (totalPointsValue > totalPoints / 5
-            ? 'strong'
-            : challengesCompleted < 3
-              ? 'growth_area'
-              : 'developing');
-        const rank = Number(domain.rank) || index + 1;
-
-        return {
-          category,
-          challengesCompleted,
-          totalPoints: totalPointsValue,
-          avgDifficulty,
-          strength,
-          rank,
-        };
-      });
-
-      domains = normalizedDomains
-        .sort((a, b) => b.totalPoints - a.totalPoints)
-        .map((domain, index) => ({ ...domain, rank: index + 1 }));
     }
 
     // Fetch ALL challenges for NIST role calculation

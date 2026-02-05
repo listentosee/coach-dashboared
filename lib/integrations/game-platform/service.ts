@@ -1623,52 +1623,52 @@ export async function refreshCompetitorTotals({
     return;
   }
 
-  const resolvedClient = resolveClient(client, logger);
   const statsClient: AnySupabaseClient = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
     : supabase;
 
-  // Fetch fresh totals (no after_time_unix parameter)
-  let freshScores: any = null;
-  try {
-    freshScores = await resolvedClient.getScores({ syned_user_id: syncedUserId });
-  } catch (err: any) {
-    // If user doesn't exist in game platform (404), clear the refresh flag and skip
-    if (err?.status === 404) {
-      logger?.warn?.(`User ${syncedUserId} not found in game platform, clearing refresh flag`);
-      await statsClient
-        .from('game_platform_sync_state')
-        .update({ needs_totals_refresh: false })
-        .eq('synced_user_id', syncedUserId);
-      return; // Skip this user gracefully
-    }
-    logger?.error?.(`Failed to fetch fresh totals for ${syncedUserId}`, { error: err });
-    throw err;
+  const { data: solveRows, error: solveError } = await statsClient
+    .from('game_platform_challenge_solves')
+    .select('challenge_points, solved_at')
+    .eq('synced_user_id', syncedUserId);
+
+  if (solveError) {
+    throw new Error(`Failed to load challenge solves for totals refresh: ${solveError.message}`);
   }
 
-  const normalizedScores = Array.isArray(freshScores) ? freshScores[0] : freshScores;
-  const totalChallenges = normalizedScores?.total_challenges_solved ?? 0;
-  const totalPoints = normalizedScores?.total_points ?? 0;
+  const totalChallenges = solveRows?.length ?? 0;
+  const totalPoints = (solveRows || []).reduce((sum, row) => sum + (row.challenge_points ?? 0), 0);
+  const lastSolveAt = (solveRows || []).reduce<string | null>((latest, row) => {
+    if (!row.solved_at) return latest;
+    if (!latest || row.solved_at > latest) return row.solved_at;
+    return latest;
+  }, null);
 
-  // Fetch Flash CTF totals
-  let flash: any = null;
-  try {
-    flash = await resolvedClient.getFlashCtfProgress({ syned_user_id: syncedUserId });
-  } catch (err: any) {
-    if (err?.status !== 404) {
-      logger?.warn?.(`Failed to fetch Flash CTF for totals refresh ${syncedUserId}`, { error: err });
-    }
+  const { data: flashRows, error: flashError } = await statsClient
+    .from('game_platform_flash_ctf_events')
+    .select('challenges_solved, started_at')
+    .eq('synced_user_id', syncedUserId);
+
+  if (flashError) {
+    throw new Error(`Failed to load Flash CTF events for totals refresh: ${flashError.message}`);
   }
 
-  const flashEntries: any[] = flash?.flash_ctfs ?? [];
-  const monthlyCtfChallenges = flashEntries.reduce((sum, entry) => sum + (entry?.challenges_solved ?? 0), 0);
+  const monthlyCtfChallenges = (flashRows || []).reduce(
+    (sum, row) => sum + (row.challenges_solved ?? 0),
+    0,
+  );
+  const lastFlashAt = (flashRows || []).reduce<string | null>((latest, row) => {
+    if (!row.started_at) return latest;
+    if (!latest || row.started_at > latest) return row.started_at;
+    return latest;
+  }, null);
 
   // Update totals in game_platform_stats
   const existing = await getOrCreateStatsRow(statsClient, competitorId);
 
-  // Get last_activity from the freshly fetched scores
-  const lastActivityUnix = normalizedScores?.last_accessed_unix_timestamp ?? null;
-  const lastActivity = lastActivityUnix ? new Date(lastActivityUnix * 1000).toISOString() : null;
+  const lastActivity = lastSolveAt && lastFlashAt
+    ? (lastSolveAt > lastFlashAt ? lastSolveAt : lastFlashAt)
+    : (lastSolveAt ?? lastFlashAt ?? null);
 
   const totalsPayload: any = {
     challenges_completed: totalChallenges,
@@ -1708,12 +1708,14 @@ export async function refreshCompetitorTotals({
     logger?.warn?.(`Failed to clear totals refresh flag for ${syncedUserId}`, { error: clearFlagError });
   }
 
-  logger?.info?.(`Refreshed totals for ${syncedUserId}: ${totalChallenges} challenges, ${totalPoints} points`);
+  logger?.info?.(`Refreshed totals for ${syncedUserId} from local solves: ${totalChallenges} challenges, ${totalPoints} points`);
 }
 
 export interface SweepPendingTotalsRefreshParams extends ServiceOptions {
   coachId?: string | null;
   batchSize?: number;
+  forceAll?: boolean;
+  cursor?: { id: string } | null;
 }
 
 export async function sweepPendingTotalsRefresh({
@@ -1723,11 +1725,85 @@ export async function sweepPendingTotalsRefresh({
   logger,
   coachId,
   batchSize = 100,
+  forceAll = false,
+  cursor = null,
 }: SweepPendingTotalsRefreshParams) {
   const effectiveDryRun = isDryRunOverride(dryRun);
   const statsClient: AnySupabaseClient = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
     : supabase;
+
+  if (forceAll) {
+    let competitorQuery = supabase
+      .from('competitors')
+      .select('id, game_platform_id')
+      .not('game_platform_id', 'is', null)
+      .order('id', { ascending: true })
+      .limit(batchSize);
+
+    if (coachId) {
+      competitorQuery = competitorQuery.eq('coach_id', coachId);
+    }
+
+    if (cursor?.id) {
+      competitorQuery = competitorQuery.gt('id', cursor.id);
+    }
+
+    const { data: competitors, error: competitorError } = await competitorQuery;
+    if (competitorError) {
+      throw new Error(`Failed to load competitors for force totals sweep: ${competitorError.message}`);
+    }
+
+    if (!competitors || competitors.length === 0) {
+      logger?.info?.('No competitors found for force totals sweep');
+      return {
+        total: 0,
+        refreshed: 0,
+        failed: 0,
+        results: [],
+        nextCursor: null as { id: string } | null,
+      };
+    }
+
+    const results: Array<{ syncedUserId: string; status: 'success' | 'failed'; error?: string }> = [];
+    let refreshed = 0;
+    let failed = 0;
+
+    for (const competitor of competitors) {
+      if (!competitor.game_platform_id) continue;
+      try {
+        await refreshCompetitorTotals({
+          supabase,
+          client,
+          competitorId: competitor.id,
+          syncedUserId: competitor.game_platform_id,
+          dryRun: effectiveDryRun,
+          logger,
+        });
+        results.push({ syncedUserId: competitor.game_platform_id, status: 'success' });
+        refreshed++;
+      } catch (err: any) {
+        logger?.error?.(`Failed to refresh totals for ${competitor.game_platform_id}`, { error: err });
+        results.push({
+          syncedUserId: competitor.game_platform_id,
+          status: 'failed',
+          error: err?.message ?? 'Unknown error',
+        });
+        failed++;
+      }
+    }
+
+    const last = competitors[competitors.length - 1];
+    const nextCursor = competitors.length >= batchSize && last?.id ? { id: last.id as string } : null;
+
+    return {
+      total: competitors.length,
+      refreshed,
+      failed,
+      results,
+      nextCursor,
+    };
+  }
 
   // Find all competitors needing totals refresh
   let pendingQuery = statsClient
@@ -1751,6 +1827,7 @@ export async function sweepPendingTotalsRefresh({
       refreshed: 0,
       failed: 0,
       results: [],
+      nextCursor: null as { id: string } | null,
     };
   }
 
@@ -1807,6 +1884,7 @@ export async function sweepPendingTotalsRefresh({
     refreshed,
     failed,
     results,
+    nextCursor: null as { id: string } | null,
   };
 }
 

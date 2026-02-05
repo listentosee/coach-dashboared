@@ -27,6 +27,8 @@ export interface GamePlatformTotalsSweepPayload {
   dryRun?: boolean;
   coachId?: string | null;
   batchSize?: number;
+  forceAll?: boolean;
+  cursor?: { id: string } | null;
 }
 
 export interface GamePlatformProfileRefreshPayload {

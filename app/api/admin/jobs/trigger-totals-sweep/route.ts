@@ -35,6 +35,7 @@ export async function POST(request: Request) {
       dryRun: body.dryRun ?? false,
       coachId: body.coachId ?? null,
       batchSize: body.batchSize ?? 100,
+      forceAll: body.forceAll ?? false,
     };
 
     const job = await enqueueJob({

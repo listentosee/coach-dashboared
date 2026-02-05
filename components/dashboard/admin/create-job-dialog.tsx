@@ -77,6 +77,7 @@ export function CreateJobDialog() {
     forceNotifications: false,
     competitorIds: '',
     forceReonboard: false,
+    forceTotalsSweepAll: false,
   });
 
   useEffect(() => {
@@ -135,6 +136,13 @@ export function CreateJobDialog() {
             return {
               dryRun: false,
               coachId: formData.coachId || null,
+            };
+          case 'game_platform_totals_sweep':
+            return {
+              dryRun: false,
+              coachId: formData.coachId || null,
+              batchSize: Math.max(1, Math.min(200, Math.floor(Number(formData.batchSize) || 100))),
+              forceAll: formData.forceTotalsSweepAll,
             };
           case 'game_platform_onboard_competitors':
             return {
@@ -225,6 +233,7 @@ export function CreateJobDialog() {
         forceNotifications: false,
         competitorIds: '',
         forceReonboard: false,
+        forceTotalsSweepAll: false,
       });
       router.refresh();
     } catch (error) {
@@ -316,6 +325,21 @@ export function CreateJobDialog() {
                 </div>
               </div>
             </>
+          )}
+
+          {formData.task_type === 'game_platform_totals_sweep' && (
+            <div className="flex items-center gap-3 p-3 border rounded bg-gray-50">
+              <Switch
+                checked={formData.forceTotalsSweepAll}
+                onCheckedChange={(checked) => setFormData({ ...formData, forceTotalsSweepAll: checked })}
+              />
+              <div>
+                <Label className="text-gray-900">Force Sweep All</Label>
+                <p className="text-xs text-gray-600">
+                  Recalculate totals for every synced competitor (batched).
+                </p>
+              </div>
+            </div>
           )}
 
           {formData.task_type === 'admin_alert_dispatch' && (

@@ -1,32 +1,36 @@
 "use client"
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CoachInboxPane, type CoachInboxSelection } from './inbox-pane'
 import { CoachReaderPane } from './reader-pane'
 import { CoachComposerModal } from './composer-modal'
-import { ArchivedModal } from './archived-modal'
 import { useCoachMessagingData } from '@/lib/coach-messaging/use-coach-messaging-data'
 import { useCoachComposer } from '@/lib/coach-messaging/use-coach-composer'
+import { useCoachDrafts } from '@/lib/coach-messaging/use-coach-drafts'
+import { removeDraft } from '@/lib/coach-messaging/drafts'
 import type { ComposerPayload } from '@/lib/coach-messaging/use-coach-composer'
 import type { CoachDirectoryUser, CoachMessage } from '@/lib/coach-messaging/types'
 import { supabase } from '@/lib/supabase/client'
+import { plainTextSnippet } from '@/lib/coach-messaging/utils'
 
 export function CoachMessagingWorkspace() {
   const {
     conversations,
     messagesByConversation,
     threadGroupsByConversation,
+    threadSummaries,
     loading,
     subscribeToConversation,
     subscribeToThread,
     refresh,
+    setSnapshot,
   } = useCoachMessagingData()
   const [selection, setSelection] = useState<CoachInboxSelection | null>(null)
   const [directory, setDirectory] = useState<CoachDirectoryUser[]>([])
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<string>('coach')
-  const [archivedModalOpen, setArchivedModalOpen] = useState(false)
   const [archivedMessages, setArchivedMessages] = useState<Record<string, CoachMessage[]>>({})
+  const [archivedLoading, setArchivedLoading] = useState(false)
   useEffect(() => {
     let active = true
     const loadUser = async () => {
@@ -108,6 +112,76 @@ export function CoachMessagingWorkspace() {
     void markMessagesRead(ids)
   }, [markMessagesRead])
 
+  const v2Enabled = useMemo(() => process.env.NEXT_PUBLIC_MESSAGING_V2 === 'true', [])
+
+  const [threadMessagesByRootId, setThreadMessagesByRootId] = useState<Record<string, CoachMessage[]>>({})
+
+  const loadThreadMessages = useCallback(async (rootId: string) => {
+    const res = await fetch(`/api/messaging/threads/${rootId}`)
+    if (!res.ok) throw new Error('Failed to load thread')
+    const { messages = [] } = await res.json()
+    return (messages as any[]).map((row) => ({
+      ...row,
+      id: `${row.id}`,
+      parent_message_id: row.parent_message_id != null ? `${row.parent_message_id}` : null,
+    })) as CoachMessage[]
+  }, [])
+
+  const handleThreadOpen = useCallback(async (conversationId: string, rootId: string) => {
+    const conversation = conversations.find((c) => c.id === conversationId)
+    if (!conversation) return
+    try {
+      const threadMessages = await loadThreadMessages(rootId)
+      setThreadMessagesByRootId((prev) => ({ ...prev, [rootId]: threadMessages }))
+      const message = threadMessages[0] ?? null
+      if (!message) return
+      const threadSubject = conversation.title || plainTextSnippet(message.body) || null
+      setSelection({
+        conversation,
+        message,
+        threadId: rootId,
+        threadSubject,
+        threadMessages,
+      })
+      if (threadMessages.length > 0) {
+        await markMessagesRead(threadMessages.map((m) => m.id), { refresh: false })
+      }
+      subscribeToThread(conversationId, rootId)
+    } catch (error) {
+      console.error('Failed to open thread', error)
+    }
+  }, [conversations, subscribeToThread, markMessagesRead, loadThreadMessages])
+
+  const loadConversationMessages = useCallback(async (conversationId: string) => {
+    const res = await fetch(`/api/messaging/conversations/${conversationId}/messages?limit=500`)
+    if (!res.ok) throw new Error('Failed to load conversation messages')
+    const { messages = [] } = await res.json()
+    return (messages as any[]).map((row) => ({
+      ...row,
+      id: `${row.id}`,
+      parent_message_id: row.parent_message_id != null ? `${row.parent_message_id}` : null,
+    })) as CoachMessage[]
+  }, [])
+
+  const handleThreadExpand = useCallback(async (
+    conversationId: string,
+    rootId: string,
+    mode: 'thread' | 'conversation'
+  ) => {
+    if (threadMessagesByRootId[rootId]) return
+    try {
+      const loaded = mode === 'conversation'
+        ? await loadConversationMessages(conversationId)
+        : await loadThreadMessages(rootId)
+      setThreadMessagesByRootId((prev) => ({ ...prev, [rootId]: loaded }))
+      if (loaded.length > 0) {
+        await markMessagesRead(loaded.map((m) => m.id), { refresh: false })
+      }
+    } catch (error) {
+      console.error('Failed to load thread messages', error)
+    }
+  }, [threadMessagesByRootId, loadThreadMessages, loadConversationMessages, markMessagesRead])
+
   const handleComposerSend = useCallback(async (payload: ComposerPayload) => {
     // Replies always stay within the same conversation/thread
     if (payload.mode === 'reply') {
@@ -124,12 +198,37 @@ export function CoachMessagingWorkspace() {
         body: JSON.stringify({
           body: payload.body,
           parentMessageId: parentId,
+          highPriority: payload.highPriority ?? false,
         }),
       })
       if (!response.ok) throw new Error('Failed to send message')
       const data = await response.json().catch(() => null)
       const messageId = data?.id ? String(data.id) : null
       if (messageId) {
+        const createdAt = data?.created_at ?? new Date().toISOString()
+        const newMessage: CoachMessage = {
+          id: messageId,
+          conversation_id: conversationId,
+          sender_id: currentUserId ?? '',
+          body: payload.body,
+          created_at: createdAt,
+          parent_message_id: parentId,
+          sender_name: null,
+          sender_email: null,
+          read_at: createdAt,
+          flagged: false,
+          archived_at: null,
+          high_priority: payload.highPriority ?? false,
+        }
+        setSnapshot({
+          conversations: conversations.map((c) => c.id === conversationId
+            ? { ...c, last_message_at: createdAt }
+            : c),
+          messagesByConversation: {
+            ...messagesByConversation,
+            [conversationId]: [newMessage, ...(messagesByConversation[conversationId] ?? [])],
+          },
+        })
         await markMessagesRead([messageId], { refresh: false })
       }
     } else {
@@ -170,12 +269,37 @@ export function CoachMessagingWorkspace() {
           const sendRes = await fetch(`/api/messaging/conversations/${conversationId}/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ body: payload.body }),
+            body: JSON.stringify({ body: payload.body, highPriority: payload.highPriority ?? false }),
           })
           if (!sendRes.ok) throw new Error('Failed to send direct message')
           const sendData = await sendRes.json().catch(() => null)
           const messageId = sendData?.id ? String(sendData.id) : null
           if (messageId) {
+            const createdAt = sendData?.created_at ?? new Date().toISOString()
+            const newMessage: CoachMessage = {
+              id: messageId,
+              conversation_id: conversationId,
+              sender_id: currentUserId ?? '',
+              body: payload.body,
+              created_at: createdAt,
+              parent_message_id: null,
+              sender_name: null,
+              sender_email: null,
+              read_at: createdAt,
+              flagged: false,
+              archived_at: null,
+              high_priority: payload.highPriority ?? false,
+            }
+            const existingConversation = conversations.find((c) => c.id === conversationId)
+            setSnapshot({
+              conversations: existingConversation
+                ? conversations.map((c) => c.id === conversationId ? { ...c, last_message_at: createdAt } : c)
+                : [...conversations, { id: conversationId, type: 'dm', title: payload.subject ?? null, created_by: currentUserId ?? null, created_at: createdAt, unread_count: 0, last_message_at: createdAt }],
+              messagesByConversation: {
+                ...messagesByConversation,
+                [conversationId]: [newMessage, ...(messagesByConversation[conversationId] ?? [])],
+              },
+            })
             await markMessagesRead([messageId], { refresh: false })
           }
         } else {
@@ -194,20 +318,45 @@ export function CoachMessagingWorkspace() {
           const sendRes = await fetch(`/api/messaging/conversations/${conversationId}/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ body: payload.body }),
+            body: JSON.stringify({ body: payload.body, highPriority: payload.highPriority ?? false }),
           })
           if (!sendRes.ok) throw new Error('Failed to send group message')
           const sendData = await sendRes.json().catch(() => null)
           const messageId = sendData?.id ? String(sendData.id) : null
           if (messageId) {
+            const createdAt = sendData?.created_at ?? new Date().toISOString()
+            const newMessage: CoachMessage = {
+              id: messageId,
+              conversation_id: conversationId,
+              sender_id: currentUserId ?? '',
+              body: payload.body,
+              created_at: createdAt,
+              parent_message_id: null,
+              sender_name: null,
+              sender_email: null,
+              read_at: createdAt,
+              flagged: false,
+              archived_at: null,
+              high_priority: payload.highPriority ?? false,
+            }
+            const existingConversation = conversations.find((c) => c.id === conversationId)
+            setSnapshot({
+              conversations: existingConversation
+                ? conversations.map((c) => c.id === conversationId ? { ...c, last_message_at: createdAt } : c)
+                : [...conversations, { id: conversationId, type: 'group', title: payload.subject ?? null, created_by: currentUserId ?? null, created_at: createdAt, unread_count: 0, last_message_at: createdAt }],
+              messagesByConversation: {
+                ...messagesByConversation,
+                [conversationId]: [newMessage, ...(messagesByConversation[conversationId] ?? [])],
+              },
+            })
             await markMessagesRead([messageId], { refresh: false })
           }
         }
       }
     }
 
-    await refresh()
-  }, [subscribeToThread, subscribeToConversation, refresh, markMessagesRead])
+    void refresh()
+  }, [subscribeToThread, subscribeToConversation, refresh, markMessagesRead, setSnapshot, conversations, messagesByConversation, currentUserId])
 
   const handleArchiveConversation = useCallback(async (conversationId: string) => {
     try {
@@ -222,6 +371,7 @@ export function CoachMessagingWorkspace() {
 
   const handleViewArchived = useCallback(async () => {
     // Fetch archived messages for all conversations
+    setArchivedLoading(true)
     const archivedByConv: Record<string, CoachMessage[]> = {}
     await Promise.all(
       conversations.map(async (conversation) => {
@@ -240,7 +390,7 @@ export function CoachMessagingWorkspace() {
       })
     )
     setArchivedMessages(archivedByConv)
-    setArchivedModalOpen(true)
+    setArchivedLoading(false)
   }, [conversations])
 
   const handleUnarchiveMessage = useCallback(async (conversationId: string, messageId: string) => {
@@ -269,10 +419,89 @@ export function CoachMessagingWorkspace() {
 
   const effectiveUserId = currentUserId ?? ''
 
+  const drafts = useCoachDrafts(effectiveUserId)
+
   const composer = useCoachComposer({
     currentUserId: effectiveUserId,
     onSend: handleComposerSend,
+    drafts,
   })
+
+  const draftItems = useMemo(() => {
+    return drafts.map((draft) => {
+      const conversation = draft.conversationId
+        ? conversations.find((c) => c.id === draft.conversationId) || null
+        : null
+      const group = conversation
+        ? (threadGroupsByConversation[conversation.id] ?? []).find((g) => g.rootId === draft.threadId) || null
+        : null
+
+      let title = 'Draft'
+      if (draft.mode === 'reply' || draft.mode === 'forward') {
+        const subject = conversation?.title || group?.subject
+        title = subject ? `Draft reply: ${subject}` : 'Draft reply'
+      } else if (draft.mode === 'announcement') {
+        title = draft.subject ? `Draft announcement: ${draft.subject}` : 'Draft announcement'
+      } else if (draft.mode === 'group') {
+        title = draft.subject ? `Draft group: ${draft.subject}` : 'Draft group message'
+      } else if (draft.mode === 'dm') {
+        const recipient = draft.dmRecipientId
+          ? directory.find((user) => user.id === draft.dmRecipientId)
+          : null
+        title = recipient ? `Draft to ${recipient.displayName}` : 'Draft direct message'
+      }
+
+      const preview = draft.body?.trim()
+        ? plainTextSnippet(draft.body)
+        : draft.subject?.trim()
+        ? plainTextSnippet(draft.subject)
+        : 'Empty draft'
+
+      return {
+        id: draft.id,
+        title,
+        preview,
+        updatedAt: draft.updatedAt,
+        conversationId: draft.conversationId,
+        threadId: draft.threadId,
+        mode: draft.mode,
+      }
+    })
+  }, [drafts, conversations, threadGroupsByConversation, directory])
+
+  const draftsByThreadId = useMemo(() => {
+    const map: Record<string, boolean> = {}
+    for (const draft of drafts) {
+      if (!draft.conversationId || !draft.threadId) continue
+      map[`${draft.conversationId}:${draft.threadId}`] = true
+    }
+    return map
+  }, [drafts])
+
+  const resolveDraftSelection = useCallback((draftId: string) => {
+    const draft = drafts.find((item) => item.id === draftId)
+    if (!draft) return { draft: null, selection: null }
+    if (!draft.conversationId || !draft.threadId) return { draft, selection: null }
+
+    const conversation = conversations.find((c) => c.id === draft.conversationId)
+    if (!conversation) return { draft, selection: null }
+    const groups = threadGroupsByConversation[conversation.id] ?? []
+    const group = groups.find((g) => g.rootId === draft.threadId) || null
+    const threadMessages = group?.messages ?? messagesByConversation[conversation.id] ?? []
+    const message = threadMessages.find((m) => m.id === draft.threadId) ?? threadMessages[0]
+    if (!message) return { draft, selection: null }
+    const threadSubject = conversation.title || group?.subject || plainTextSnippet(message.body) || null
+    return {
+      draft,
+      selection: {
+        conversation,
+        message,
+        threadId: draft.threadId,
+        threadSubject,
+        threadMessages,
+      } as CoachInboxSelection,
+    }
+  }, [drafts, conversations, threadGroupsByConversation, messagesByConversation])
 
   return (
     <div className="flex h-[calc(100vh-6rem)] min-h-0 w-full flex-col overflow-hidden">
@@ -282,8 +511,26 @@ export function CoachMessagingWorkspace() {
             conversations={conversations}
             messagesByConversation={messagesByConversation}
             threadGroupsByConversation={threadGroupsByConversation}
+            threadSummaries={threadSummaries}
             loading={loading}
             currentUserId={effectiveUserId}
+            v2Enabled={v2Enabled}
+            threadMessagesByRootId={threadMessagesByRootId}
+            onThreadOpen={handleThreadOpen}
+            onThreadExpand={handleThreadExpand}
+            drafts={draftItems}
+            draftsByThreadId={draftsByThreadId}
+            onDraftDelete={(draftId) => {
+              void removeDraft(draftId)
+            }}
+            archivedMessagesByConversation={archivedMessages}
+            archivedLoading={archivedLoading}
+            onArchivedRestore={handleUnarchiveMessage}
+            onDraftOpen={(draftId) => {
+              const { draft, selection } = resolveDraftSelection(draftId)
+              if (!draft) return
+              composer.openDraft(draft, selection)
+            }}
             onSelectionChange={setSelection}
             onCompose={(mode) => {
               if (mode === 'dm') composer.openDm()
@@ -329,13 +576,6 @@ export function CoachMessagingWorkspace() {
         </div>
       </div>
       <CoachComposerModal controller={composer} directory={directory} />
-      <ArchivedModal
-        open={archivedModalOpen}
-        onClose={() => setArchivedModalOpen(false)}
-        conversations={conversations}
-        messagesByConversation={archivedMessages}
-        onRestore={handleUnarchiveMessage}
-      />
     </div>
   )
 }

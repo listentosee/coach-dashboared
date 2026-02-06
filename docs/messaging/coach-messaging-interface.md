@@ -11,6 +11,7 @@
 - Design components for reuse across future coach messaging surfaces (e.g., mobile, embedded widgets).
 - Render inbox rows directly from the message dataset; conversation records exist only for metadata such as unread counts.
 - Mirror the admin console’s realtime architecture by subscribing to Supabase channels for conversations, messages, and read receipts.
+- **All messaging state (including drafts) must be stored server-side only. Client/browser storage is prohibited.**
 
 ## Module Architecture
 - `CoachMessagingShell` – overall container orchestrating data fetches, layout, and global state (filters, selection, thread/message mode). Also owns Supabase realtime subscription lifecycles (conversation-level and thread-level channels).

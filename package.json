@@ -8,16 +8,10 @@
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings=0",
     "typecheck": "tsc -p . --noEmit || true",
-    "test": "vitest",
-    "test:unit": "vitest run",
-    "test:watch": "vitest watch",
-    "test:coverage": "vitest run --coverage",
-    "test:ui": "vitest --ui",
+    "test": "node -e \"console.log('No unit tests configured. Use pnpm test:e2e for Playwright.');\"",
     "test:e2e": "playwright test",
-    "test:all": "vitest run && playwright test",
     "test:routes": "playwright test --project=internal-routes",
     "test:metactf": "RUN_LIVE_METACTF_TESTS=true playwright test --project=metactf-live",
-    "testenv": "./scripts/testenv.sh",
     "jobs:cleanup": "tsx scripts/cleanup-stuck-jobs.ts",
     "sync": "./scripts/sync-and-refresh.sh"
   },
@@ -81,7 +75,6 @@
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
     "@vitejs/plugin-react": "^5.0.4",
-    "@vitest/ui": "^3.2.4",
     "autoprefixer": "^10.4.17",
     "dotenv": "^17.2.2",
     "eslint": "^8.56.0",
@@ -92,8 +85,7 @@
     "supabase": "^2.53.6",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.20.6",
-    "typescript": "^5.3.3",
-    "vitest": "^3.2.4"
+    "typescript": "^5.3.3"
   },
   "packageManager": "pnpm@10.15.0+sha512.486ebc259d3e999a4e8691ce03b5cac4a71cbeca39372a9b762cb500cfdf0873e2cb16abe3d951b1ee2cf012503f027b98b6584e4df22524e0c7450d9ec7aa7b"
 }

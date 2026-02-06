@@ -8,8 +8,8 @@ import type {
   CoachMessage,
   MessagingSnapshot,
   ThreadGroup,
+  ThreadSummary,
 } from './types'
-import { cloneMockSnapshot, mockSnapshot } from './mock-data'
 import { supabase } from '@/lib/supabase/client'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -26,6 +26,7 @@ type CoachMessagingState = {
   conversations: CoachConversation[]
   messagesByConversation: Record<string, CoachMessage[]>
   threadGroupsByConversation: Record<string, ThreadGroup[]>
+  threadSummaries: ThreadSummary[]
   refresh: () => Promise<void>
   setSnapshot: (snapshot: MessagingSnapshot) => void
   subscribeToConversation: (conversationId: string) => (() => void) | void
@@ -105,42 +106,115 @@ async function fetchSnapshotFromApi(): Promise<MessagingSnapshot> {
   return { conversations, messagesByConversation }
 }
 
-async function defaultDataSource(): Promise<MessagingSnapshot> {
-  try {
-    return await fetchSnapshotFromApi()
-  } catch (err) {
-    console.error('Coach messaging data fetch failed, falling back to mock snapshot', err)
-    return cloneMockSnapshot()
+async function fetchSnapshotFromApiV2(): Promise<{ snapshot: MessagingSnapshot; threadSummaries: ThreadSummary[] }> {
+  const conversationsRes = await fetch('/api/messaging/conversations/summary')
+  if (!conversationsRes.ok) throw new Error('Failed to load conversation summaries')
+  const { conversations = [] } = await conversationsRes.json()
+
+  const messagesRes = await fetch('/api/messaging/messages/recent?limitPerConversation=50')
+  if (!messagesRes.ok) throw new Error('Failed to load recent messages')
+  const { messages = [] } = await messagesRes.json()
+
+  const threadSummaryRes = await fetch('/api/messaging/threads/summary?limit=1000')
+  if (!threadSummaryRes.ok) throw new Error('Failed to load thread summaries')
+  const { threads = [] } = await threadSummaryRes.json()
+
+  const messagesByConversation: Record<string, CoachMessage[]> = {}
+  for (const row of messages as any[]) {
+    const conversationId = row.conversation_id
+    if (!messagesByConversation[conversationId]) messagesByConversation[conversationId] = []
+    messagesByConversation[conversationId].push({
+      id: `${row.id}`,
+      conversation_id: row.conversation_id,
+      sender_id: row.sender_id,
+      body: row.body,
+      created_at: row.created_at,
+      parent_message_id: row.parent_message_id != null ? `${row.parent_message_id}` : null,
+      sender_name: row.sender_name ?? null,
+      sender_email: row.sender_email ?? null,
+      read_at: row.read_at ?? null,
+      flagged: row.flagged ?? false,
+      archived_at: row.archived_at ?? null,
+      high_priority: row.high_priority ?? false,
+    })
   }
+
+  const fetchReceiptsFor = async (messageIds: string[]): Promise<Map<string, string>> => {
+    const map = new Map<string, string>()
+    if (messageIds.length === 0) return map
+    const chunkSize = 100
+    for (let i = 0; i < messageIds.length; i += chunkSize) {
+      const chunk = messageIds.slice(i, i + chunkSize)
+      const params = new URLSearchParams({ messageIds: chunk.join(',') })
+      try {
+        const res = await fetch(`/api/messaging/read-receipts?${params.toString()}`)
+        if (!res.ok) continue
+        const { receipts = [] } = await res.json() as { receipts?: Array<{ message_id: number | string; read_at: string }> }
+        for (const receipt of receipts) {
+          if (!receipt?.message_id || !receipt.read_at) continue
+          map.set(`${receipt.message_id}`, receipt.read_at)
+        }
+      } catch {
+        // ignore receipt fetch failures
+      }
+    }
+    return map
+  }
+
+  const allRecentIds = Object.values(messagesByConversation).flat().map((m) => m.id)
+  const receiptLookup = await fetchReceiptsFor(allRecentIds)
+  if (receiptLookup.size > 0) {
+    for (const list of Object.values(messagesByConversation)) {
+      for (const message of list) {
+        if (receiptLookup.has(message.id)) {
+          message.read_at = receiptLookup.get(message.id) ?? message.read_at ?? null
+        }
+      }
+    }
+  }
+
+  return { snapshot: { conversations, messagesByConversation }, threadSummaries: threads as ThreadSummary[] }
+}
+
+async function defaultDataSource(): Promise<MessagingSnapshot> {
+  return fetchSnapshotFromApi()
 }
 
 export function useCoachMessagingData(options: UseCoachMessagingDataOptions = {}): CoachMessagingState {
   const {
     autoLoad = true,
     dataSource = defaultDataSource,
-    mockOnError = true,
-    mockSnapshot: overrideMock = mockSnapshot,
+    mockOnError = false,
+    mockSnapshot: overrideMock,
   } = options
 
   const [loading, setLoading] = useState<boolean>(autoLoad)
   const [error, setError] = useState<Error | null>(null)
-  const [snapshot, setSnapshotState] = useState<MessagingSnapshot | null>(autoLoad ? null : cloneMockSnapshot())
+  const [snapshot, setSnapshotState] = useState<MessagingSnapshot | null>(autoLoad ? null : { conversations: [], messagesByConversation: {} })
+  const [threadSummaries, setThreadSummaries] = useState<ThreadSummary[]>([])
+  const v2Enabled = useMemo(() => process.env.NEXT_PUBLIC_MESSAGING_V2 === 'true', [])
 
   const refresh = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const next = await dataSource()
-      setSnapshotState(next)
+      if (v2Enabled) {
+        const { snapshot: next, threadSummaries: nextThreads } = await fetchSnapshotFromApiV2()
+        setSnapshotState(next)
+        setThreadSummaries(nextThreads)
+      } else {
+        const next = await dataSource()
+        setSnapshotState(next)
+      }
     } catch (err) {
-      if (mockOnError && overrideMock) {
-        setSnapshotState(cloneMockSnapshot())
+      if (!v2Enabled && mockOnError && overrideMock) {
+        setSnapshotState(overrideMock)
       }
       setError(err as Error)
     } finally {
       setLoading(false)
     }
-  }, [dataSource, mockOnError, overrideMock])
+  }, [dataSource, mockOnError, overrideMock, v2Enabled])
 
   useEffect(() => {
     if (!autoLoad) return
@@ -307,6 +381,7 @@ export function useCoachMessagingData(options: UseCoachMessagingDataOptions = {}
     conversations,
     messagesByConversation,
     threadGroupsByConversation,
+    threadSummaries,
     refresh,
     setSnapshot,
     subscribeToConversation,

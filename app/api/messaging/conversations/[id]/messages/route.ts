@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { enqueueJob } from '@/lib/jobs/queue'
 
 // Fetch messages for a conversation (RLS enforced)
 export async function GET(
@@ -30,7 +31,7 @@ export async function GET(
       // Use a manual query since we need to filter message_user_state by current user
       const { data: allMessages, error: fetchError } = await supabase
         .from('messages')
-        .select('id, conversation_id, sender_id, body, created_at, parent_message_id')
+        .select('id, conversation_id, sender_id, body, created_at, parent_message_id, high_priority')
         .eq('conversation_id', id)
         .order('created_at', { ascending: false })
         .limit(Math.min(Math.max(limit, 1), 1000))
@@ -65,6 +66,7 @@ export async function GET(
             sender_email: profile?.email || null,
             flagged: state?.flagged || false,
             archived_at: state?.archived_at || null,
+            high_priority: row.high_priority ?? false,
           }
         })
       }
@@ -102,7 +104,11 @@ export async function POST(
 
     const { id } = await context.params
 
-    const { body, parentMessageId } = await req.json() as { body?: string; parentMessageId?: string | number | null }
+    const { body, parentMessageId, highPriority } = await req.json() as {
+      body?: string
+      parentMessageId?: string | number | null
+      highPriority?: boolean
+    }
     if (!body || body.trim().length === 0) {
       return NextResponse.json({ error: 'Message body required' }, { status: 400 })
     }
@@ -115,7 +121,12 @@ export async function POST(
       }
     }
 
-    const payload: Record<string, any> = { conversation_id: id, sender_id: user.id, body }
+    const payload: Record<string, any> = {
+      conversation_id: id,
+      sender_id: user.id,
+      body,
+      high_priority: highPriority ?? false,
+    }
     if (normalizedParentId) {
       payload.parent_message_id = normalizedParentId
     }
@@ -162,6 +173,13 @@ export async function POST(
           await serviceClient
             .from('admin_alert_queue')
             .upsert(adminRows, { onConflict: 'recipient_id,message_id' });
+
+          if (highPriority === true) {
+            await enqueueJob({
+              taskType: 'admin_alert_dispatch',
+              payload: { roles: ['admin'], allowSms: false, force: true, windowMinutes: 5 },
+            });
+          }
         }
       }
     } catch (queueErr) {

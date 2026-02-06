@@ -22,6 +22,7 @@ export type ThreadGroupProps = {
   subtitle?: string
   conversationId?: string
   onArchive?: (conversationId: string) => void
+  hasDraft?: boolean
 }
 
 export function ThreadGroup({
@@ -40,6 +41,7 @@ export function ThreadGroup({
   subtitle,
   conversationId,
   onArchive,
+  hasDraft = false,
 }: ThreadGroupProps) {
   const handleClick = () => {
     if (expandable && onToggle) {
@@ -72,6 +74,11 @@ export function ThreadGroup({
               {unreadCount ? (
                 <span className="inline-flex items-center rounded-full bg-blue-500 px-2 text-[10px] font-medium text-white">
                   {unreadCount}
+                </span>
+              ) : null}
+              {hasDraft ? (
+                <span className="inline-flex items-center rounded-full bg-amber-500/20 px-2 text-[10px] font-medium text-amber-200">
+                  Draft
                 </span>
               ) : null}
             </div>

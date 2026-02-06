@@ -15,6 +15,7 @@ export type MessageListItemProps = {
   unread?: boolean
   active?: boolean
   detailFooter?: ReactNode
+  actions?: ReactNode
   conversationId?: string
   messageId?: string
   isFlagged?: boolean
@@ -23,7 +24,7 @@ export type MessageListItemProps = {
 } & ButtonHTMLAttributes<HTMLButtonElement>
 
 export const MessageListItem = forwardRef<HTMLButtonElement, MessageListItemProps>(function MessageListItem(
-  { displayName, timestamp, preview, avatarColorClass, initials, unread = false, active = false, detailFooter, className, conversationId, messageId, isFlagged, onFlagToggle, onArchive, onClick, ...props },
+  { displayName, timestamp, preview, avatarColorClass, initials, unread = false, active = false, detailFooter, actions, className, conversationId, messageId, isFlagged, onFlagToggle, onArchive, onClick, ...props },
   ref,
 ) {
   const handleFlagToggle = (e: React.MouseEvent) => {
@@ -80,7 +81,9 @@ export const MessageListItem = forwardRef<HTMLButtonElement, MessageListItemProp
       </button>
       <div className="flex flex-col items-end gap-1 shrink-0">
         <span className="text-[10px] text-meta-muted">{timestamp}</span>
-        {conversationId && (onArchive || onFlagToggle) ? (
+        {actions ? (
+          actions
+        ) : conversationId && (onArchive || onFlagToggle) ? (
           <ConversationActions
             conversationId={conversationId}
             messageId={messageId}

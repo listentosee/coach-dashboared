@@ -37,6 +37,8 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
     setSubject,
     preview,
     togglePreview,
+    highPriority,
+    setHighPriority,
     dmRecipientId,
     lockDmRecipient,
     setDmRecipient,
@@ -44,6 +46,8 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
     toggleGroupRecipient,
     handleFiles,
     send,
+    saveDraft,
+    discardDraft,
   } = controller
   const isSuccess = sendState === 'success'
 
@@ -57,8 +61,12 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
   }, [lockDmRecipient, dmRecipientId, directory])
 
   return (
-    <Dialog open={open} modal={false} onOpenChange={(next) => { if (!next) close() }}>
-      <DialogContent className={isSuccess ? 'max-w-2xl' : 'max-w-2xl overflow-y-auto'}>
+    <Dialog open={open} onOpenChange={(next) => { if (next) return }}>
+      <DialogContent
+        className={`${isSuccess ? 'max-w-2xl' : 'max-w-2xl overflow-y-auto'} [&>button]:hidden`}
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>{isSuccess ? 'Message Sent' : modeTitle[mode]}</DialogTitle>
         </DialogHeader>
@@ -169,6 +177,16 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
             </div>
           </div>
 
+          {mode !== 'announcement' ? (
+            <label className="flex items-center gap-2 text-xs text-meta-muted">
+              <Checkbox
+                checked={highPriority}
+                onCheckedChange={(checked) => setHighPriority(!!checked)}
+              />
+              <span>High priority (notify admins immediately)</span>
+            </label>
+          ) : null}
+
           <div className="rounded-md border border-meta-border bg-meta-dark/60 p-1">
             <MarkdownEditor
               value={body}
@@ -186,7 +204,24 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
           ) : null}
 
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={close} disabled={loading}>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                const saved = await saveDraft()
+                if (saved) close()
+              }}
+              disabled={loading}
+            >
+              Save Draft
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                const discarded = await discardDraft()
+                if (discarded) close()
+              }}
+              disabled={loading}
+            >
               Cancel
             </Button>
             <Button

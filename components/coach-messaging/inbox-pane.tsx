@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { InboxActionBar, InboxListMode, InboxViewMode, ConversationType } from './inbox-action-bar'
 import { ThreadGroup } from './thread-group'
 import { MessageListItem } from './message-list-item'
+import { DraftActions } from './draft-actions'
+import { ArchivedActions } from './archived-actions'
 import { avatarColorForId, initialsForName, plainTextSnippet } from '@/lib/coach-messaging/utils'
-import type { CoachConversation, CoachMessage, ThreadGroup as DerivedThreadGroup } from '@/lib/coach-messaging/types'
+import type { CoachConversation, CoachMessage, ThreadGroup as DerivedThreadGroup, ThreadSummary } from '@/lib/coach-messaging/types'
 import { Megaphone, MessageSquare, Users } from 'lucide-react'
 
 const typeIconMap: Record<ConversationType, typeof MessageSquare> = {
@@ -36,13 +38,35 @@ export type PinnedItem = {
   is_message_pin: boolean
 }
 
+export type CoachDraftItem = {
+  id: string
+  title: string
+  preview: string
+  updatedAt: string
+  conversationId?: string | null
+  threadId?: string | null
+  mode: 'dm' | 'group' | 'announcement' | 'reply' | 'forward'
+}
+
 export type CoachInboxPaneProps = {
   conversations: CoachConversation[]
   messagesByConversation: Record<string, CoachMessage[]>
   threadGroupsByConversation: Record<string, DerivedThreadGroup[]>
+  threadSummaries?: ThreadSummary[]
+  threadMessagesByRootId?: Record<string, CoachMessage[]>
+  archivedMessagesByConversation?: Record<string, CoachMessage[]>
+  onArchivedRestore?: (conversationId: string, messageId: string) => void
+  archivedLoading?: boolean
   loading?: boolean
   currentUserId?: string
   pinnedItems?: PinnedItem[]
+  drafts?: CoachDraftItem[]
+  draftsByThreadId?: Record<string, boolean>
+  onDraftOpen?: (draftId: string) => void
+  onDraftDelete?: (draftId: string) => void
+  onThreadOpen?: (conversationId: string, rootId: string) => void
+  onThreadExpand?: (conversationId: string, rootId: string, mode: 'thread' | 'conversation') => void
+  v2Enabled?: boolean
   onSelectionChange?: (selection: CoachInboxSelection | null) => void
   onCompose?: (mode: 'dm' | 'group' | 'announcement') => void
   onMessagesRead?: (messageIds: string[]) => void
@@ -58,9 +82,21 @@ export function CoachInboxPane({
   conversations,
   messagesByConversation,
   threadGroupsByConversation,
+  threadSummaries = [],
   loading = false,
   currentUserId = '',
   pinnedItems = [],
+  drafts = [],
+  draftsByThreadId = {},
+  onDraftOpen,
+  onDraftDelete,
+  archivedMessagesByConversation = {},
+  onArchivedRestore,
+  archivedLoading = false,
+  onThreadOpen,
+  onThreadExpand,
+  threadMessagesByRootId = {},
+  v2Enabled = false,
   onSelectionChange,
   onCompose,
   onMessagesRead,
@@ -78,7 +114,6 @@ export function CoachInboxPane({
   const [expandedThreads, setExpandedThreads] = useState<Record<string, boolean>>({})
   const [selection, setSelection] = useState<SelectionState>({ conversationId: null, threadId: null, messageId: null })
   const [readMessageIds, setReadMessageIds] = useState<Set<string>>(new Set())
-
 
   useEffect(() => {
     if (viewMode === 'unread' && listMode !== 'messages') {
@@ -120,6 +155,8 @@ export function CoachInboxPane({
         const messages = messagesByConversation[conversation.id] ?? []
         return messages.some((message) => message.flagged)
       })
+    } else if (viewMode === 'drafts') {
+      subset = visible
     } else {
       subset = visible
     }
@@ -130,6 +167,27 @@ export function CoachInboxPane({
       return bDate - aDate
     })
   }, [conversations, filters, viewMode, messagesByConversation, currentUserId, readMessageIds])
+
+  const conversationMap = useMemo(() => {
+    return new Map(conversations.map((conversation) => [conversation.id, conversation]))
+  }, [conversations])
+
+  const v2ThreadEntries = useMemo(() => {
+    if (!v2Enabled) return []
+    const entries = threadSummaries.filter((summary) => {
+      const conversation = conversationMap.get(summary.conversation_id)
+      if (!conversation) return false
+      if (!filters[conversation.type]) return false
+      if (viewMode === 'unread' && (summary.unread_count ?? 0) === 0) return false
+      if (viewMode === 'flagged') return false
+      return true
+    })
+    return entries.sort((a, b) => {
+      const aDate = new Date(a.last_reply_at || a.created_at).getTime()
+      const bDate = new Date(b.last_reply_at || b.created_at).getTime()
+      return bDate - aDate
+    })
+  }, [threadSummaries, conversationMap, filters, viewMode, v2Enabled])
 
   const handleToggleThread = (threadId: string) => {
     setExpandedThreads((prev) => ({ ...prev, [threadId]: !prev[threadId] }))
@@ -232,7 +290,9 @@ export function CoachInboxPane({
   }, [filteredConversations, messagesByConversation, threadGroupsByConversation, viewMode, currentUserId, readMessageIds])
 
   const listEmptyState = (() => {
-    if (loading) return 'Loading messages…'
+    if (loading || (viewMode === 'archived' && archivedLoading)) return 'Loading messages…'
+    if (viewMode === 'drafts') return 'No drafts saved yet.'
+    if (viewMode === 'archived') return 'No archived messages.'
     return listMode === 'threads' ? 'No threads match the current filters.' : 'No messages match the current filters.'
   })()
 
@@ -248,13 +308,155 @@ export function CoachInboxPane({
         onViewModeChange={setViewMode}
         filters={filters}
         onFiltersChange={setFilters}
+        draftsCount={drafts.length}
         onCompose={onCompose}
         onViewArchived={onViewArchived}
         isAdmin={isAdmin}
       />
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {listMode === 'threads' ? (
-          threadEntries.length === 0 ? (
+        {(loading || (viewMode === 'archived' && archivedLoading)) ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="flex items-center gap-2 text-sm text-meta-muted">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-meta-muted border-t-transparent" />
+              Loading…
+            </div>
+          </div>
+        ) : viewMode === 'drafts' ? (
+          drafts.length === 0 ? (
+            <div className="px-4 py-6 text-sm text-meta-muted">{listEmptyState}</div>
+          ) : (
+            <div className="space-y-1 px-4 py-3">
+              {drafts.map((draft) => (
+                  <MessageListItem
+                    key={draft.id}
+                    displayName={draft.title}
+                    timestamp={new Date(draft.updatedAt).toLocaleString()}
+                    preview={draft.preview}
+                    avatarColorClass={avatarColorForId(draft.id)}
+                    initials={'DR'}
+                    onClick={() => onDraftOpen?.(draft.id)}
+                    actions={onDraftDelete ? (
+                      <DraftActions onDelete={() => onDraftDelete(draft.id)} />
+                    ) : undefined}
+                    detailFooter={
+                      <div className="mt-1 inline-flex items-center rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-200">
+                        Draft
+                      </div>
+                  }
+                />
+              ))}
+            </div>
+          )
+        ) : viewMode === 'archived' ? (
+          Object.keys(archivedMessagesByConversation).length === 0 ? (
+            <div className="px-4 py-6 text-sm text-meta-muted">{listEmptyState}</div>
+          ) : (
+            <div className="space-y-1 px-4 py-3">
+              {Object.entries(archivedMessagesByConversation).flatMap(([conversationId, messages]) => {
+                const conversation = conversations.find((c) => c.id === conversationId)
+                return (messages || []).map((message) => {
+                  const messageConversation = conversationMap.get(message.conversation_id) ?? conversation
+                  return (
+                  <MessageListItem
+                    key={`${message.conversation_id}-${message.id}`}
+                    displayName={message.sender_name || message.sender_email || 'Unknown sender'}
+                    timestamp={new Date(message.created_at).toLocaleString()}
+                    preview={(messageConversation?.title || plainTextSnippet(message.body)) ?? ''}
+                    avatarColorClass={avatarColorForId(message.sender_id)}
+                    initials={initialsForName(message.sender_name || message.sender_email || '')}
+                    actions={onArchivedRestore ? (
+                      <ArchivedActions onRestore={() => onArchivedRestore(message.conversation_id, message.id)} />
+                    ) : undefined}
+                    detailFooter={
+                      <div className="mt-1 inline-flex items-center rounded-full bg-meta-dark/40 px-2 py-0.5 text-[10px] font-medium text-meta-muted">
+                        Archived
+                      </div>
+                    }
+                  />
+                )})
+              })}
+            </div>
+          )
+        ) : listMode === 'threads' ? (
+          v2Enabled ? (
+            v2ThreadEntries.length === 0 ? (
+              <div className="px-4 py-6 text-sm text-meta-muted">{listEmptyState}</div>
+            ) : (
+              <div className="space-y-2 px-4 py-3">
+                {v2ThreadEntries.map((summary) => {
+                  const conversation = conversationMap.get(summary.conversation_id)
+                  if (!conversation) return null
+                  const conversationTitle = resolveConversationTitle(conversation)
+                  const threadSubject = conversation.title || summary.snippet || conversationTitle
+                  const conversationMessages = messagesByConversation[conversation.id] ?? []
+                  const conversationMessageCount = conversationMessages.length
+                  const messageCount = Math.max(Number(summary.reply_count ?? 0) + 1, conversationMessageCount || 1)
+                  const threadUnreadCount = Number(summary.unread_count ?? 0)
+                  const hasThreadReplies = Number(summary.reply_count ?? 0) > 0
+                  const expandable = hasThreadReplies || conversationMessageCount > 1
+                  const expanded = expandable && !!expandedThreads[summary.root_id]
+                  const threadMessages = threadMessagesByRootId[summary.root_id] ?? (hasThreadReplies ? [] : conversationMessages)
+                  const icon = typeIconMap[conversation.type]
+                  const draftKey = `${conversation.id}:${summary.root_id}`
+                  return (
+                    <ThreadGroup
+                      key={`${conversation.id}-${summary.root_id}`}
+                      title={threadSubject}
+                      subtitle={conversationTitle}
+                      timestamp={new Date(summary.last_reply_at || summary.created_at).toLocaleString()}
+                      messageCount={messageCount}
+                      unreadCount={threadUnreadCount}
+                      icon={icon}
+                      expanded={expanded}
+                      expandable={expandable}
+                      active={expanded}
+                      selected={selectedThreadId === summary.root_id}
+                      onToggle={expandable ? () => {
+                        handleToggleThread(summary.root_id)
+                        if (!expanded) {
+                          onThreadExpand?.(conversation.id, summary.root_id, hasThreadReplies ? 'thread' : 'conversation')
+                        }
+                      } : undefined}
+                      onHeaderSelect={!expandable ? () => onThreadOpen?.(conversation.id, summary.root_id) : undefined}
+                      conversationId={conversation.id}
+                      onArchive={onArchiveConversation}
+                      hasDraft={Boolean(draftsByThreadId[draftKey])}
+                    >
+                      {expanded ? (
+                        threadMessages.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-meta-muted">Loading messages…</div>
+                        ) : (
+                          [...threadMessages].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                            .map((message) => {
+                              const isSelected = selectedMessageId === message.id
+                              const isUnread = message.sender_id !== currentUserId && !readMessageIds.has(message.id)
+                              return (
+                                <MessageListItem
+                                  key={message.id}
+                                  displayName={message.sender_name || message.sender_email || 'Unknown sender'}
+                                  timestamp={new Date(message.created_at).toLocaleString()}
+                                  preview={conversation.title || plainTextSnippet(message.body)}
+                                  avatarColorClass={avatarColorForId(message.sender_id)}
+                                  initials={initialsForName(message.sender_name || message.sender_email || '')}
+                                  unread={isUnread}
+                                  active={isSelected}
+                                  onClick={() => handleMessageSelect(conversation, message, threadMessages, summary.root_id, threadSubject)}
+                                  detailFooter={
+                                    <div className="mt-1 text-[10px] text-meta-muted">
+                                      Thread started {new Date(threadMessages[threadMessages.length - 1]?.created_at ?? conversation.created_at).toLocaleString()}
+                                    </div>
+                                  }
+                                />
+                              )
+                            })
+                        )
+                      ) : null}
+                    </ThreadGroup>
+                  )
+                })}
+              </div>
+            )
+          ) : threadEntries.length === 0 ? (
             <div className="px-4 py-6 text-sm text-meta-muted">{listEmptyState}</div>
           ) : (
             <div className="space-y-2 px-4 py-3">
@@ -277,6 +479,7 @@ export function CoachInboxPane({
                 const expanded = expandable && !!expandedThreads[group.rootId]
                 const icon = typeIconMap[conversation.type]
                 const containsSelection = threadMessages.some((message) => message.id === selectedMessageId)
+                const draftKey = `${conversation.id}:${group.rootId}`
                 return (
                   <ThreadGroup
                     key={`${conversation.id}-${group.rootId}`}
@@ -294,6 +497,7 @@ export function CoachInboxPane({
                     onHeaderSelect={!expandable ? () => handleMessageSelect(conversation, rootMessage, threadMessages, group.rootId, threadSubject) : undefined}
                     conversationId={conversation.id}
                     onArchive={onArchiveConversation}
+                    hasDraft={Boolean(draftsByThreadId[draftKey])}
                   >
                     {expandable
                       ? descendingMessages.map((message) => {
@@ -349,6 +553,13 @@ export function CoachInboxPane({
                   isFlagged={message.flagged}
                   onFlagToggle={onFlagToggle}
                   onArchive={onArchiveConversation}
+                  detailFooter={
+                    draftsByThreadId[`${conversation.id}:${rootId}`] ? (
+                      <div className="mt-1 inline-flex items-center rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-200">
+                        Draft
+                      </div>
+                    ) : null
+                  }
                 />
               )
             })}

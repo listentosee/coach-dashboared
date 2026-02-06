@@ -10,6 +10,9 @@ export type CoachConversation = {
   pinned?: boolean
   pinned_at?: string | null
   archived_at?: string | null
+  last_message_body?: string | null
+  last_sender_name?: string | null
+  last_sender_email?: string | null
 }
 
 export type CoachMessage = {
@@ -24,6 +27,7 @@ export type CoachMessage = {
   read_at?: string | null
   flagged?: boolean
   archived_at?: string | null
+  high_priority?: boolean
 }
 
 export type CoachDirectoryUser = {
@@ -37,6 +41,17 @@ export type ThreadGroup = {
   subject: string | null
   messages: CoachMessage[]
   lastActivityAt: string
+}
+
+export type ThreadSummary = {
+  conversation_id: string
+  root_id: string
+  sender_id: string
+  created_at: string
+  snippet: string
+  reply_count: number
+  last_reply_at: string | null
+  unread_count: number
 }
 
 export type MessagingSnapshot = {

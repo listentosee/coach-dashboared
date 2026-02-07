@@ -299,6 +299,7 @@ export function CoachInboxPane({
       const conversation = conversationMap.get(summary.conversation_id)
       if (!conversation) return false
       if (!filters[conversation.type]) return false
+      if (viewMode !== 'archived' && conversation.all_archived) return false
       if (viewMode === 'unread' && (summary.unread_count ?? 0) === 0) return false
       if (viewMode === 'flagged') return false
       // Respect search filter — only show threads whose conversation passed filtering

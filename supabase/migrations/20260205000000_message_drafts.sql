@@ -40,26 +40,24 @@ FOR EACH ROW EXECUTE FUNCTION public.update_message_drafts_updated_at();
 
 ALTER TABLE public.message_drafts ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view their own drafts"
-  ON public.message_drafts
-  FOR SELECT
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own drafts"
-  ON public.message_drafts
-  FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own drafts"
-  ON public.message_drafts
-  FOR UPDATE
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete their own drafts"
-  ON public.message_drafts
-  FOR DELETE
-  USING (auth.uid() = user_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users can view their own drafts' AND tablename = 'message_drafts') THEN
+    CREATE POLICY "Users can view their own drafts"
+      ON public.message_drafts FOR SELECT USING (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users can insert their own drafts' AND tablename = 'message_drafts') THEN
+    CREATE POLICY "Users can insert their own drafts"
+      ON public.message_drafts FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users can update their own drafts' AND tablename = 'message_drafts') THEN
+    CREATE POLICY "Users can update their own drafts"
+      ON public.message_drafts FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users can delete their own drafts' AND tablename = 'message_drafts') THEN
+    CREATE POLICY "Users can delete their own drafts"
+      ON public.message_drafts FOR DELETE USING (auth.uid() = user_id);
+  END IF;
+END $$;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.message_drafts TO authenticated;
 GRANT ALL ON public.message_drafts TO service_role;

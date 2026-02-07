@@ -19,12 +19,16 @@ export type MessageListItemProps = {
   conversationId?: string
   messageId?: string
   isFlagged?: boolean
+  isPinned?: boolean
+  isMuted?: boolean
   onFlagToggle?: (messageId: string, flagged: boolean) => void
   onArchive?: (conversationId: string) => void
+  onPinToggle?: (conversationId: string, pinned: boolean) => void
+  onMuteToggle?: (conversationId: string, muted: boolean) => void
 } & ButtonHTMLAttributes<HTMLButtonElement>
 
 export const MessageListItem = forwardRef<HTMLButtonElement, MessageListItemProps>(function MessageListItem(
-  { displayName, timestamp, preview, avatarColorClass, initials, unread = false, active = false, detailFooter, actions, className, conversationId, messageId, isFlagged, onFlagToggle, onArchive, onClick, ...props },
+  { displayName, timestamp, preview, avatarColorClass, initials, unread = false, active = false, detailFooter, actions, className, conversationId, messageId, isFlagged, isPinned, isMuted, onFlagToggle, onArchive, onPinToggle, onMuteToggle, onClick, ...props },
   ref,
 ) {
   const handleFlagToggle = (e: React.MouseEvent) => {
@@ -88,8 +92,12 @@ export const MessageListItem = forwardRef<HTMLButtonElement, MessageListItemProp
             conversationId={conversationId}
             messageId={messageId}
             isFlagged={isFlagged}
+            isPinned={isPinned}
+            isMuted={isMuted}
             onArchive={onArchive}
             onFlagToggle={onFlagToggle}
+            onPinToggle={onPinToggle}
+            onMuteToggle={onMuteToggle}
           />
         ) : null}
       </div>

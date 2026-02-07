@@ -29,6 +29,9 @@ type CoachMessagingState = {
   threadSummaries: ThreadSummary[]
   refresh: () => Promise<void>
   setSnapshot: (snapshot: MessagingSnapshot) => void
+  updateConversation: (conversationId: string, patch: Partial<CoachConversation>) => void
+  updateMessage: (messageId: string, patch: Partial<CoachMessage>) => void
+  removeConversation: (conversationId: string) => void
   subscribeToConversation: (conversationId: string) => (() => void) | void
   subscribeToThread: (conversationId: string, threadId: string) => (() => void) | void
 }
@@ -270,6 +273,46 @@ export function useCoachMessagingData(options: UseCoachMessagingDataOptions = {}
     setSnapshotState(next)
   }, [])
 
+  const updateConversation = useCallback((conversationId: string, patch: Partial<CoachConversation>) => {
+    setSnapshotState((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        conversations: prev.conversations.map((c) =>
+          c.id === conversationId ? { ...c, ...patch } : c
+        ),
+      }
+    })
+  }, [])
+
+  const updateMessage = useCallback((messageId: string, patch: Partial<CoachMessage>) => {
+    setSnapshotState((prev) => {
+      if (!prev) return prev
+      const nextMessages = { ...prev.messagesByConversation }
+      for (const [convId, messages] of Object.entries(nextMessages)) {
+        const idx = messages.findIndex((m) => m.id === messageId)
+        if (idx !== -1) {
+          nextMessages[convId] = messages.map((m) =>
+            m.id === messageId ? { ...m, ...patch } : m
+          )
+          break
+        }
+      }
+      return { ...prev, messagesByConversation: nextMessages }
+    })
+  }, [])
+
+  const removeConversation = useCallback((conversationId: string) => {
+    setSnapshotState((prev) => {
+      if (!prev) return prev
+      const { [conversationId]: _, ...restMessages } = prev.messagesByConversation
+      return {
+        conversations: prev.conversations.filter((c) => c.id !== conversationId),
+        messagesByConversation: restMessages,
+      }
+    })
+  }, [])
+
   const subscriptionsRef = useRef<{
     conversations: Map<string, RealtimeChannel>
     threads: Map<string, { messages: RealtimeChannel; receipts: RealtimeChannel }>
@@ -384,6 +427,9 @@ export function useCoachMessagingData(options: UseCoachMessagingDataOptions = {}
     threadSummaries,
     refresh,
     setSnapshot,
+    updateConversation,
+    updateMessage,
+    removeConversation,
     subscribeToConversation,
     subscribeToThread,
   }

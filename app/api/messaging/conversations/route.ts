@@ -29,9 +29,10 @@ export async function GET(req: NextRequest) {
 
     if (error && !conversations) return NextResponse.json({ error: error.message }, { status: 400 })
 
-    // Filter archived vs non-archived (conversations don't have archiving anymore)
+    // Filter by all_archived (derived from message-level archive state)
+    // A conversation is archived when ALL its messages have archived_at set
     const filtered = (conversations || []).filter((c: any) => {
-      const isArchived = false // c.archived_at != null - conversations don't have archiving
+      const isArchived = c.all_archived === true
       return showArchived ? isArchived : !isArchived
     })
 

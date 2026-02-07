@@ -35,6 +35,11 @@ export default defineConfig({
       testMatch: /metactf-live\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'messaging',
+      testMatch: /messaging\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
 
   reporter: [

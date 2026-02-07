@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
-import { isUserAdmin } from '@/lib/utils/admin-check'
 
-// Admin-only: mute or unmute a user in a conversation
-// Body: { userId: string, minutes?: number, until?: string | null }
+// POST /api/messaging/conversations/[id]/mute - Mute a conversation
+// Accepts optional JSON body: { until?: string } where until is an ISO timestamp.
+// If no body or until is omitted, mutes indefinitely (far future).
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -17,34 +17,58 @@ export async function POST(
 
     const { id } = await context.params
 
-    const adminId = user.id
-    const isAdmin = await isUserAdmin(supabase, adminId)
-    if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-
-    const { userId, minutes, until } = await req.json() as { userId?: string, minutes?: number, until?: string | null }
-    if (!userId) return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
-
-    let muted_until: string | null = null
-    if (typeof until === 'string') {
-      muted_until = until
-    } else if (typeof minutes === 'number' && minutes > 0) {
-      const d = new Date()
-      d.setMinutes(d.getMinutes() + minutes)
-      muted_until = d.toISOString()
-    } else if (until === null) {
-      muted_until = null
+    let until: string
+    try {
+      const body = await req.json()
+      until = body.until || new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString()
+    } catch {
+      // No body or invalid JSON - mute indefinitely
+      until = new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString()
     }
 
     const { error } = await supabase
       .from('conversation_members')
-      .update({ muted_until })
+      .update({ muted_until: until })
       .eq('conversation_id', id)
-      .eq('user_id', userId)
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      .eq('user_id', user.id)
 
-    return NextResponse.json({ ok: true, muted_until })
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true, muted_until: until })
   } catch (e) {
-    console.error('Mute user error', e)
+    console.error('Mute conversation error', e)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// DELETE /api/messaging/conversations/[id]/mute - Unmute a conversation
+export async function DELETE(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const cookieStore = await cookies()
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { id } = await context.params
+
+    const { error } = await supabase
+      .from('conversation_members')
+      .update({ muted_until: null })
+      .eq('conversation_id', id)
+      .eq('user_id', user.id)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (e) {
+    console.error('Unmute conversation error', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

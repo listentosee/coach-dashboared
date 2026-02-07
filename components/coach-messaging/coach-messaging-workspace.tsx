@@ -9,9 +9,10 @@ import { useCoachComposer } from '@/lib/coach-messaging/use-coach-composer'
 import { useCoachDrafts } from '@/lib/coach-messaging/use-coach-drafts'
 import { removeDraft } from '@/lib/coach-messaging/drafts'
 import type { ComposerPayload } from '@/lib/coach-messaging/use-coach-composer'
-import type { CoachDirectoryUser, CoachMessage } from '@/lib/coach-messaging/types'
+import type { CoachConversation, CoachDirectoryUser, CoachMessage } from '@/lib/coach-messaging/types'
 import { supabase } from '@/lib/supabase/client'
 import { plainTextSnippet } from '@/lib/coach-messaging/utils'
+import { toast } from 'sonner'
 
 export function CoachMessagingWorkspace() {
   const {
@@ -30,7 +31,26 @@ export function CoachMessagingWorkspace() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<string>('coach')
   const [archivedMessages, setArchivedMessages] = useState<Record<string, CoachMessage[]>>({})
+  const [archivedConversations, setArchivedConversations] = useState<CoachConversation[]>([])
   const [archivedLoading, setArchivedLoading] = useState(false)
+  const [pinnedItems, setPinnedItems] = useState<Array<{ id: string; conversation_id: string; message_id: string | null; pinned_at: string; is_message_pin: boolean }>>([])
+
+  // Fetch pinned items on mount and after pin/unpin
+  useEffect(() => {
+    let active = true
+    const loadPinned = async () => {
+      try {
+        const res = await fetch('/api/messaging/pinned')
+        if (!res.ok) return
+        const { pinnedItems: items = [] } = await res.json()
+        if (active) setPinnedItems(items)
+      } catch {
+        // ignore
+      }
+    }
+    void loadPinned()
+    return () => { active = false }
+  }, [])
   useEffect(() => {
     let active = true
     const loadUser = async () => {
@@ -359,39 +379,112 @@ export function CoachMessagingWorkspace() {
   }, [subscribeToThread, subscribeToConversation, refresh, markMessagesRead, setSnapshot, conversations, messagesByConversation, currentUserId])
 
   const handleArchiveConversation = useCallback(async (conversationId: string) => {
+    // Optimistically remove conversation from inbox
+    const archivedConv = conversations.find((c) => c.id === conversationId)
+    const archivedMsgs = messagesByConversation[conversationId] ?? []
+
+    setSnapshot({
+      conversations: conversations.filter((c) => c.id !== conversationId),
+      messagesByConversation: Object.fromEntries(
+        Object.entries(messagesByConversation).filter(([id]) => id !== conversationId)
+      ),
+    })
+    window.dispatchEvent(new Event('unread-refresh'))
+
+    // Show undo toast
+    const undoId = toast('Conversation archived', {
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          // Restore the conversation optimistically
+          if (archivedConv) {
+            setSnapshot({
+              conversations: [...conversations.filter((c) => c.id !== conversationId), archivedConv]
+                .sort((a, b) => new Date(b.last_message_at || b.created_at).getTime() - new Date(a.last_message_at || a.created_at).getTime()),
+              messagesByConversation: {
+                ...messagesByConversation,
+                [conversationId]: archivedMsgs,
+              },
+            })
+          }
+          // Unarchive on server
+          void fetch(`/api/messaging/conversations/${conversationId}/archive`, { method: 'DELETE' })
+            .then(() => refresh())
+        },
+      },
+      duration: 5000,
+    })
+
     try {
       const res = await fetch(`/api/messaging/conversations/${conversationId}/archive`, { method: 'POST' })
-      if (!res.ok) throw new Error('Failed to archive conversation')
-      await refresh()
-      window.dispatchEvent(new Event('unread-refresh'))
+      if (!res.ok) {
+        throw new Error('Failed to archive conversation')
+      }
     } catch (error) {
       console.error('Archive conversation error:', error)
+      // Revert on failure
+      if (archivedConv) {
+        setSnapshot({
+          conversations: [...conversations.filter((c) => c.id !== conversationId), archivedConv]
+            .sort((a, b) => new Date(b.last_message_at || b.created_at).getTime() - new Date(a.last_message_at || a.created_at).getTime()),
+          messagesByConversation: {
+            ...messagesByConversation,
+            [conversationId]: archivedMsgs,
+          },
+        })
+      }
+      toast.dismiss(undoId)
+      toast.error('Failed to archive conversation')
     }
-  }, [refresh])
+  }, [conversations, messagesByConversation, setSnapshot, refresh])
 
   const handleViewArchived = useCallback(async () => {
-    // Fetch archived messages for all conversations
+    // Fetch archived conversations in a single request (server-side filtered)
     setArchivedLoading(true)
-    const archivedByConv: Record<string, CoachMessage[]> = {}
-    await Promise.all(
-      conversations.map(async (conversation) => {
-        try {
-          const res = await fetch(`/api/messaging/conversations/${conversation.id}/messages?limit=500&includeArchived=true`)
-          if (!res.ok) return
-          const { messages = [] } = await res.json()
-          // Filter to only archived messages
-          const archived = messages.filter((m: any) => m.archived_at != null)
-          if (archived.length > 0) {
-            archivedByConv[conversation.id] = archived
+    try {
+      const res = await fetch('/api/messaging/conversations?archived=true')
+      if (!res.ok) throw new Error('Failed to fetch archived conversations')
+      const { conversations: archivedConvs = [] } = await res.json()
+
+      // Fetch recent messages for each archived conversation
+      const archivedByConv: Record<string, CoachMessage[]> = {}
+      await Promise.all(
+        archivedConvs.map(async (conv: any) => {
+          try {
+            const msgRes = await fetch(`/api/messaging/conversations/${conv.id}/messages?limit=50&includeArchived=true`)
+            if (!msgRes.ok) return
+            const { messages = [] } = await msgRes.json()
+            if (messages.length > 0) {
+              archivedByConv[conv.id] = messages
+            }
+          } catch {
+            // Ignore individual fetch failures
           }
-        } catch {
-          // Ignore fetch failures
-        }
-      })
-    )
-    setArchivedMessages(archivedByConv)
-    setArchivedLoading(false)
-  }, [conversations])
+        })
+      )
+      setArchivedConversations(archivedConvs)
+      setArchivedMessages(archivedByConv)
+    } catch (error) {
+      console.error('Fetch archived error:', error)
+      setArchivedConversations([])
+      setArchivedMessages({})
+    } finally {
+      setArchivedLoading(false)
+    }
+  }, [])
+
+  const handleUnarchiveConversation = useCallback(async (conversationId: string) => {
+    try {
+      // Clears archived_at on all messages in this conversation for the user
+      const res = await fetch(`/api/messaging/conversations/${conversationId}/archive`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to restore conversation')
+      // Refresh both archived view and inbox
+      await Promise.all([handleViewArchived(), refresh()])
+      window.dispatchEvent(new Event('unread-refresh'))
+    } catch (error) {
+      console.error('Restore conversation error:', error)
+    }
+  }, [refresh, handleViewArchived])
 
   const handleUnarchiveMessage = useCallback(async (conversationId: string, messageId: string) => {
     try {
@@ -407,15 +500,94 @@ export function CoachMessagingWorkspace() {
   }, [refresh, handleViewArchived])
 
   const handleFlagToggle = useCallback(async (messageId: string, flagged: boolean) => {
+    // Optimistically update the flag in local state
+    const updatedMessages = { ...messagesByConversation }
+    let conversationId: string | null = null
+    for (const [convId, messages] of Object.entries(updatedMessages)) {
+      const idx = messages.findIndex((m) => m.id === messageId)
+      if (idx !== -1) {
+        conversationId = convId
+        updatedMessages[convId] = messages.map((m) =>
+          m.id === messageId ? { ...m, flagged } : m
+        )
+        break
+      }
+    }
+    if (conversationId) {
+      setSnapshot({ conversations, messagesByConversation: updatedMessages })
+    }
+
     try {
       const method = flagged ? 'POST' : 'DELETE'
       const res = await fetch(`/api/messaging/messages/${messageId}/flag`, { method })
       if (!res.ok) throw new Error('Failed to toggle flag')
-      await refresh()
     } catch (error) {
       console.error('Flag toggle error:', error)
+      // Revert on failure
+      await refresh()
+      toast.error('Failed to update flag')
     }
-  }, [refresh])
+  }, [conversations, messagesByConversation, setSnapshot, refresh])
+
+  const handlePinToggle = useCallback(async (conversationId: string, pinned: boolean) => {
+    try {
+      if (pinned) {
+        const res = await fetch(`/api/messaging/conversations/${conversationId}/pin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        })
+        if (!res.ok) throw new Error('Failed to pin conversation')
+        setPinnedItems((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), conversation_id: conversationId, message_id: null, pinned_at: new Date().toISOString(), is_message_pin: false },
+        ])
+      } else {
+        const res = await fetch(`/api/messaging/conversations/${conversationId}/pin`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        })
+        if (!res.ok) throw new Error('Failed to unpin conversation')
+        setPinnedItems((prev) => prev.filter((p) => !(p.conversation_id === conversationId && !p.is_message_pin)))
+      }
+    } catch (error) {
+      console.error('Pin toggle error:', error)
+      toast.error(pinned ? 'Failed to pin conversation' : 'Failed to unpin conversation')
+    }
+  }, [])
+
+  const handleMuteToggle = useCallback(async (conversationId: string, muted: boolean) => {
+    // Optimistically update conversation
+    const prevConv = conversations.find((c) => c.id === conversationId)
+    if (prevConv) {
+      const mutedUntil = muted ? new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString() : null
+      setSnapshot({
+        conversations: conversations.map((c) =>
+          c.id === conversationId ? { ...c, muted_until: mutedUntil } : c
+        ),
+        messagesByConversation,
+      })
+    }
+
+    try {
+      const method = muted ? 'POST' : 'DELETE'
+      const res = await fetch(`/api/messaging/conversations/${conversationId}/mute`, { method })
+      if (!res.ok) throw new Error('Failed to toggle mute')
+    } catch (error) {
+      console.error('Mute toggle error:', error)
+      // Revert
+      if (prevConv) {
+        setSnapshot({
+          conversations: conversations.map((c) =>
+            c.id === conversationId ? { ...c, muted_until: prevConv.muted_until } : c
+          ),
+          messagesByConversation,
+        })
+      }
+      toast.error(muted ? 'Failed to mute conversation' : 'Failed to unmute conversation')
+    }
+  }, [conversations, messagesByConversation, setSnapshot])
 
   const effectiveUserId = currentUserId ?? ''
 
@@ -503,6 +675,54 @@ export function CoachMessagingWorkspace() {
     }
   }, [drafts, conversations, threadGroupsByConversation, messagesByConversation])
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't fire when typing in inputs/textareas
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        // Only handle Escape in inputs
+        if (e.key === 'Escape') {
+          ;(target as HTMLInputElement).blur()
+        }
+        return
+      }
+
+      switch (e.key) {
+        case 'c':
+          e.preventDefault()
+          composer.openDm()
+          break
+        case 'e':
+          if (selection?.conversation.id) {
+            e.preventDefault()
+            void handleArchiveConversation(selection.conversation.id)
+          }
+          break
+        case 's':
+          if (selection?.message.id) {
+            e.preventDefault()
+            void handleFlagToggle(selection.message.id, !selection.message.flagged)
+          }
+          break
+        case '/':
+          e.preventDefault()
+          // Focus the inbox search input
+          const searchInput = document.querySelector('[data-testid="inbox-search-input"]') as HTMLInputElement
+          searchInput?.focus()
+          break
+        case 'Escape':
+          if (composer.open) {
+            composer.close()
+          }
+          break
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selection, composer, handleArchiveConversation, handleFlagToggle])
+
   return (
     <div className="flex h-[calc(100vh-6rem)] min-h-0 w-full flex-col overflow-hidden">
       <div className="grid flex-1 gap-4 overflow-hidden lg:grid-cols-12 min-h-0">
@@ -523,9 +743,11 @@ export function CoachMessagingWorkspace() {
             onDraftDelete={(draftId) => {
               void removeDraft(draftId)
             }}
+            archivedConversations={archivedConversations}
             archivedMessagesByConversation={archivedMessages}
             archivedLoading={archivedLoading}
             onArchivedRestore={handleUnarchiveMessage}
+            onArchivedConversationRestore={handleUnarchiveConversation}
             onDraftOpen={(draftId) => {
               const { draft, selection } = resolveDraftSelection(draftId)
               if (!draft) return
@@ -542,8 +764,11 @@ export function CoachMessagingWorkspace() {
             }}
             onMessagesRead={handleMessagesRead}
             subscribeToConversation={subscribeToConversation}
+            pinnedItems={pinnedItems}
             onArchiveConversation={handleArchiveConversation}
             onFlagToggle={handleFlagToggle}
+            onPinToggle={handlePinToggle}
+            onMuteToggle={handleMuteToggle}
             onViewArchived={handleViewArchived}
             onRefresh={refresh}
             isAdmin={userRole === 'admin'}

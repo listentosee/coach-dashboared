@@ -3,17 +3,42 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Filter, MessageSquare, Users, PenSquare, Archive, FileText, List } from 'lucide-react'
+import {
+  Inbox,
+  MailOpen,
+  Flag,
+  FileText,
+  Archive,
+  Filter,
+  MessageSquare,
+  MessagesSquare,
+  Users,
+  PenSquare,
+  Megaphone,
+} from 'lucide-react'
 
 export type ConversationType = 'dm' | 'group' | 'announcement'
 export type InboxListMode = 'threads' | 'messages'
 export type InboxViewMode = 'all' | 'unread' | 'flagged' | 'drafts' | 'archived'
 
 const typeMeta: Record<ConversationType, { label: string; icon: typeof MessageSquare }> = {
-  announcement: { label: 'Announcements', icon: MessageSquare },
-  group: { label: 'Groups', icon: Users },
   dm: { label: 'Direct', icon: MessageSquare },
+  group: { label: 'Groups', icon: Users },
+  announcement: { label: 'Announcements', icon: Megaphone },
 }
+
+type ViewModeButton = {
+  mode: InboxViewMode
+  icon: typeof Inbox
+  label: string
+}
+
+const viewModeButtons: ViewModeButton[] = [
+  { mode: 'unread', icon: MailOpen, label: 'Unread' },
+  { mode: 'flagged', icon: Flag, label: 'Flagged' },
+  { mode: 'drafts', icon: FileText, label: 'Drafts' },
+  { mode: 'archived', icon: Archive, label: 'Archived' },
+]
 
 export type InboxActionBarProps = {
   listMode: InboxListMode
@@ -23,6 +48,7 @@ export type InboxActionBarProps = {
   filters: Record<ConversationType, boolean>
   onFiltersChange: (filters: Record<ConversationType, boolean>) => void
   draftsCount?: number
+  unreadCount?: number
   onCompose?: (target: 'dm' | 'group' | 'announcement') => void
   onViewArchived?: () => void
   isAdmin?: boolean
@@ -36,6 +62,7 @@ export function InboxActionBar({
   filters,
   onFiltersChange,
   draftsCount = 0,
+  unreadCount = 0,
   onCompose,
   onViewArchived,
   isAdmin = false,
@@ -44,11 +71,6 @@ export function InboxActionBar({
   const [sendMenuOpen, setSendMenuOpen] = useState(false)
   const filterMenuRef = useRef<HTMLDivElement | null>(null)
   const sendMenuRef = useRef<HTMLDivElement | null>(null)
-  const unreadOnly = viewMode === 'unread'
-  const flaggedOnly = viewMode === 'flagged'
-  const draftsOnly = viewMode === 'drafts'
-  const archivedOnly = viewMode === 'archived'
-  const conversationsChecked = !unreadOnly && !flaggedOnly && listMode === 'threads'
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -70,128 +92,143 @@ export function InboxActionBar({
     onFiltersChange(next)
   }
 
-  const handleUnreadToggle = (next: boolean | "indeterminate") => {
-    const checked = next === true
-    onViewModeChange(checked ? 'unread' : 'all')
-    if (checked) onListModeChange('messages')
+  const handleViewModeClick = (mode: InboxViewMode) => {
+    // If already on this mode, do nothing — use Inbox/Conversations tabs to go back
+    if (viewMode === mode) return
+    onViewModeChange(mode)
+
+    // These views force messages list mode
+    if (mode === 'unread' || mode === 'flagged' || mode === 'drafts') {
+      onListModeChange('messages')
+    }
+
+    // Archived triggers the fetch callback
+    if (mode === 'archived') {
+      onListModeChange('messages')
+      onViewArchived?.()
+    }
   }
 
-  const handleFlaggedToggle = (next: boolean | "indeterminate") => {
-    const checked = next === true
-    onViewModeChange(checked ? 'flagged' : 'all')
-    if (checked) onListModeChange('messages')
+  const handleListModeClick = (mode: InboxListMode) => {
+    // Clicking a list mode tab resets to "all" view and switches list mode
+    if (viewMode !== 'all') {
+      onViewModeChange('all')
+    }
+    onListModeChange(mode)
   }
 
-  const handleDraftsToggle = () => {
-    onViewModeChange('drafts')
-    onListModeChange('messages')
-  }
-
-  const handleConversationsToggle = (next: boolean | "indeterminate") => {
-    const checked = next === true
-    if (draftsOnly || archivedOnly) onViewModeChange('all')
-    onListModeChange(checked ? 'threads' : 'messages')
+  const getBadge = (mode: InboxViewMode): number | null => {
+    if (mode === 'unread' && unreadCount > 0) return unreadCount
+    if (mode === 'drafts' && draftsCount > 0) return draftsCount
+    return null
   }
 
   return (
-    <div className="flex items-center gap-3 border-b border-meta-border bg-meta-card/40 px-4 py-3">
+    <div className="flex items-center gap-1.5 border-b border-meta-border bg-meta-card/40 px-3 py-2" data-testid="inbox-action-bar">
+      {/* List mode tabs: Inbox (messages) and Conversations (threads) */}
       <Button
         size="sm"
-        variant={conversationsChecked ? 'secondary' : 'ghost'}
+        variant={listMode === 'messages' ? 'secondary' : 'ghost'}
         className="h-8 w-8 p-0"
-        onClick={() => handleConversationsToggle(!conversationsChecked)}
-        disabled={unreadOnly || flaggedOnly}
-        title={conversationsChecked ? 'Show messages' : 'Show conversations'}
+        onClick={() => handleListModeClick('messages')}
+        title="Inbox"
+        data-testid="list-mode-messages"
       >
-        {conversationsChecked ? (
-          <MessageSquare className="h-4 w-4" />
-        ) : (
-          <List className="h-4 w-4" />
-        )}
+        <Inbox className="h-4 w-4" />
+      </Button>
+      <Button
+        size="sm"
+        variant={listMode === 'threads' ? 'secondary' : 'ghost'}
+        className="h-8 w-8 p-0"
+        onClick={() => handleListModeClick('threads')}
+        title="Conversations"
+        data-testid="list-mode-threads"
+      >
+        <MessagesSquare className="h-4 w-4" />
       </Button>
 
+      <div className="mx-1 h-5 w-px bg-meta-border" />
+
+      {/* View mode buttons - radio-style: only one active at a time */}
+      {viewModeButtons.map(({ mode, icon: Icon, label }) => {
+        const isActive = viewMode === mode
+        const badge = getBadge(mode)
+        return (
+          <div key={mode} className="relative">
+            <Button
+              size="sm"
+              variant={isActive ? 'secondary' : 'ghost'}
+              className="h-8 w-8 p-0"
+              onClick={() => handleViewModeClick(mode)}
+              title={label}
+              data-testid={`view-mode-${mode}`}
+              data-active={isActive ? 'true' : undefined}
+            >
+              <Icon className="h-4 w-4" />
+            </Button>
+            {badge != null && (
+              <span className="absolute -top-1 -right-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-meta-accent px-1 text-[10px] font-semibold text-white pointer-events-none">
+                {badge > 99 ? '99+' : badge}
+              </span>
+            )}
+          </div>
+        )
+      })}
+
+      <div className="mx-1 h-5 w-px bg-meta-border" />
+
+      {/* Filter popover - conversation type filters */}
       <div className="relative" ref={filterMenuRef}>
         <Button
           size="sm"
-          variant="secondary"
+          variant={filterMenuOpen ? 'secondary' : 'ghost'}
           className="h-8 w-8 p-0"
           onClick={() => setFilterMenuOpen((open) => !open)}
-          title="Filters"
+          title="Filter by conversation type"
+          data-testid="filter-menu-button"
         >
           <Filter className="h-4 w-4" />
         </Button>
-        {filterMenuOpen ? (
-          <div className="absolute left-0 z-20 mt-2 w-56 rounded-md border border-meta-border bg-meta-card p-2 shadow-lg">
+        {filterMenuOpen && (
+          <div className="absolute left-0 z-20 mt-2 w-48 rounded-md border border-meta-border bg-meta-card p-2 shadow-lg">
             <div className="mb-1 rounded px-2 py-1 text-xs uppercase tracking-wide text-meta-muted">
-              Visibility
-            </div>
-            <label className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-meta-dark/10">
-              <Checkbox checked={unreadOnly} onCheckedChange={handleUnreadToggle} />
-              <span>Unread only</span>
-            </label>
-            <label className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-meta-dark/10">
-              <Checkbox checked={flaggedOnly} onCheckedChange={handleFlaggedToggle} />
-              <span>Flagged</span>
-            </label>
-            <div className="mt-3 mb-1 rounded px-2 py-1 text-xs uppercase tracking-wide text-meta-muted">
               Conversation Types
             </div>
-            {(Object.keys(typeMeta) as ConversationType[]).map((type) => (
-              <label
-                key={type}
-                className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-meta-dark/10"
-                style={unreadOnly || flaggedOnly || draftsOnly ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
-              >
-                <Checkbox
-                  checked={filters[type]}
-                  onCheckedChange={() => toggleFilter(type)}
-                  disabled={unreadOnly || flaggedOnly || draftsOnly}
-                />
-                <span>{typeMeta[type].label}</span>
-              </label>
-            ))}
+            {(Object.keys(typeMeta) as ConversationType[]).map((type) => {
+              const { label, icon: TypeIcon } = typeMeta[type]
+              return (
+                <label
+                  key={type}
+                  className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-meta-dark/10 cursor-pointer"
+                >
+                  <Checkbox
+                    checked={filters[type]}
+                    onCheckedChange={() => toggleFilter(type)}
+                  />
+                  <TypeIcon className="h-3.5 w-3.5 text-meta-muted" />
+                  <span>{label}</span>
+                </label>
+              )
+            })}
           </div>
-        ) : null}
+        )}
       </div>
 
-      <div className="relative">
-        <Button
-          size="sm"
-          variant={draftsOnly ? 'secondary' : 'ghost'}
-          className="h-8 w-8 p-0"
-          onClick={handleDraftsToggle}
-          title="Drafts"
-        >
-          <FileText className="h-4 w-4" />
-        </Button>
-        {draftsCount > 0 ? (
-          <span className="absolute -top-1 -right-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-black">
-            {draftsCount}
-          </span>
-        ) : null}
-      </div>
+      {/* Spacer */}
+      <div className="flex-1" />
 
-      {onViewArchived && (
-        <Button
-          size="sm"
-          variant={archivedOnly ? 'secondary' : 'ghost'}
-          className="h-8 w-8 p-0 ml-auto"
-          onClick={() => {
-            onViewModeChange('archived')
-            onListModeChange('messages')
-            onViewArchived?.()
-          }}
-          title="Archived"
-        >
-          <Archive className="h-4 w-4" />
-        </Button>
-      )}
-
+      {/* Compose menu */}
       <div className="relative" ref={sendMenuRef}>
-        <Button size="sm" className="h-8 w-8 p-0" onClick={() => setSendMenuOpen((open) => !open)} title="New">
+        <Button
+          size="sm"
+          className="h-8 w-8 p-0"
+          onClick={() => setSendMenuOpen((open) => !open)}
+          title="Compose new message"
+          data-testid="compose-button"
+        >
           <PenSquare className="h-4 w-4" />
         </Button>
-        {sendMenuOpen ? (
+        {sendMenuOpen && (
           <div className="absolute right-0 z-20 mt-2 w-44 rounded-md border border-meta-border bg-meta-card py-1 shadow-lg">
             <button
               type="button"
@@ -200,6 +237,7 @@ export function InboxActionBar({
                 setSendMenuOpen(false)
                 onCompose?.('dm')
               }}
+              data-testid="compose-dm"
             >
               <MessageSquare className="h-4 w-4" />
               Direct message
@@ -211,6 +249,7 @@ export function InboxActionBar({
                 setSendMenuOpen(false)
                 onCompose?.('group')
               }}
+              data-testid="compose-group"
             >
               <Users className="h-4 w-4" />
               Group message
@@ -223,13 +262,14 @@ export function InboxActionBar({
                   setSendMenuOpen(false)
                   onCompose?.('announcement')
                 }}
+                data-testid="compose-announcement"
               >
-                <MessageSquare className="h-4 w-4" />
+                <Megaphone className="h-4 w-4" />
                 Announcement
               </button>
             )}
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   )

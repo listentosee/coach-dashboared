@@ -18,13 +18,21 @@ create index if not exists idx_job_worker_runs_started_at_desc on public.job_wor
 
 alter table public.job_worker_runs enable row level security;
 
-create policy job_worker_runs_admin_read
-  on public.job_worker_runs
-  for select
-  using ((auth.role() = 'authenticated') and public.is_admin_user());
+do $$ begin
+  if not exists (select 1 from pg_policies where policyname = 'job_worker_runs_admin_read' and tablename = 'job_worker_runs') then
+    create policy job_worker_runs_admin_read
+      on public.job_worker_runs
+      for select
+      using ((auth.role() = 'authenticated') and public.is_admin_user());
+  end if;
+end $$;
 
-create policy job_worker_runs_service_role_full
-  on public.job_worker_runs
-  using (auth.role() = 'service_role')
-  with check (auth.role() = 'service_role');
+do $$ begin
+  if not exists (select 1 from pg_policies where policyname = 'job_worker_runs_service_role_full' and tablename = 'job_worker_runs') then
+    create policy job_worker_runs_service_role_full
+      on public.job_worker_runs
+      using (auth.role() = 'service_role')
+      with check (auth.role() = 'service_role');
+  end if;
+end $$;
 

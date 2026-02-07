@@ -22,6 +22,10 @@ export type ThreadGroupProps = {
   subtitle?: string
   conversationId?: string
   onArchive?: (conversationId: string) => void
+  onPinToggle?: (conversationId: string, pinned: boolean) => void
+  onMuteToggle?: (conversationId: string, muted: boolean) => void
+  isPinned?: boolean
+  isMuted?: boolean
   hasDraft?: boolean
 }
 
@@ -41,6 +45,10 @@ export function ThreadGroup({
   subtitle,
   conversationId,
   onArchive,
+  onPinToggle,
+  onMuteToggle,
+  isPinned,
+  isMuted,
   hasDraft = false,
 }: ThreadGroupProps) {
   const handleClick = () => {
@@ -90,10 +98,14 @@ export function ThreadGroup({
           </div>
         </button>
         <div className="flex items-center gap-1 shrink-0 mt-1">
-          {conversationId && onArchive ? (
+          {conversationId && (onArchive || onPinToggle || onMuteToggle) ? (
             <ConversationActions
               conversationId={conversationId}
               onArchive={onArchive}
+              onPinToggle={onPinToggle}
+              onMuteToggle={onMuteToggle}
+              isPinned={isPinned}
+              isMuted={isMuted}
             />
           ) : null}
           {expandable ? (

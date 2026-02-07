@@ -590,7 +590,7 @@ $$;
 ALTER FUNCTION "public"."get_archived_items"("p_user_id" "uuid") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."get_conversation_messages"("p_conversation_id" "uuid", "p_limit" integer DEFAULT 500) RETURNS TABLE("id" "uuid", "conversation_id" "uuid", "sender_id" "uuid", "body" "text", "created_at" timestamp with time zone, "parent_message_id" "uuid", "sender_name" "text", "sender_email" "text", "flagged" boolean)
+CREATE OR REPLACE FUNCTION "public"."get_conversation_messages"("p_conversation_id" "uuid", "p_limit" integer DEFAULT 500) RETURNS TABLE("id" "uuid", "conversation_id" "uuid", "sender_id" "uuid", "body" "text", "created_at" timestamp with time zone, "parent_message_id" "uuid", "sender_name" "text", "sender_email" "text", "flagged" boolean, "high_priority" boolean)
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
@@ -603,7 +603,8 @@ CREATE OR REPLACE FUNCTION "public"."get_conversation_messages"("p_conversation_
     m.parent_message_id,
     p.first_name || ' ' || p.last_name AS sender_name,
     p.email AS sender_email,
-    COALESCE(mus.flagged, false) as flagged
+    COALESCE(mus.flagged, false) as flagged,
+    m.high_priority
   FROM public.messages m
   JOIN public.profiles p ON p.id = m.sender_id
   LEFT JOIN public.message_user_state mus ON (
@@ -622,7 +623,7 @@ $$;
 ALTER FUNCTION "public"."get_conversation_messages"("p_conversation_id" "uuid", "p_limit" integer) OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."get_conversation_messages_with_state"("p_conversation_id" "uuid", "p_user_id" "uuid" DEFAULT NULL::"uuid") RETURNS TABLE("id" "uuid", "conversation_id" "uuid", "sender_id" "uuid", "body" "text", "created_at" timestamp with time zone, "parent_message_id" "uuid", "sender_name" "text", "sender_email" "text", "read_at" timestamp with time zone, "flagged" boolean, "archived_at" timestamp with time zone, "is_sender" boolean)
+CREATE OR REPLACE FUNCTION "public"."get_conversation_messages_with_state"("p_conversation_id" "uuid", "p_user_id" "uuid" DEFAULT NULL::"uuid") RETURNS TABLE("id" "uuid", "conversation_id" "uuid", "sender_id" "uuid", "body" "text", "created_at" timestamp with time zone, "parent_message_id" "uuid", "sender_name" "text", "sender_email" "text", "read_at" timestamp with time zone, "flagged" boolean, "archived_at" timestamp with time zone, "is_sender" boolean, "high_priority" boolean)
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
@@ -635,10 +636,11 @@ CREATE OR REPLACE FUNCTION "public"."get_conversation_messages_with_state"("p_co
     m.parent_message_id,
     p.first_name || ' ' || p.last_name AS sender_name,
     p.email AS sender_email,
-    NULL::TIMESTAMPTZ as read_at, -- Will be populated by frontend from read receipts
+    NULL::TIMESTAMPTZ as read_at,
     COALESCE(mus.flagged, false) as flagged,
     mus.archived_at,
-    m.sender_id = COALESCE(p_user_id, auth.uid()) as is_sender
+    m.sender_id = COALESCE(p_user_id, auth.uid()) as is_sender,
+    m.high_priority
   FROM public.messages m
   JOIN public.profiles p ON p.id = m.sender_id
   LEFT JOIN public.message_user_state mus ON (
@@ -650,16 +652,12 @@ CREATE OR REPLACE FUNCTION "public"."get_conversation_messages_with_state"("p_co
       WHERE cm.conversation_id = m.conversation_id
         AND cm.user_id = COALESCE(p_user_id, auth.uid())
     )
-    AND (mus.archived_at IS NULL OR mus.user_id IS NULL)  -- Message not archived by user
+    AND (mus.archived_at IS NULL OR mus.user_id IS NULL)
   ORDER BY m.created_at ASC;
 $$;
 
 
 ALTER FUNCTION "public"."get_conversation_messages_with_state"("p_conversation_id" "uuid", "p_user_id" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."get_conversation_messages_with_state"("p_conversation_id" "uuid", "p_user_id" "uuid") IS 'Get conversation messages with per-user state filtering';
-
 
 
 CREATE OR REPLACE FUNCTION "public"."get_conversation_summary"("p_conversation_id" "uuid") RETURNS TABLE("last_message_body" "text", "last_message_at" timestamp with time zone, "last_sender_name" "text", "total_messages" integer, "unread_count" integer)
@@ -792,6 +790,23 @@ $$;
 ALTER FUNCTION "public"."get_cron_jobs"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."get_dashboard_category_totals"("p_synced_user_ids" "text"[]) RETURNS TABLE("synced_user_id" "text", "challenge_category" "text", "challenges" integer, "points" integer)
+    LANGUAGE "sql"
+    AS $$
+  SELECT
+    synced_user_id,
+    COALESCE(challenge_category, 'Uncategorized') AS challenge_category,
+    COUNT(*)::int AS challenges,
+    COALESCE(SUM(challenge_points), 0)::int AS points
+  FROM public.game_platform_challenge_solves
+  WHERE synced_user_id = ANY(p_synced_user_ids)
+  GROUP BY synced_user_id, COALESCE(challenge_category, 'Uncategorized');
+$$;
+
+
+ALTER FUNCTION "public"."get_dashboard_category_totals"("p_synced_user_ids" "text"[]) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."get_message_read_status"("p_message_ids" bigint[]) RETURNS TABLE("message_id" bigint, "read_count" integer, "readers" "jsonb")
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -833,6 +848,46 @@ ALTER FUNCTION "public"."get_message_user_state"("p_message_id" "uuid") OWNER TO
 
 COMMENT ON FUNCTION "public"."get_message_user_state"("p_message_id" "uuid") IS 'Get current user''s state for a specific message (flagged, archived)';
 
+
+
+CREATE OR REPLACE FUNCTION "public"."get_recent_messages_for_user"("p_user_id" "uuid", "p_limit_per_conversation" integer DEFAULT 50) RETURNS TABLE("id" "uuid", "conversation_id" "uuid", "sender_id" "uuid", "body" "text", "created_at" timestamp with time zone, "parent_message_id" "uuid", "sender_name" "text", "sender_email" "text", "flagged" boolean, "archived_at" timestamp with time zone, "high_priority" boolean)
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  with convs as (
+    select c.id
+    from public.conversations c
+    join public.conversation_members cm on cm.conversation_id = c.id
+    where cm.user_id = p_user_id
+  )
+  select
+    m.id,
+    m.conversation_id,
+    m.sender_id,
+    m.body,
+    m.created_at,
+    m.parent_message_id,
+    p.first_name || ' ' || p.last_name as sender_name,
+    p.email as sender_email,
+    coalesce(m.flagged, false) as flagged,
+    m.archived_at,
+    m.high_priority
+  from convs c
+  join lateral (
+    select m.*, mus.flagged, mus.archived_at
+    from public.messages m
+    left join public.message_user_state mus
+      on mus.message_id = m.id and mus.user_id = p_user_id
+    where m.conversation_id = c.id
+      and (mus.archived_at is null or mus.user_id is null)
+    order by m.created_at desc
+    limit least(greatest(coalesce(p_limit_per_conversation, 50), 1), 200)
+  ) m on true
+  join public.profiles p on p.id = m.sender_id;
+$$;
+
+
+ALTER FUNCTION "public"."get_recent_messages_for_user"("p_user_id" "uuid", "p_limit_per_conversation" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."get_recurring_jobs_to_enqueue"() RETURNS TABLE("id" "uuid", "name" "text", "task_type" "text", "payload" "jsonb", "schedule_interval_minutes" integer)
@@ -877,7 +932,7 @@ CREATE OR REPLACE FUNCTION "public"."get_thread_messages"("p_thread_root_id" "uu
   LEFT JOIN public.message_user_state mus ON (
     mus.message_id = m.id AND mus.user_id = auth.uid()
   )
-  WHERE (m.id = p_thread_root_id OR m.thread_root_id = p_thread_root_id)
+  WHERE (m.id = p_thread_root_id OR m.thread_root_id = p_thread_root_id OR m.parent_message_id = p_thread_root_id)
     AND EXISTS (
       SELECT 1 FROM public.conversation_members cm
       WHERE cm.conversation_id = (
@@ -1450,6 +1505,97 @@ $$;
 ALTER FUNCTION "public"."list_conversations_enriched"("p_user_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."list_conversations_summary"("p_user_id" "uuid") RETURNS TABLE("id" "uuid", "type" "text", "title" "text", "created_by" "uuid", "created_at" timestamp with time zone, "unread_count" integer, "last_message_at" timestamp with time zone, "display_title" "text", "last_message_body" "text", "last_sender_name" "text", "last_sender_email" "text")
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  with base as (
+    select c.id, c.type, c.title, c.created_by, c.created_at,
+           cm.last_read_at
+    from public.conversations c
+    join public.conversation_members cm on cm.conversation_id = c.id
+    where cm.user_id = p_user_id
+  ),
+  counts as (
+    select b.id,
+           count(m.id)::int as unread_count,
+           max(m.created_at) as last_message_at
+    from base b
+    left join public.messages m on m.conversation_id = b.id
+      and m.created_at > b.last_read_at
+      and m.sender_id <> p_user_id
+    group by b.id
+  ),
+  last_msg as (
+    select b.id as conversation_id,
+           lm.id as message_id,
+           lm.body as last_message_body,
+           lm.sender_id as last_sender_id,
+           lm.created_at as last_message_at
+    from base b
+    left join lateral (
+      select m.id, m.body, m.sender_id, m.created_at
+      from public.messages m
+      where m.conversation_id = b.id
+      order by m.created_at desc
+      limit 1
+    ) lm on true
+  )
+  select
+    b.id,
+    b.type,
+    b.title,
+    b.created_by,
+    b.created_at,
+    coalesce(c.unread_count, 0) as unread_count,
+    coalesce(lm.last_message_at, c.last_message_at) as last_message_at,
+    case
+      when b.type = 'announcement' then coalesce(nullif(trim(b.title), ''), 'Announcement')
+      when b.type = 'dm' then coalesce(
+        (
+          select nullif(trim(p.first_name || ' ' || p.last_name), '')
+          from public.conversation_members cm
+          join public.profiles p on p.id = cm.user_id
+          where cm.conversation_id = b.id and cm.user_id <> p_user_id
+          limit 1
+        ),
+        (
+          select p.email
+          from public.conversation_members cm
+          join public.profiles p on p.id = cm.user_id
+          where cm.conversation_id = b.id and cm.user_id <> p_user_id
+          limit 1
+        ),
+        'Direct Message'
+      )
+      when b.type = 'group' then coalesce(
+        nullif(trim(b.title), ''),
+        (
+          select string_agg(
+            coalesce(nullif(trim(p.first_name || ' ' || p.last_name), ''), p.email),
+            ', '
+          )
+          from public.conversation_members cm
+          join public.profiles p on p.id = cm.user_id
+          where cm.conversation_id = b.id and cm.user_id <> p_user_id
+        ),
+        'Group Conversation'
+      )
+      else coalesce(nullif(trim(b.title), ''), 'Conversation')
+    end as display_title,
+    lm.last_message_body,
+    (p.first_name || ' ' || p.last_name) as last_sender_name,
+    p.email as last_sender_email
+  from base b
+  left join counts c on c.id = b.id
+  left join last_msg lm on lm.conversation_id = b.id
+  left join public.profiles p on p.id = lm.last_sender_id;
+$$;
+
+
+ALTER FUNCTION "public"."list_conversations_summary"("p_user_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."list_conversations_with_unread"("p_user_id" "uuid") RETURNS TABLE("id" "uuid", "type" "text", "title" "text", "created_by" "uuid", "created_at" timestamp with time zone, "unread_count" integer, "last_message_at" timestamp with time zone)
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -1644,6 +1790,55 @@ $$;
 
 
 ALTER FUNCTION "public"."list_threads"("p_conversation_id" "uuid", "p_limit" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."list_threads_for_user"("p_user_id" "uuid", "p_limit" integer DEFAULT 500) RETURNS TABLE("conversation_id" "uuid", "root_id" "uuid", "sender_id" "uuid", "created_at" timestamp with time zone, "snippet" "text", "reply_count" integer, "last_reply_at" timestamp with time zone, "unread_count" integer)
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  with memberships as (
+    select cm.conversation_id
+    from public.conversation_members cm
+    where cm.user_id = p_user_id
+  ),
+  roots as (
+    select m.id as root_id,
+           m.conversation_id,
+           m.sender_id,
+           m.created_at,
+           m.body,
+           coalesce(m.thread_reply_count, 0) as reply_count,
+           m.thread_last_reply_at
+    from public.messages m
+    join memberships ms on ms.conversation_id = m.conversation_id
+    where m.parent_message_id is null
+  ),
+  unreads as (
+    select rt.root_id,
+           count(m.id)::int as unread_count
+    from roots rt
+    join public.messages m on (m.id = rt.root_id or m.thread_root_id = rt.root_id)
+    left join public.message_read_receipts r on r.message_id = m.id and r.user_id = p_user_id
+    where m.sender_id <> p_user_id and r.id is null
+    group by rt.root_id
+  )
+  select
+    rt.conversation_id,
+    rt.root_id,
+    rt.sender_id,
+    rt.created_at,
+    left(regexp_replace(rt.body, '\n+', ' ', 'g'), 160) as snippet,
+    rt.reply_count,
+    rt.thread_last_reply_at as last_reply_at,
+    coalesce(uw.unread_count, 0) as unread_count
+  from roots rt
+  left join unreads uw on uw.root_id = rt.root_id
+  order by coalesce(rt.thread_last_reply_at, rt.created_at) desc
+  limit least(greatest(coalesce(p_limit, 500), 1), 2000);
+$$;
+
+
+ALTER FUNCTION "public"."list_threads_for_user"("p_user_id" "uuid", "p_limit" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."list_users_minimal"() RETURNS TABLE("id" "uuid", "first_name" "text", "last_name" "text", "email" "text", "role" "text")
@@ -1869,6 +2064,76 @@ $$;
 ALTER FUNCTION "public"."recompute_thread_stats"("p_conversation_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."search_drafts_for_user"("p_user_id" "uuid", "p_query" "text") RETURNS TABLE("id" "uuid", "mode" "text", "body" "text", "subject" "text", "dm_recipient_id" "uuid", "recipient_name" "text", "recipient_email" "text", "updated_at" timestamp with time zone)
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  SELECT
+    d.id,
+    d.mode,
+    d.body,
+    d.subject,
+    d.dm_recipient_id,
+    COALESCE(p.first_name || ' ' || p.last_name, p.email) AS recipient_name,
+    p.email AS recipient_email,
+    d.updated_at
+  FROM public.message_drafts d
+  LEFT JOIN public.profiles p ON p.id = d.dm_recipient_id
+  WHERE d.user_id = p_user_id
+    AND (
+      d.subject ILIKE '%' || p_query || '%'
+      OR d.body ILIKE '%' || p_query || '%'
+      OR COALESCE(p.first_name || ' ' || p.last_name, p.email) ILIKE '%' || p_query || '%'
+      OR p.email ILIKE '%' || p_query || '%'
+    )
+  ORDER BY d.updated_at DESC
+  LIMIT 200;
+$$;
+
+
+ALTER FUNCTION "public"."search_drafts_for_user"("p_user_id" "uuid", "p_query" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."search_message_items"("p_user_id" "uuid", "p_query" "text", "p_archived" boolean DEFAULT false) RETURNS TABLE("id" "uuid", "conversation_id" "uuid", "sender_id" "uuid", "body" "text", "created_at" timestamp with time zone, "parent_message_id" "uuid", "thread_root_id" "uuid", "sender_name" "text", "sender_email" "text", "conversation_title" "text")
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+  SELECT
+    m.id,
+    m.conversation_id,
+    m.sender_id,
+    m.body,
+    m.created_at,
+    m.parent_message_id,
+    m.thread_root_id,
+    p.first_name || ' ' || p.last_name AS sender_name,
+    p.email AS sender_email,
+    c.title AS conversation_title
+  FROM public.messages m
+  JOIN public.conversations c ON c.id = m.conversation_id
+  JOIN public.profiles p ON p.id = m.sender_id
+  JOIN public.conversation_members cm ON cm.conversation_id = m.conversation_id
+  LEFT JOIN public.message_user_state mus
+    ON mus.message_id = m.id AND mus.user_id = p_user_id
+  WHERE cm.user_id = p_user_id
+    AND (
+      (p_archived = false AND (mus.archived_at IS NULL OR mus.user_id IS NULL))
+      OR (p_archived = true AND mus.archived_at IS NOT NULL)
+    )
+    AND (
+      m.body ILIKE '%' || p_query || '%'
+      OR c.title ILIKE '%' || p_query || '%'
+      OR (p.first_name || ' ' || p.last_name) ILIKE '%' || p_query || '%'
+      OR p.email ILIKE '%' || p_query || '%'
+    )
+  ORDER BY m.created_at DESC
+  LIMIT 500;
+$$;
+
+
+ALTER FUNCTION "public"."search_message_items"("p_user_id" "uuid", "p_query" "text", "p_archived" boolean) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."set_job_queue_settings_updated_at"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -2026,6 +2291,19 @@ $$;
 
 
 ALTER FUNCTION "public"."update_game_platform_sync_state_timestamp"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_message_drafts_updated_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_message_drafts_updated_at"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."update_message_user_state_updated_at"() RETURNS "trigger"
@@ -2407,7 +2685,8 @@ CREATE TABLE IF NOT EXISTS "public"."game_platform_flash_ctf_events" (
     "started_at" timestamp with time zone,
     "ended_at" timestamp with time zone,
     "raw_payload" "jsonb",
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "max_points_possible" integer
 );
 
 
@@ -2520,6 +2799,7 @@ CREATE TABLE IF NOT EXISTS "public"."game_platform_sync_state" (
     "error_message" "text",
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "needs_totals_refresh" boolean DEFAULT false,
+    "last_login_at" timestamp with time zone,
     CONSTRAINT "game_platform_sync_state_last_result_check" CHECK (("last_result" = ANY (ARRAY['success'::"text", 'failure'::"text"])))
 );
 
@@ -2580,6 +2860,26 @@ CREATE TABLE IF NOT EXISTS "public"."job_worker_runs" (
 ALTER TABLE "public"."job_worker_runs" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."message_drafts" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "mode" "text" NOT NULL,
+    "body" "text" DEFAULT ''::"text" NOT NULL,
+    "subject" "text" DEFAULT ''::"text",
+    "high_priority" boolean DEFAULT false NOT NULL,
+    "dm_recipient_id" "uuid",
+    "group_recipient_ids" "uuid"[] DEFAULT '{}'::"uuid"[] NOT NULL,
+    "conversation_id" "uuid",
+    "thread_id" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "message_drafts_mode_check" CHECK (("mode" = ANY (ARRAY['dm'::"text", 'group'::"text", 'announcement'::"text", 'reply'::"text", 'forward'::"text"])))
+);
+
+
+ALTER TABLE "public"."message_drafts" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."message_read_receipts" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "message_id" "uuid" NOT NULL,
@@ -2620,7 +2920,8 @@ CREATE TABLE IF NOT EXISTS "public"."messages" (
     "parent_message_id" "uuid",
     "thread_root_id" "uuid",
     "thread_reply_count" integer DEFAULT 0,
-    "thread_last_reply_at" timestamp with time zone
+    "thread_last_reply_at" timestamp with time zone,
+    "high_priority" boolean DEFAULT false NOT NULL
 );
 
 
@@ -2955,6 +3256,11 @@ ALTER TABLE ONLY "public"."job_worker_runs"
 
 
 
+ALTER TABLE ONLY "public"."message_drafts"
+    ADD CONSTRAINT "message_drafts_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."message_read_receipts"
     ADD CONSTRAINT "message_read_receipts_message_id_user_id_key" UNIQUE ("message_id", "user_id");
 
@@ -3140,6 +3446,18 @@ CREATE INDEX "idx_job_worker_runs_started_at_desc" ON "public"."job_worker_runs"
 
 
 
+CREATE INDEX "idx_message_drafts_conversation" ON "public"."message_drafts" USING "btree" ("conversation_id");
+
+
+
+CREATE INDEX "idx_message_drafts_thread" ON "public"."message_drafts" USING "btree" ("thread_id");
+
+
+
+CREATE INDEX "idx_message_drafts_user_updated" ON "public"."message_drafts" USING "btree" ("user_id", "updated_at" DESC);
+
+
+
 CREATE INDEX "idx_message_read_receipts_user" ON "public"."message_read_receipts" USING "btree" ("user_id", "read_at" DESC);
 
 
@@ -3236,6 +3554,10 @@ CREATE OR REPLACE TRIGGER "update_competitors_updated_at" BEFORE UPDATE ON "publ
 
 
 
+CREATE OR REPLACE TRIGGER "update_message_drafts_updated_at" BEFORE UPDATE ON "public"."message_drafts" FOR EACH ROW EXECUTE FUNCTION "public"."update_message_drafts_updated_at"();
+
+
+
 CREATE OR REPLACE TRIGGER "update_message_user_state_updated_at" BEFORE UPDATE ON "public"."message_user_state" FOR EACH ROW EXECUTE FUNCTION "public"."update_message_user_state_updated_at"();
 
 
@@ -3325,6 +3647,21 @@ ALTER TABLE ONLY "public"."game_platform_sync_events"
 
 ALTER TABLE ONLY "public"."game_platform_teams"
     ADD CONSTRAINT "game_platform_teams_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."message_drafts"
+    ADD CONSTRAINT "message_drafts_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."message_drafts"
+    ADD CONSTRAINT "message_drafts_thread_id_fkey" FOREIGN KEY ("thread_id") REFERENCES "public"."messages"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."message_drafts"
+    ADD CONSTRAINT "message_drafts_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
 
 
 
@@ -3432,6 +3769,10 @@ CREATE POLICY "Users can delete their own archived items" ON "public"."archived_
 
 
 
+CREATE POLICY "Users can delete their own drafts" ON "public"."message_drafts" FOR DELETE USING (("auth"."uid"() = "user_id"));
+
+
+
 CREATE POLICY "Users can delete their own message state" ON "public"."message_user_state" FOR DELETE USING (("auth"."uid"() = "user_id"));
 
 
@@ -3444,6 +3785,10 @@ CREATE POLICY "Users can insert their own archived items" ON "public"."archived_
 
 
 
+CREATE POLICY "Users can insert their own drafts" ON "public"."message_drafts" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
 CREATE POLICY "Users can insert their own message state" ON "public"."message_user_state" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
 
 
@@ -3453,6 +3798,10 @@ CREATE POLICY "Users can manage own profile" ON "public"."profiles" TO "authenti
 
 
 CREATE POLICY "Users can update own profile" ON "public"."profiles" FOR UPDATE USING (("auth"."uid"() = "id"));
+
+
+
+CREATE POLICY "Users can update their own drafts" ON "public"."message_drafts" FOR UPDATE USING (("auth"."uid"() = "user_id")) WITH CHECK (("auth"."uid"() = "user_id"));
 
 
 
@@ -3486,6 +3835,10 @@ CREATE POLICY "Users can view read receipts in their conversations" ON "public".
 
 
 CREATE POLICY "Users can view their own archived items" ON "public"."archived_messages" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can view their own drafts" ON "public"."message_drafts" FOR SELECT USING (("auth"."uid"() = "user_id"));
 
 
 
@@ -3850,6 +4203,9 @@ CREATE POLICY "job_worker_runs_admin_read" ON "public"."job_worker_runs" FOR SEL
 
 CREATE POLICY "job_worker_runs_service_role_full" ON "public"."job_worker_runs" USING (("auth"."role"() = 'service_role'::"text")) WITH CHECK (("auth"."role"() = 'service_role'::"text"));
 
+
+
+ALTER TABLE "public"."message_drafts" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."message_read_receipts" ENABLE ROW LEVEL SECURITY;
@@ -4345,6 +4701,12 @@ GRANT ALL ON FUNCTION "public"."get_cron_jobs"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."get_dashboard_category_totals"("p_synced_user_ids" "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."get_dashboard_category_totals"("p_synced_user_ids" "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_dashboard_category_totals"("p_synced_user_ids" "text"[]) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."get_message_read_status"("p_message_ids" bigint[]) TO "anon";
 GRANT ALL ON FUNCTION "public"."get_message_read_status"("p_message_ids" bigint[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_message_read_status"("p_message_ids" bigint[]) TO "service_role";
@@ -4354,6 +4716,12 @@ GRANT ALL ON FUNCTION "public"."get_message_read_status"("p_message_ids" bigint[
 GRANT ALL ON FUNCTION "public"."get_message_user_state"("p_message_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."get_message_user_state"("p_message_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_message_user_state"("p_message_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_recent_messages_for_user"("p_user_id" "uuid", "p_limit_per_conversation" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."get_recent_messages_for_user"("p_user_id" "uuid", "p_limit_per_conversation" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_recent_messages_for_user"("p_user_id" "uuid", "p_limit_per_conversation" integer) TO "service_role";
 
 
 
@@ -4459,6 +4827,12 @@ GRANT ALL ON FUNCTION "public"."list_conversations_enriched"("p_user_id" "uuid")
 
 
 
+GRANT ALL ON FUNCTION "public"."list_conversations_summary"("p_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."list_conversations_summary"("p_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."list_conversations_summary"("p_user_id" "uuid") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."list_conversations_with_unread"("p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."list_conversations_with_unread"("p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."list_conversations_with_unread"("p_user_id" "uuid") TO "service_role";
@@ -4492,6 +4866,12 @@ GRANT ALL ON FUNCTION "public"."list_messages_with_sender_v2"("p_conversation_id
 GRANT ALL ON FUNCTION "public"."list_threads"("p_conversation_id" "uuid", "p_limit" integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."list_threads"("p_conversation_id" "uuid", "p_limit" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."list_threads"("p_conversation_id" "uuid", "p_limit" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."list_threads_for_user"("p_user_id" "uuid", "p_limit" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."list_threads_for_user"("p_user_id" "uuid", "p_limit" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."list_threads_for_user"("p_user_id" "uuid", "p_limit" integer) TO "service_role";
 
 
 
@@ -4555,6 +4935,18 @@ GRANT ALL ON FUNCTION "public"."recompute_thread_stats"("p_conversation_id" "uui
 
 
 
+GRANT ALL ON FUNCTION "public"."search_drafts_for_user"("p_user_id" "uuid", "p_query" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."search_drafts_for_user"("p_user_id" "uuid", "p_query" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."search_drafts_for_user"("p_user_id" "uuid", "p_query" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."search_message_items"("p_user_id" "uuid", "p_query" "text", "p_archived" boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."search_message_items"("p_user_id" "uuid", "p_query" "text", "p_archived" boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."search_message_items"("p_user_id" "uuid", "p_query" "text", "p_archived" boolean) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."set_job_queue_settings_updated_at"() TO "anon";
 GRANT ALL ON FUNCTION "public"."set_job_queue_settings_updated_at"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_job_queue_settings_updated_at"() TO "service_role";
@@ -4600,6 +4992,12 @@ GRANT ALL ON FUNCTION "public"."update_cron_schedule"("job_name" "text", "new_sc
 GRANT ALL ON FUNCTION "public"."update_game_platform_sync_state_timestamp"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_game_platform_sync_state_timestamp"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_game_platform_sync_state_timestamp"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_message_drafts_updated_at"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_message_drafts_updated_at"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_message_drafts_updated_at"() TO "service_role";
 
 
 
@@ -4790,6 +5188,12 @@ GRANT ALL ON TABLE "public"."job_worker_runs" TO "service_role";
 
 
 
+GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."message_drafts" TO "anon";
+GRANT ALL ON TABLE "public"."message_drafts" TO "authenticated";
+GRANT ALL ON TABLE "public"."message_drafts" TO "service_role";
+
+
+
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."message_read_receipts" TO "anon";
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."message_read_receipts" TO "authenticated";
 GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLE "public"."message_read_receipts" TO "service_role";
@@ -4874,6 +5278,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INS
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT,INSERT,REFERENCES,DELETE,TRIGGER,TRUNCATE,UPDATE ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
+
+
+
 
 
 

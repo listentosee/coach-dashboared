@@ -9,10 +9,11 @@ export type CoachConversation = {
   display_title?: string | null
   pinned?: boolean
   pinned_at?: string | null
-  archived_at?: string | null
+  all_archived?: boolean
   last_message_body?: string | null
   last_sender_name?: string | null
   last_sender_email?: string | null
+  muted_until?: string | null
 }
 
 export type CoachMessage = {

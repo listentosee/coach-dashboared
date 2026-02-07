@@ -4,8 +4,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import MarkdownEditor from '@/components/ui/markdown-editor'
-import { useMemo } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { ChevronDown, X } from 'lucide-react'
 import type { CoachComposerController, ComposerMode } from '@/lib/coach-messaging/use-coach-composer'
 import type { CoachDirectoryUser } from '@/lib/coach-messaging/types'
 
@@ -20,6 +22,83 @@ const modeTitle: Record<ComposerMode, string> = {
 type CoachComposerModalProps = {
   controller: CoachComposerController
   directory: CoachDirectoryUser[]
+}
+
+/** Multi-select dropdown for group/forward recipients */
+function MultiRecipientSelect({
+  directory,
+  groupRecipients,
+  toggleGroupRecipient,
+}: {
+  directory: CoachDirectoryUser[]
+  groupRecipients: Record<string, boolean>
+  toggleGroupRecipient: (id: string, present: boolean) => void
+}) {
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const selected = directory.filter((u) => groupRecipients[u.id])
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setDropdownOpen((o) => !o)}
+        className="flex min-h-[40px] w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+      >
+        <span className="flex flex-1 flex-wrap gap-1">
+          {selected.length === 0 ? (
+            <span className="text-muted-foreground">Select recipients…</span>
+          ) : (
+            selected.map((u) => (
+              <span
+                key={u.id}
+                className="inline-flex items-center gap-1 rounded-full bg-slate-700 px-2 py-0.5 text-xs text-slate-200"
+              >
+                {u.displayName}
+                <X
+                  className="h-3 w-3 cursor-pointer hover:text-white"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    toggleGroupRecipient(u.id, false)
+                  }}
+                />
+              </span>
+            ))
+          )}
+        </span>
+        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+      </button>
+
+      {dropdownOpen && (
+        <>
+          {/* Invisible backdrop to close dropdown */}
+          <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
+          <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border bg-popover shadow-md">
+            {directory.map((user) => (
+              <label
+                key={user.id}
+                className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-accent"
+              >
+                <Checkbox
+                  checked={!!groupRecipients[user.id]}
+                  onCheckedChange={(checked) => toggleGroupRecipient(user.id, !!checked)}
+                />
+                <span className="flex-1">
+                  <span className="block font-medium">{user.displayName}</span>
+                  {user.email ? (
+                    <span className="block text-xs text-muted-foreground">{user.email}</span>
+                  ) : null}
+                </span>
+              </label>
+            ))}
+            {directory.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-muted-foreground">No recipients available.</div>
+            ) : null}
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 export function CoachComposerModal({ controller, directory }: CoachComposerModalProps) {
@@ -63,11 +142,11 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
   return (
     <Dialog open={open} onOpenChange={(next) => { if (next) return }}>
       <DialogContent
-        className={`${isSuccess ? 'max-w-2xl' : 'max-w-2xl overflow-y-auto'} [&>button]:hidden`}
+        className={`${isSuccess ? 'max-w-3xl' : 'max-w-3xl'} max-h-[90vh] flex flex-col [&>button]:hidden`}
         onEscapeKeyDown={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
       >
-        <DialogHeader>
+        <DialogHeader className="shrink-0">
           <DialogTitle>{isSuccess ? 'Message Sent' : modeTitle[mode]}</DialogTitle>
         </DialogHeader>
         {isSuccess ? (
@@ -80,35 +159,30 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
             </div>
           </div>
         ) : (
-        <div className="space-y-4">
+        <div className="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto pr-1">
           {mode === 'dm' && !lockDmRecipient ? (
             <div>
-              <div className="mb-2 text-xs uppercase text-meta-muted">Recipient</div>
-              <div className="max-h-60 overflow-y-auto rounded-md border border-meta-border">
-                {directory.map((user) => (
-                  <label
-                    key={user.id}
-                    className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-meta-card/60"
-                  >
-                    <input
-                      type="radio"
-                      className="accent-blue-500"
-                      name="coach-composer-dm"
-                      checked={dmRecipientId === user.id}
-                      onChange={() => setDmRecipient(user.id)}
-                    />
-                    <span className="flex-1">
-                      <span className="block font-medium text-meta-light">{user.displayName}</span>
-                      {user.email ? (
-                        <span className="block text-xs text-meta-muted">{user.email}</span>
-                      ) : null}
-                    </span>
-                  </label>
-                ))}
-                {directory.length === 0 ? (
-                  <div className="px-3 py-2 text-sm text-meta-muted">No recipients available.</div>
-                ) : null}
-              </div>
+              <div className="mb-2 text-xs uppercase text-meta-muted">To</div>
+              <Select value={dmRecipientId || ''} onValueChange={(val) => setDmRecipient(val)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select recipient…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {directory.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      <span className="flex items-center gap-2">
+                        <span>{user.displayName}</span>
+                        {user.email ? (
+                          <span className="text-xs text-muted-foreground">({user.email})</span>
+                        ) : null}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {directory.length === 0 ? (
+                <div className="mt-1 text-xs text-meta-muted">No recipients available.</div>
+              ) : null}
             </div>
           ) : null}
 
@@ -124,29 +198,14 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
 
           {mode === 'group' || mode === 'forward' ? (
             <div>
-              <div className="mb-2 text-xs uppercase text-meta-muted">Recipients</div>
-              <div className="max-h-60 overflow-y-auto rounded-md border border-meta-border">
-                {directory.map((user) => (
-                  <label
-                    key={user.id}
-                    className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-meta-card/60"
-                  >
-                    <Checkbox
-                      checked={!!groupRecipients[user.id]}
-                      onCheckedChange={(checked) => toggleGroupRecipient(user.id, !!checked)}
-                    />
-                    <span className="flex-1">
-                      <span className="block font-medium text-meta-light">{user.displayName}</span>
-                      {user.email ? (
-                        <span className="block text-xs text-meta-muted">{user.email}</span>
-                      ) : null}
-                    </span>
-                  </label>
-                ))}
-                {directory.length === 0 ? (
-                  <div className="px-3 py-2 text-sm text-meta-muted">No recipients available.</div>
-                ) : null}
+              <div className="mb-2 text-xs uppercase text-meta-muted">
+                To {selectedGroupCount > 0 ? `(${selectedGroupCount} selected)` : ''}
               </div>
+              <MultiRecipientSelect
+                directory={directory}
+                groupRecipients={groupRecipients}
+                toggleGroupRecipient={toggleGroupRecipient}
+              />
             </div>
           ) : mode === 'announcement' ? (
             <div className="space-y-2">
@@ -187,12 +246,12 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
             </label>
           ) : null}
 
-          <div className="rounded-md border border-meta-border bg-meta-dark/60 p-1">
+          <div className="min-h-0 flex-1 rounded-md border border-meta-border bg-meta-dark/60 p-1">
             <MarkdownEditor
               value={body}
               onChange={setBody}
               preview={preview}
-              height={240}
+              height={360}
             />
           </div>
 
@@ -202,8 +261,12 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
               <button className="ml-3 underline" onClick={resetError}>Dismiss</button>
             </div>
           ) : null}
+        </div>
+        )}
 
-          <div className="flex justify-end gap-2">
+        {/* Action buttons pinned at bottom, outside scroll area */}
+        {!isSuccess && (
+          <div className="flex shrink-0 justify-end gap-2 border-t border-meta-border pt-4">
             <Button
               variant="secondary"
               onClick={async () => {
@@ -237,7 +300,6 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
               {loading ? 'Sending…' : 'Send'}
             </Button>
           </div>
-        </div>
         )}
       </DialogContent>
     </Dialog>

@@ -1,7 +1,7 @@
 import type { JobHandler, JobPayloadMap } from '../types';
 import { readEnv } from '../env';
 
-const DEFAULT_STALE_HOURS = 24;
+const DEFAULT_STALE_HOURS = 4;
 const DEFAULT_LIMIT = 50;
 
 function normalizeEmail(value: unknown): string | null {

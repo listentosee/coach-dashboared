@@ -5,6 +5,7 @@ import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 import { logger } from '@/lib/logging/safe-logger';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
 import { maybeAutoOnboardCompetitor } from '@/lib/integrations/game-platform/auto-onboard';
+import { checkEmailDeliverability, type EmailDeliverabilityResult } from '@/lib/validation/email-deliverability';
 
 const yearsCompetingSchema = z.preprocess(
   (value) => {
@@ -98,6 +99,19 @@ export async function PUT(
       : null
     const parentEmailChanged = existingParentEmail !== incomingParentEmail
 
+    // Validate parent email deliverability when it changes
+    let deliverabilityResult: EmailDeliverabilityResult | null = null;
+    if (parentEmailChanged && incomingParentEmail) {
+      deliverabilityResult = await checkEmailDeliverability(incomingParentEmail);
+      if (!deliverabilityResult.isValid) {
+        return NextResponse.json({
+          error: 'parent_email_invalid',
+          field: 'parent_email',
+          message: deliverabilityResult.reason || 'This email address appears to be undeliverable.',
+        }, { status: 422 });
+      }
+    }
+
     // Update competitor profile
     const { data: competitor, error: updateError } = await supabase
       .from('competitors')
@@ -113,8 +127,8 @@ export async function PUT(
         parent_email: incomingParentEmail,
         ...(parentEmailChanged
           ? {
-              parent_email_is_valid: null,
-              parent_email_validated_at: null,
+              parent_email_is_valid: deliverabilityResult?.wasChecked ? true : null,
+              parent_email_validated_at: deliverabilityResult?.wasChecked ? new Date().toISOString() : null,
               parent_email_invalid_reason: null,
             }
           : {}),

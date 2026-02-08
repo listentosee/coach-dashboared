@@ -1001,6 +1001,26 @@ export const SECURITY_CONFIG = {
 4. **Data Retention**: Automated cleanup of expired tokens and old activity logs
 5. **Backup Strategy**: Daily automated backups with 30-day retention
 
+### Parent Email Deliverability Validation
+
+When a student saves their profile via the public update-profile form (`/update-profile/[token]`), the API validates any new or changed parent email address against the [Abstract API](https://www.abstractapi.com/api/email-verification-validation-api) email verification service before persisting the change.
+
+**Flow** (in `app/api/competitors/profile/[token]/update/route.ts`):
+
+1. Detect whether `parent_email` changed from the stored value
+2. If changed and non-empty, call `checkEmailDeliverability()` from `lib/validation/email-deliverability.ts`
+3. Abstract API checks MX records, SMTP mailbox, and deliverability classification
+4. **Invalid email** (`UNDELIVERABLE`, missing MX, or `RISKY` + failed SMTP) → return `422` with `{ error: 'parent_email_invalid', field: 'parent_email', message: '...' }`. The client displays the error inline under the Parent/Guardian Email field via `form.setError()`
+5. **Valid email** with `wasChecked: true` → set `parent_email_is_valid = true` and `parent_email_validated_at = now()` on the competitor record
+6. **API unavailable** (missing key, timeout, error) → graceful degradation: save proceeds normally, `parent_email_is_valid` reset to `null` (unknown)
+
+**Downstream guards**:
+- The Zoho Send route (`app/api/zoho/send/route.ts`) blocks sending agreements to minors whose `parent_email_is_valid === false`
+- A background job (`release_parent_email_verification`) sends a SendGrid probe email 4 hours after agreement creation as a secondary check; bounces set `parent_email_is_valid = false` via webhook
+- The releases page shows a single red "Parent Email Invalid" badge when `parent_email_is_valid === false`
+
+**Environment variable**: `ABSTRACT_EMAIL_API_KEY` (secret, server-side only — see Appendix)
+
 ---
 
 ## Monitoring & Maintenance
@@ -1201,6 +1221,9 @@ GAME_PLATFORM_API_KEY=your_api_key
 
 # Monitoring
 SENTRY_DSN=your_sentry_dsn
+
+# Email Deliverability Validation (Abstract API)
+ABSTRACT_EMAIL_API_KEY=your_abstract_api_key
 
 # Email (optional - for notifications)
 SMTP_HOST=smtp.sendgrid.net

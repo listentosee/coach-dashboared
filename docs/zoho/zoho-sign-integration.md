@@ -334,7 +334,53 @@ export async function POST(req: NextRequest) {
 
 ---
 
-## 6) In‑person & print‑and‑sign fallback
+## 6) Parent email validation
+
+Minor agreements are sent to the parent/guardian email. Bounced emails are not reported back by Zoho, so a multi-layer validation system prevents sending to bad addresses.
+
+### Layer 1 — Real-time validation at profile save (primary)
+
+When a student saves their profile via `/api/competitors/profile/[token]/update` and the `parent_email` has changed, the route calls `checkEmailDeliverability()` from `lib/validation/email-deliverability.ts`. This utility calls the **Abstract API** email verification endpoint to check:
+
+- MX record exists (domain can receive email)
+- SMTP mailbox is valid
+- Overall deliverability status
+
+If the email is undeliverable, the route returns a `422` with a field-specific error that the profile form displays inline under the parent email field. The student must correct the email before the profile can be saved.
+
+On successful validation, the competitor record is updated with `parent_email_is_valid = true` and `parent_email_validated_at`.
+
+**Graceful degradation**: If `ABSTRACT_EMAIL_API_KEY` is not configured, the API is down, or the request times out (8s), validation is skipped and the save proceeds normally. The probe job (Layer 2) serves as a fallback.
+
+**Environment variable**: `ABSTRACT_EMAIL_API_KEY` (set in `.env.local` and Vercel env vars, not committed).
+
+### Layer 2 — SendGrid probe email (fallback)
+
+A recurring job (`release_parent_email_verification`, runs hourly via job queue) sends a lightweight probe email to parent addresses for minor agreements that have been in `sent` status for 4+ hours without activity. If the email bounces, SendGrid fires a webhook to `/api/sendgrid/events` which marks `parent_email_is_valid = false` on the competitor record.
+
+### Layer 3 — Pre-send block (safety net)
+
+The `/api/zoho/send` route checks `parent_email_is_valid` before sending a minor agreement. If `false`, the send is blocked with a 400 error telling the coach to have the student fix the email.
+
+### Releases page UI
+
+The releases page shows a single red **"Parent Email Invalid"** badge when `parent_email_is_valid === false`, with a tooltip: _"Parent email is invalid. Have the student fix it in their profile, then cancel and resend the agreement."_
+
+### Key files
+
+| File | Role |
+|---|---|
+| `lib/validation/email-deliverability.ts` | Abstract API wrapper (shared utility) |
+| `app/api/competitors/profile/[token]/update/route.ts` | Validates at profile save time |
+| `app/update-profile/[token]/page.tsx` | Displays inline error on 422 |
+| `app/api/zoho/send/route.ts` | Pre-send block for known-bad emails |
+| `lib/jobs/handlers/releaseParentEmailVerification.ts` | Probe job (4h delay, hourly cron) |
+| `app/api/sendgrid/events/route.ts` | Catches bounced probes via webhook |
+| `app/dashboard/releases/page.tsx` | Shows "Parent Email Invalid" badge |
+
+---
+
+## 7) In‑person & print‑and‑sign fallback
 
 - **Kiosk/in‑person**: pass `mode: 'inperson'` to `/api/zoho/send` — the first signer is marked `INPERSONSIGN` and can sign on a tablet/phone at check‑in.
 - **Print & physically sign**: Signers can choose **More actions → Print and physically sign**; the same request completes after the upload, and your webhook still fires. No manual syncing needed.
@@ -344,7 +390,7 @@ export async function POST(req: NextRequest) {
 
 ---
 
-## 7) Coach dashboard wiring
+## 8) Coach dashboard wiring
 
 - Add **Send Release** on each competitor row → POST `/api/zoho/send` with `{ competitorId, mode }`.
 - Show a **status badge** using the `agreements` row (subscribe via Supabase Realtime).
@@ -353,7 +399,7 @@ export async function POST(req: NextRequest) {
 
 ---
 
-## 8) Testing matrix
+## 9) Testing matrix
 
 - **Adult flow**: participant email; email signing and in‑person variants.
 - **Minor flow**: parent email; email signing and in‑person variants.
@@ -363,7 +409,7 @@ export async function POST(req: NextRequest) {
 
 ---
 
-## 9) Notes & options
+## 10) Notes & options
 
 - If you later need a **second guardian**, make a separate **Minor (2‑signer)** template and switch which Minor template ID you use at runtime.
 - To reduce paper, combine **pre‑send email/SMS** + **kiosk** at check‑in.
@@ -382,6 +428,6 @@ export async function POST(req: NextRequest) {
 
 ---
 
-## 10) Cleanup — status description helper
+## 11) Cleanup — status description helper
 
 In `lib/utils/competitor-status.ts`, align `getStatusDescription()` with your computed statuses (`pending | profile | in_the_game_not_compliant | complete`, with legacy `compliance` treated as `profile`) so UI badges read correctly.

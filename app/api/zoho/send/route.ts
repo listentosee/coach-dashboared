@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
       is_18_or_over, 
       parent_name, 
       parent_email,
+      parent_email_is_valid,
       coach_id,
       profiles!competitors_coach_id_fkey(school_name)
     `)
@@ -160,6 +161,13 @@ export async function POST(req: NextRequest) {
   const emailRegex = /.+@.+\..+/;
   if (!emailRegex.test(String(recipient.email).trim())) {
     return NextResponse.json({ error: 'Recipient email appears invalid. Please correct it before sending.' }, { status: 400 });
+  }
+
+  // Block sending if parent email is known invalid (for minors)
+  if (!isAdult && (c as any).parent_email_is_valid === false) {
+    return NextResponse.json({
+      error: 'Parent email has been marked as invalid. Have the student update the parent email on their profile before sending.',
+    }, { status: 400 });
   }
 
   const actionPayload: any = {

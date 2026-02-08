@@ -28,9 +28,6 @@ import {
   ChevronsUpDown
 } from 'lucide-react';
 
-const STALE_RELEASE_NO_ACTIVITY_HOURS = 24
-const STALE_RELEASE_NO_ACTIVITY_MS = STALE_RELEASE_NO_ACTIVITY_HOURS * 60 * 60 * 1000
-
 interface Competitor {
   id: string;
   first_name: string;
@@ -798,78 +795,29 @@ export default function ReleaseManagementPage() {
 
         const parentEmailInvalid = !competitor.is_18_or_over && competitor.parent_email_is_valid === false
 
+        const invalidEmailBadge = parentEmailInvalid ? (
+          <Badge
+            className="bg-red-600 text-white"
+            title={competitor.parent_email_invalid_reason || 'Parent email is invalid. Have the student fix it in their profile, then cancel and resend the agreement.'}
+          >
+            <AlertCircle className="h-3 w-3 mr-1" />
+            Parent Email Invalid
+          </Badge>
+        ) : null;
+
         if (!agreement) {
           return (
             <div className="flex items-center gap-2">
               {renderStatusBadge(undefined, hasLegacySigned)}
-              {parentEmailInvalid && (
-                <Badge
-                  className="bg-red-600 text-white"
-                  title={competitor.parent_email_invalid_reason || 'Parent email appears invalid. Have the student update it on their profile before resending.'}
-                >
-                  <AlertCircle className="h-3 w-3 mr-1" />
-                  Parent Email Invalid
-                </Badge>
-              )}
+              {invalidEmailBadge}
             </div>
           )
         }
 
-        const createdMs = new Date(agreement.created_at).getTime()
-        const hasCreatedAt = !Number.isNaN(createdMs)
-        const isStale = hasCreatedAt ? Date.now() - createdMs > STALE_RELEASE_NO_ACTIVITY_MS : false
-
-        const isEmailMode = agreement.metadata?.mode !== 'print'
-        const isMinorEmailAgreement =
-          !hasLegacySigned &&
-          !competitor.is_18_or_over &&
-          isEmailMode &&
-          agreement.status === 'sent'
-
-        const verificationStatus = (agreement.recipient_email_verification_status || '').toLowerCase()
-        const verificationError = agreement.recipient_email_verification_error || null
-        const verificationSent = !!agreement.recipient_email_verification_sent_at
-        const verificationBounced = ['bounce', 'dropped', 'blocked'].includes(verificationStatus)
-
         return (
           <div className="flex items-center gap-2">
             {renderStatusBadge(agreement, hasLegacySigned)}
-            {parentEmailInvalid && (
-              <Badge
-                className="bg-red-600 text-white"
-                title={competitor.parent_email_invalid_reason || 'Parent email appears invalid. Have the student update it on their profile before resending.'}
-              >
-                <AlertCircle className="h-3 w-3 mr-1" />
-                Parent Email Invalid
-              </Badge>
-            )}
-            {!parentEmailInvalid && verificationBounced && (
-              <Badge
-                className="bg-red-600 text-white"
-                title={verificationError || 'Verification email bounced. Parent email may be incorrect—have the student update it and resend.'}
-              >
-                <AlertCircle className="h-3 w-3 mr-1" />
-                Email Bounced
-              </Badge>
-            )}
-            {!parentEmailInvalid && !verificationBounced && verificationSent && (
-              <Badge
-                className="bg-amber-600 text-white"
-                title="Verification email sent. If it bounces, this release will be flagged for correction."
-              >
-                <AlertCircle className="h-3 w-3 mr-1" />
-                Verifying Email
-              </Badge>
-            )}
-            {!parentEmailInvalid && !verificationBounced && !verificationSent && isMinorEmailAgreement && isStale && (
-              <Badge
-                className="bg-amber-600 text-white"
-                title={`No activity after ${STALE_RELEASE_NO_ACTIVITY_HOURS}h. Parent email may be incorrect—verify it and resend.`}
-              >
-                <AlertCircle className="h-3 w-3 mr-1" />
-                Check Parent Email
-              </Badge>
-            )}
+            {invalidEmailBadge}
           </div>
         );
       },

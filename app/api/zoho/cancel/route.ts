@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
     const { data: agreement, error: agreementError } = await supabase
       .from('agreements')
       .select(
-        'id, competitor_id, template_kind, status, request_id, metadata, provider, signers, signed_pdf_path',
+        'id, competitor_id, template_kind, status, request_id, metadata, provider, signers, signed_pdf_path, manual_uploaded_path',
       )
       .eq('id', agreementId)
       .single();
@@ -210,16 +210,19 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (
-      agreement.signed_pdf_path &&
-      agreement.signed_pdf_path.startsWith('print-ready/')
-    ) {
+    // Clean up all storage files referenced by this agreement
+    const pathsToRemove: string[] = [];
+    if (agreement.signed_pdf_path) pathsToRemove.push(agreement.signed_pdf_path);
+    if (agreement.manual_uploaded_path && agreement.manual_uploaded_path !== agreement.signed_pdf_path) {
+      pathsToRemove.push(agreement.manual_uploaded_path);
+    }
+    if (pathsToRemove.length > 0) {
       const { error: storageError } = await supabase.storage
         .from('signatures')
-        .remove([agreement.signed_pdf_path]);
+        .remove(pathsToRemove);
 
       if (storageError) {
-        logger.warn('Failed to remove print-ready PDF during cancellation', {
+        logger.warn('Failed to remove storage files during cancellation', {
           agreement_id: agreement.id,
           error: storageError.message,
         });

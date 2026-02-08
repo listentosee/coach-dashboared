@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -13,7 +13,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { X } from 'lucide-react';
+import { X, Loader2, CheckCircle2 } from 'lucide-react';
 import { normalizeEmail } from '@/lib/validation/email-uniqueness';
 
 // Dynamic schema based on user age
@@ -70,7 +70,10 @@ export default function UpdateProfilePage() {
   const [sending, setSending] = useState(false);
 
   const [schema, setSchema] = useState<z.ZodSchema | null>(null);
-  
+  const [emailValidation, setEmailValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
+  const lastValidatedEmail = useRef<string>('');
+  const initialParentEmail = useRef<string>('');
+
   const form = useForm({
     resolver: schema ? zodResolver(schema) : undefined,
     defaultValues: {
@@ -102,10 +105,18 @@ export default function UpdateProfilePage() {
         
         const data = await response.json();
         setProfile(data.profile);
-        
+
         // Set schema based on user age
         const userSchema = createProfileUpdateSchema(data.profile.is_18_or_over || false);
         setSchema(userSchema);
+
+        // Track initial parent email — skip validation for pre-loaded value
+        const loadedParentEmail = (data.profile.parent_email || '').trim().toLowerCase();
+        initialParentEmail.current = loadedParentEmail;
+        if (loadedParentEmail && !data.profile.is_18_or_over) {
+          lastValidatedEmail.current = loadedParentEmail;
+          setEmailValidation('valid');
+        }
         
         // Pre-fill form with existing data
         form.reset({
@@ -135,6 +146,58 @@ export default function UpdateProfilePage() {
       fetchProfile();
     }
   }, [params.token, form]);
+
+  const validateParentEmail = useCallback(async (email: string) => {
+    const normalized = email.trim().toLowerCase();
+
+    // Empty or not a basic email shape — let Zod handle it
+    if (!normalized || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+      setEmailValidation('idle');
+      lastValidatedEmail.current = '';
+      return;
+    }
+
+    // Already validated this exact email
+    if (normalized === lastValidatedEmail.current) {
+      return;
+    }
+
+    // Same as the stored value — trust it
+    if (normalized === initialParentEmail.current) {
+      lastValidatedEmail.current = normalized;
+      setEmailValidation('valid');
+      return;
+    }
+
+    setEmailValidation('validating');
+    form.clearErrors('parent_email');
+
+    try {
+      const res = await fetch('/api/validate-parent-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalized }),
+      });
+      const data = await res.json();
+
+      if (!data.valid) {
+        lastValidatedEmail.current = '';
+        setEmailValidation('invalid');
+        form.setError('parent_email', {
+          type: 'manual',
+          message: data.message || 'This email address appears to be undeliverable.',
+        });
+        return;
+      }
+
+      lastValidatedEmail.current = normalized;
+      setEmailValidation('valid');
+    } catch {
+      // Graceful degradation — allow submit if validation endpoint fails
+      lastValidatedEmail.current = normalized;
+      setEmailValidation('valid');
+    }
+  }, [form]);
 
   const onSubmit = async (values: any) => {
     console.log('Form submitted with values:', values);
@@ -169,6 +232,14 @@ export default function UpdateProfilePage() {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error('API error:', errorData);
+        if (response.status === 422 && errorData?.field === 'parent_email') {
+          form.setError('parent_email', {
+            type: 'manual',
+            message: errorData.message || 'This email address appears to be undeliverable. Please check and try again.',
+          });
+          setError(errorData.message || 'Parent email appears to be undeliverable.');
+          return;
+        }
         if (response.status === 409 && Array.isArray(errorData?.details?.conflicts)) {
           const normalizedPersonal = normalizeEmail(values.email_personal);
           let conflictFound = false;
@@ -484,13 +555,37 @@ export default function UpdateProfilePage() {
                         <FormItem>
                           <FormLabel className="text-meta-light">Parent/Guardian Email *</FormLabel>
                           <FormControl>
-                            <Input 
+                            <Input
                               {...field}
-                              type="email" 
-                              placeholder="Enter parent or guardian email" 
+                              type="email"
+                              placeholder="Enter parent or guardian email"
                               className="bg-meta-dark border-meta-border text-meta-light placeholder:text-meta-muted"
+                              onChange={(e) => {
+                                field.onChange(e);
+                                // Reset validation when user types
+                                if (emailValidation !== 'idle') {
+                                  setEmailValidation('idle');
+                                  lastValidatedEmail.current = '';
+                                }
+                              }}
+                              onBlur={(e) => {
+                                field.onBlur();
+                                validateParentEmail(e.target.value);
+                              }}
                             />
                           </FormControl>
+                          {emailValidation === 'validating' && (
+                            <p className="text-xs text-meta-muted flex items-center gap-1 mt-1">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Verifying email...
+                            </p>
+                          )}
+                          {emailValidation === 'valid' && (
+                            <p className="text-xs text-green-500 flex items-center gap-1 mt-1">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Email verified
+                            </p>
+                          )}
                           <FormMessage />
                         </FormItem>
                       )}
@@ -505,8 +600,13 @@ export default function UpdateProfilePage() {
                   <Button type="button" variant="outline" size="lg" onClick={() => window.close()} className="border-meta-border text-meta-light hover:bg-meta-accent hover:text-white">
                     Cancel
                   </Button>
-                  <Button type="submit" size="lg" className="bg-meta-accent hover:bg-blue-600">
-                    Update Profile
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="bg-meta-accent hover:bg-blue-600"
+                    disabled={!profile?.is_18_or_over && (emailValidation === 'validating' || emailValidation === 'invalid')}
+                  >
+                    {emailValidation === 'validating' ? 'Verifying Email...' : 'Update Profile'}
                   </Button>
                 </div>
               </form>

@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     // Get the agreement details
     const { data: agreement, error: agreementError } = await supabase
       .from('agreements')
-      .select('competitor_id, template_kind, request_id, status')
+      .select('competitor_id, template_kind, request_id, status, manual_uploaded_path, signed_pdf_path')
       .eq('id', agreementId)
       .single();
 
@@ -82,6 +82,21 @@ export async function POST(req: NextRequest) {
         { error: 'Agreement already completed', error_code: 'already_completed' },
         { status: 400 }
       );
+    }
+
+    // Step 0: Clean up previous upload files if they exist
+    const pathsToRemove: string[] = [];
+    if (agreement.manual_uploaded_path) pathsToRemove.push(agreement.manual_uploaded_path);
+    if (agreement.signed_pdf_path && agreement.signed_pdf_path !== agreement.manual_uploaded_path) {
+      pathsToRemove.push(agreement.signed_pdf_path);
+    }
+    if (pathsToRemove.length > 0) {
+      const { error: removeError } = await supabase.storage
+        .from('signatures')
+        .remove(pathsToRemove);
+      if (removeError) {
+        logger.warn('Failed to remove previous upload files', { error: removeError.message });
+      }
     }
 
     // Step 1: Upload file to Supabase Storage

@@ -80,6 +80,11 @@ Update `status` to `'completed_manual'` to distinguish from Zoho-completed r
 ```ts
 // Assume request_id, file, agreementId are available
 
+// Step 0: Clean up previous upload files if they exist
+// (prevents orphaned files when re-uploading for the same agreement)
+const pathsToRemove = [agreement.manual_uploaded_path, agreement.signed_pdf_path].filter(Boolean);
+if (pathsToRemove.length) await supabase.storage.from('signatures').remove(pathsToRemove);
+
 // Step 1: Upload to Supabase
 const fileBuffer = Buffer.from(await file.arrayBuffer());
 const path = `manual/manual-upload-${request_id}-${Date.now()}.${ext}`;
@@ -137,6 +142,8 @@ await supabase.from('agreements').update({
     - If recall succeeds but delete fails → mark local status, flag `zoho_cleanup_pending`
         
 - **Audit logs**—capture API responses, timestamps, reasons, etc.
+
+- **Storage cleanup**—both the manual upload route and the cancel route clean up any previously stored files (`signed_pdf_path`, `manual_uploaded_path`) before uploading new files or deleting the agreement record. This prevents orphaned files in the `signatures` bucket.
     
 
 ---

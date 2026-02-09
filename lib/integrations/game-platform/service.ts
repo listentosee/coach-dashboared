@@ -978,6 +978,7 @@ async function persistCompetitorSyncSuccess(
       game_platform_id: remoteUserId,
       game_platform_synced_at: syncedAt,
       game_platform_sync_error: null,
+      game_platform_onboarding_email: competitor.email_personal || competitor.email_school,
       status: nextStatus,
     })
     .eq('id', competitorId)

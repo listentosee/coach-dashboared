@@ -757,10 +757,7 @@ export function CoachMessagingWorkspace() {
             onCompose={(mode) => {
               if (mode === 'dm') composer.openDm()
               else if (mode === 'group') composer.openGroup()
-              else if (mode === 'announcement') {
-                // Open announcement composer for admins
-                composer.openAnnouncement()
-              }
+              else if (mode === 'announcement') composer.openAnnouncement()
             }}
             onMessagesRead={handleMessagesRead}
             subscribeToConversation={subscribeToConversation}

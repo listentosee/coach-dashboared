@@ -78,6 +78,11 @@ export default function AdminToolsLink() {
               Job Queue
             </Button>
           </Link>
+          <Link href="/dashboard/admin-tools/mailer">
+            <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
+              Mailer
+            </Button>
+          </Link>
           <Link href="/dashboard/admin-tools/game-platform-roster">
             <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
               Game Platform Roster

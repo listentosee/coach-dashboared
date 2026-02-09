@@ -14,7 +14,7 @@ import type { CoachDirectoryUser } from '@/lib/coach-messaging/types'
 const modeTitle: Record<ComposerMode, string> = {
   dm: 'New Direct Message',
   group: 'New Group Message',
-  announcement: 'New Announcement',
+  announcement: 'New Coach Announcement',
   reply: 'Reply',
   forward: 'Forward Message',
 }
@@ -142,13 +142,16 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
   return (
     <Dialog open={open} onOpenChange={(next) => { if (next) return }}>
       <DialogContent
-        className={`${isSuccess ? 'max-w-3xl' : 'max-w-3xl'} max-h-[90vh] flex flex-col [&>button]:hidden`}
+        className="max-w-3xl max-h-[90vh] flex flex-col [&>button]:hidden"
         onEscapeKeyDown={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
       >
         <DialogHeader className="shrink-0">
-          <DialogTitle>{isSuccess ? 'Message Sent' : modeTitle[mode]}</DialogTitle>
+          <DialogTitle>
+            {isSuccess ? 'Message Sent' : modeTitle[mode]}
+          </DialogTitle>
         </DialogHeader>
+
         {isSuccess ? (
           <div className="space-y-6">
             <div className="rounded-md border border-meta-border bg-meta-dark/60 px-4 py-3 text-sm text-meta-light">
@@ -165,7 +168,7 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
               <div className="mb-2 text-xs uppercase text-meta-muted">To</div>
               <Select value={dmRecipientId || ''} onValueChange={(val) => setDmRecipient(val)}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select recipient…" />
+                  <SelectValue placeholder="Select recipient..." />
                 </SelectTrigger>
                 <SelectContent>
                   {directory.map((user) => (
@@ -246,7 +249,7 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
             </label>
           ) : null}
 
-          <div className="min-h-0 flex-1 rounded-md border border-meta-border bg-meta-dark/60 p-1">
+          <div className="min-h-0 rounded-md border border-meta-border bg-meta-dark/60 p-1">
             <MarkdownEditor
               value={body}
               onChange={setBody}
@@ -297,7 +300,7 @@ export function CoachComposerModal({ controller, directory }: CoachComposerModal
                 (mode === 'announcement' && !subject.trim())
               }
             >
-              {loading ? 'Sending…' : 'Send'}
+              {loading ? 'Sending...' : 'Send'}
             </Button>
           </div>
         )}

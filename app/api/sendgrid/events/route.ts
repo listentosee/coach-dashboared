@@ -66,15 +66,109 @@ export async function POST(req: NextRequest) {
   if (rows.length === 0) return NextResponse.json({ ok: true, processed: 0 });
 
   const invalidEvents = new Set(['bounce', 'dropped', 'blocked']);
+  const announcementTerminalStatuses = new Set(['delivered', 'bounced', 'dropped', 'blocked', 'skipped']);
   let processed = 0;
   let ignored = 0;
   let updatedAgreements = 0;
   let markedInvalid = 0;
+  let updatedAnnouncementRecipients = 0;
+  let completedCampaigns = 0;
 
   for (const event of rows) {
     processed += 1;
 
     const emailType = getEventArg(event, 'email_type');
+    const eventType = (event.event ? String(event.event) : '').trim().toLowerCase();
+
+    // ---- Competitor announcement email events ----
+    if (emailType === 'competitor_announcement') {
+      const campaignId = getEventArg(event, 'campaign_id');
+      const competitorId = getEventArg(event, 'competitor_id');
+
+      if (!campaignId || !competitorId || !eventType) {
+        ignored += 1;
+        continue;
+      }
+
+      // Map SendGrid event type to recipient status
+      let recipientStatus: string | null = null;
+      let recipientError: string | null = null;
+
+      if (eventType === 'delivered') {
+        recipientStatus = 'delivered';
+      } else if (eventType === 'bounce') {
+        recipientStatus = 'bounced';
+      } else if (eventType === 'dropped') {
+        recipientStatus = 'dropped';
+      } else if (eventType === 'blocked') {
+        recipientStatus = 'blocked';
+      }
+
+      if (!recipientStatus) {
+        // Not a delivery-outcome event (e.g., 'processed', 'open', 'click') — skip
+        ignored += 1;
+        continue;
+      }
+
+      // Extract error reason for failure events
+      if (recipientStatus !== 'delivered') {
+        const errorTextRaw = (event.reason || event.response || event.status || '').toString().trim();
+        recipientError = errorTextRaw ? errorTextRaw.slice(0, 1000) : null;
+      }
+
+      // Update the recipient row
+      const updatePayload: Record<string, unknown> = {
+        status: recipientStatus,
+        updated_at: new Date().toISOString(),
+      };
+      if (recipientError !== null) {
+        updatePayload.error = recipientError;
+      }
+
+      const { error: recipientUpdateErr } = await supabase
+        .from('competitor_announcement_recipients')
+        .update(updatePayload)
+        .match({ campaign_id: campaignId, competitor_id: competitorId });
+
+      if (recipientUpdateErr) {
+        logger.warn('[sendgrid-webhook] Failed to update announcement recipient', {
+          campaignId,
+          competitorId,
+          eventType,
+          error: recipientUpdateErr.message,
+        });
+        continue;
+      }
+
+      updatedAnnouncementRecipients += 1;
+
+      // Check if all recipients for this campaign have reached a terminal status.
+      // If so, mark the campaign as 'sent' with completed_at.
+      const { count: nonTerminalCount, error: countErr } = await supabase
+        .from('competitor_announcement_recipients')
+        .select('id', { count: 'exact', head: true })
+        .eq('campaign_id', campaignId)
+        .not('status', 'in', `(${Array.from(announcementTerminalStatuses).join(',')})`);
+
+      if (!countErr && nonTerminalCount === 0) {
+        const { error: campaignUpdateErr } = await supabase
+          .from('competitor_announcement_campaigns')
+          .update({ status: 'sent', completed_at: new Date().toISOString() })
+          .eq('id', campaignId)
+          .eq('status', 'sending');
+
+        if (!campaignUpdateErr) {
+          completedCampaigns += 1;
+          logger.info('[sendgrid-webhook] Campaign completed — all recipients terminal', {
+            campaignId,
+          });
+        }
+      }
+
+      continue;
+    }
+
+    // ---- Release parent email verification events ----
     if (emailType !== 'release_parent_email_verification') {
       ignored += 1;
       continue;
@@ -82,7 +176,6 @@ export async function POST(req: NextRequest) {
 
     const agreementId = getEventArg(event, 'agreement_id');
     const competitorId = getEventArg(event, 'competitor_id');
-    const eventType = (event.event ? String(event.event) : '').trim().toLowerCase();
     if (!agreementId || !competitorId || !eventType) {
       ignored += 1;
       continue;
@@ -154,6 +247,8 @@ export async function POST(req: NextRequest) {
     ignored,
     updatedAgreements,
     markedInvalid,
+    updatedAnnouncementRecipients,
+    completedCampaigns,
   });
 }
 

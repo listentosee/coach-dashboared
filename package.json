@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings=0",
     "typecheck": "tsc -p . --noEmit || true",
-    "test": "node -e \"console.log('No unit tests configured. Use pnpm test:e2e for Playwright.');\"",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:routes": "playwright test --project=internal-routes",
     "test:metactf": "RUN_LIVE_METACTF_TESTS=true playwright test --project=metactf-live",
@@ -45,6 +47,7 @@
     "exceljs": "^4.4.0",
     "fastify": "^4.29.1",
     "lucide-react": "^0.309.0",
+    "marked": "^15.0.0",
     "next": "15.5.x",
     "npm-run-all": "^4.1.5",
     "openai": "^5.23.1",
@@ -85,7 +88,8 @@
     "supabase": "^2.53.6",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.20.6",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.18"
   },
   "packageManager": "pnpm@10.15.0+sha512.486ebc259d3e999a4e8691ce03b5cac4a71cbeca39372a9b762cb500cfdf0873e2cb16abe3d951b1ee2cf012503f027b98b6584e4df22524e0c7450d9ec7aa7b"
 }

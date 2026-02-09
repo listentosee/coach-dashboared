@@ -8,6 +8,7 @@ import { handleReleaseParentEmailVerification } from './releaseParentEmailVerifi
 import { handleGamePlatformOnboardCompetitors } from './gamePlatformOnboardCompetitors';
 import { handleGamePlatformOnboardCoaches } from './gamePlatformOnboardCoaches';
 import { handleMessageReadReceiptsBackfill } from './messageReadReceiptsBackfill';
+import { handleCompetitorAnnouncementDispatch } from './competitorAnnouncementDispatch';
 
 const handlers: Record<JobTaskType, JobHandler<any>> = {
   game_platform_sync: handleGamePlatformSync,
@@ -19,6 +20,7 @@ const handlers: Record<JobTaskType, JobHandler<any>> = {
   admin_alert_dispatch: handleAdminAlertDispatch,
   release_parent_email_verification: handleReleaseParentEmailVerification,
   message_read_receipts_backfill: handleMessageReadReceiptsBackfill,
+  competitor_announcement_dispatch: handleCompetitorAnnouncementDispatch,
 };
 
 export function getJobHandler<T extends JobTaskType>(taskType: T): JobHandler<T> {

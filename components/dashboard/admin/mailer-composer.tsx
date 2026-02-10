@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,9 +26,11 @@ type SendResult = {
 type MailerComposerProps = {
   coaches?: CoachOption[]
   drafts?: DraftOption[]
+  templateToLoad?: { subject: string; bodyMarkdown: string } | null
+  onTemplateLoaded?: () => void
 }
 
-export function MailerComposer({ coaches = [], drafts = [] }: MailerComposerProps) {
+export function MailerComposer({ coaches = [], drafts = [], templateToLoad, onTemplateLoaded }: MailerComposerProps) {
   const router = useRouter()
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
@@ -41,6 +43,20 @@ export function MailerComposer({ coaches = [], drafts = [] }: MailerComposerProp
   const [sendResult, setSendResult] = useState<SendResult | null>(null)
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null)
   const [draftSaving, setDraftSaving] = useState(false)
+
+  // Load template from campaign history
+  useEffect(() => {
+    if (templateToLoad) {
+      setSubject(templateToLoad.subject)
+      setBody(templateToLoad.bodyMarkdown)
+      setActiveDraftId(null)
+      setDryRunResult(null)
+      setConfirmOpen(false)
+      setPreview(false)
+      setSendResult(null)
+      onTemplateLoaded?.()
+    }
+  }, [templateToLoad, onTemplateLoaded])
 
   const canSubmit = subject.trim().length > 0 && body.trim().length > 0
   const selectedCoach = coaches.find((c) => c.id === coachId) ?? null

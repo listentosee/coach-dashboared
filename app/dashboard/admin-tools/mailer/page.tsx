@@ -3,8 +3,8 @@ import { redirect } from 'next/navigation';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase';
-import { CampaignStatusTable, type CampaignRow } from '@/components/dashboard/admin/campaign-status-table';
-import { MailerComposer } from '@/components/dashboard/admin/mailer-composer';
+import { type CampaignRow } from '@/components/dashboard/admin/campaign-status-table';
+import { MailerDashboardClient } from './mailer-dashboard-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,7 +50,7 @@ export default async function MailerDashboardPage() {
   // Fetch campaign history with stats (exclude drafts)
   const { data: rawCampaigns } = await serviceSupabase
     .from('competitor_announcement_campaigns')
-    .select('id, subject, status, created_at, completed_at')
+    .select('id, subject, body_markdown, status, created_at, completed_at')
     .neq('status', 'draft')
     .order('created_at', { ascending: false })
     .limit(50);
@@ -64,6 +64,7 @@ export default async function MailerDashboardPage() {
     campaigns.push({
       id: c.id,
       subject: c.subject,
+      body_markdown: c.body_markdown ?? '',
       status: c.status,
       created_at: c.created_at,
       completed_at: c.completed_at,
@@ -86,29 +87,7 @@ export default async function MailerDashboardPage() {
         </p>
       </div>
 
-      <Card className="bg-meta-card border-meta-border">
-        <CardHeader>
-          <CardTitle className="text-meta-light">Compose Competitor Announcement</CardTitle>
-          <CardDescription className="text-meta-muted">
-            Create and send an email to all competitors on the game platform.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <MailerComposer coaches={coachRows} drafts={draftRows} />
-        </CardContent>
-      </Card>
-
-      <Card className="bg-meta-card border-meta-border">
-        <CardHeader>
-          <CardTitle className="text-meta-light">Campaign History</CardTitle>
-          <CardDescription className="text-meta-muted">
-            Email campaigns sent to game-platform competitors. Delivery stats update via SendGrid webhooks.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <CampaignStatusTable campaigns={campaigns} />
-        </CardContent>
-      </Card>
+      <MailerDashboardClient coaches={coachRows} drafts={draftRows} campaigns={campaigns} />
     </div>
   );
 }

@@ -51,11 +51,18 @@ async function processJob(job: JobRecord) {
       });
     }
 
-    return await markJobSucceeded({
+    const updatedJob = await markJobSucceeded({
       jobId: job.id,
       output: result?.output,
       client: supabase,
     });
+
+    // Auto-delete non-recurring jobs after success (recurring jobs return as 'pending')
+    if (updatedJob.status === 'succeeded') {
+      await supabase.from('job_queue').delete().eq('id', job.id);
+    }
+
+    return updatedJob;
   } catch (error) {
     console.error('[job-runner] job failed unexpectedly', {
       jobId: job.id,

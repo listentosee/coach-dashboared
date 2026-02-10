@@ -31,11 +31,6 @@ marked.use({ gfm: true, breaks: true });
 
 export async function POST(req: NextRequest) {
   try {
-    // ----- Feature flag check -----
-    if (process.env.NEXT_PUBLIC_COMPETITOR_ANNOUNCEMENTS_ENABLED !== 'true') {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    }
-
     // ----- Auth -----
     const cookieStore = await cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });

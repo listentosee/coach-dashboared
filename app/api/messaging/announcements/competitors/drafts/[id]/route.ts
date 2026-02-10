@@ -16,10 +16,6 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (process.env.NEXT_PUBLIC_COMPETITOR_ANNOUNCEMENTS_ENABLED !== 'true') {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    }
-
     const { id } = await params;
 
     const cookieStore = await cookies();
@@ -63,9 +59,6 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (process.env.NEXT_PUBLIC_COMPETITOR_ANNOUNCEMENTS_ENABLED !== 'true') {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    }
 
     const { id } = await params;
 

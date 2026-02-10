@@ -16,10 +16,6 @@ const saveBodySchema = z.object({
 
 export async function GET() {
   try {
-    if (process.env.NEXT_PUBLIC_COMPETITOR_ANNOUNCEMENTS_ENABLED !== 'true') {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    }
-
     const cookieStore = await cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
 
@@ -63,9 +59,6 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    if (process.env.NEXT_PUBLIC_COMPETITOR_ANNOUNCEMENTS_ENABLED !== 'true') {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    }
 
     const cookieStore = await cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });

@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/lib/supabase/client';
-import { User, Lock, Database, MessageSquare } from 'lucide-react';
+import { User, Lock, MessageSquare } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 
 interface Profile {
@@ -38,7 +38,6 @@ export default function CoachToolsPage() {
   // Build-only safe default; assisted reset flow will be reintroduced
   // via a server-set cookie in a later step
   const assisted = false;
-  const [isUpdatingStatuses, setIsUpdatingStatuses] = useState(false);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -225,310 +224,202 @@ export default function CoachToolsPage() {
     }
   };
 
-  const handleUpdateAllStatuses = async () => {
-    try {
-      setIsUpdatingStatuses(true);
-      
-      const response = await fetch('/api/competitors/maintenance/update-statuses', {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update statuses');
-      }
-
-      const result = await response.json();
-      console.log('Status update result:', result);
-      
-      if (result.result.errors > 0) {
-        const errorDetails = result.result.errorDetails?.map((err: any) => 
-          `${err.competitor}: ${err.error}`
-        ).join('\n');
-        
-        alert(`Status update completed: ${result.result.updated} updated, ${result.result.errors} errors\n\nError details:\n${errorDetails}`);
-      } else {
-        alert(`Status update completed: ${result.result.updated} updated successfully`);
-      }
-    } catch (error: any) {
-      console.error('Error updating statuses:', error);
-      alert('Failed to update competitor statuses: ' + error.message);
-    } finally {
-      setIsUpdatingStatuses(false);
-    }
-  };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-meta-light">Coach Tools</h1>
-        <p className="text-meta-muted mt-2">
-          Manage your profile, account settings, and data maintenance
+        <p className="text-meta-muted mt-1">
+          Manage your profile, account settings, and preferences
         </p>
       </div>
 
-      {/* Profile Editor */}
-      <Card className="bg-meta-card border-meta-border">
-        <CardHeader>
-          <CardTitle className="text-meta-light flex items-center">
-            <User className="h-5 w-5 mr-2" />
-            Profile Editor
-          </CardTitle>
-          <CardDescription className="text-meta-muted">
-            Update your personal information and contact details
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="first_name" className="text-meta-light">First Name</Label>
-              <Input
-                id="first_name"
-                value={profileForm.first_name}
-                onChange={(e) => setProfileForm(prev => ({ ...prev, first_name: e.target.value }))}
-                className="bg-meta-card border-meta-border text-meta-light"
-                placeholder="Enter your first name"
-              />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        {/* Left Column — Profile */}
+        <Card className="bg-meta-card border-meta-border">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-meta-light flex items-center text-lg">
+              <User className="h-5 w-5 mr-2" />
+              Profile Information
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="first_name" className="text-meta-light text-xs">First Name</Label>
+                <Input
+                  id="first_name"
+                  value={profileForm.first_name}
+                  onChange={(e) => setProfileForm(prev => ({ ...prev, first_name: e.target.value }))}
+                  className="bg-meta-card border-meta-border text-meta-light h-9"
+                />
+              </div>
+              <div>
+                <Label htmlFor="last_name" className="text-meta-light text-xs">Last Name</Label>
+                <Input
+                  id="last_name"
+                  value={profileForm.last_name}
+                  onChange={(e) => setProfileForm(prev => ({ ...prev, last_name: e.target.value }))}
+                  className="bg-meta-card border-meta-border text-meta-light h-9"
+                />
+              </div>
             </div>
             <div>
-              <Label htmlFor="last_name" className="text-meta-light">Last Name</Label>
+              <Label htmlFor="school_name" className="text-meta-light text-xs">School Name</Label>
               <Input
-                id="last_name"
-                value={profileForm.last_name}
-                onChange={(e) => setProfileForm(prev => ({ ...prev, last_name: e.target.value }))}
-                className="bg-meta-card border-meta-border text-meta-light"
-                placeholder="Enter your last name"
-              />
-            </div>
-          </div>
-          <div>
-          <Label htmlFor="school_name" className="text-meta-light">School Name</Label>
-          <Input
-            id="school_name"
-            value={profileForm.school_name}
-            disabled
-            className="bg-meta-dark border-meta-border text-meta-light disabled:bg-meta-dark/70 disabled:text-meta-light disabled:opacity-100"
-            placeholder="School name (managed by Monday integration)"
-          />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="mobile_number" className="text-meta-light">Mobile Number</Label>
-            <Input
-              id="mobile_number"
-              value={profileForm.mobile_number}
-              onChange={(e) => setProfileForm(prev => ({ ...prev, mobile_number: e.target.value }))}
-              className="bg-meta-card border-meta-border text-meta-light"
-              placeholder="Enter your mobile number"
-            />
-          </div>
-        </div>
-          <div>
-            <Label htmlFor="region" className="text-meta-light">Region</Label>
-            <Input
-              id="region"
-              value={profileForm.region}
-              onChange={(e) => setProfileForm(prev => ({ ...prev, region: e.target.value }))}
-              className="bg-meta-card border-meta-border text-meta-light"
-              placeholder="Enter your region"
-            />
-          </div>
-          <div>
-            <Label className="text-meta-light">Email</Label>
-            <Input
-              value={profile?.email || ''}
-              disabled
-              className="bg-meta-dark border-meta-border text-meta-light disabled:bg-meta-dark/70 disabled:text-meta-light disabled:opacity-100"
-              placeholder="Email (cannot be changed)"
-            />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                checked={profile?.is_approved || false}
+                id="school_name"
+                value={profileForm.school_name}
                 disabled
-                className="rounded border-meta-border bg-meta-card text-meta-accent focus:ring-meta-accent"
+                className="bg-slate-900/70 border-meta-border text-meta-light disabled:opacity-100 h-9"
               />
-              <Label className="text-meta-light">Approved</Label>
             </div>
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                checked={profile?.live_scan_completed || false}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="mobile_number" className="text-meta-light text-xs">Mobile Number</Label>
+                <Input
+                  id="mobile_number"
+                  value={profileForm.mobile_number}
+                  onChange={(e) => setProfileForm(prev => ({ ...prev, mobile_number: e.target.value }))}
+                  className="bg-meta-card border-meta-border text-meta-light h-9"
+                />
+              </div>
+              <div>
+                <Label htmlFor="region" className="text-meta-light text-xs">Region</Label>
+                <Input
+                  id="region"
+                  value={profileForm.region}
+                  onChange={(e) => setProfileForm(prev => ({ ...prev, region: e.target.value }))}
+                  className="bg-meta-card border-meta-border text-meta-light h-9"
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-meta-light text-xs">Email</Label>
+              <Input
+                value={profile?.email || ''}
                 disabled
-                className="rounded border-meta-border bg-meta-card text-meta-accent focus:ring-meta-accent"
+                className="bg-slate-900/70 border-meta-border text-meta-light disabled:opacity-100 h-9"
               />
-              <Label className="text-meta-light">Live Scan Completed</Label>
             </div>
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                checked={profile?.mandated_reporter_completed || false}
-                disabled
-                className="rounded border-meta-border bg-meta-card text-meta-accent focus:ring-meta-accent"
-              />
-              <Label className="text-meta-light">Mandated Reporter Completed</Label>
+            <div className="flex items-center gap-4 pt-1">
+              <div className="flex items-center gap-1.5">
+                <input type="checkbox" checked={profile?.is_approved || false} disabled className="rounded border-slate-600 bg-slate-800 text-blue-500 h-3.5 w-3.5" />
+                <Label className="text-meta-muted text-xs">Approved</Label>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <input type="checkbox" checked={profile?.live_scan_completed || false} disabled className="rounded border-slate-600 bg-slate-800 text-blue-500 h-3.5 w-3.5" />
+                <Label className="text-meta-muted text-xs">Live Scan</Label>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <input type="checkbox" checked={profile?.mandated_reporter_completed || false} disabled className="rounded border-slate-600 bg-slate-800 text-blue-500 h-3.5 w-3.5" />
+                <Label className="text-meta-muted text-xs">Mandated Reporter</Label>
+              </div>
             </div>
-          </div>
-          <Button 
-            onClick={handleUpdateProfile}
-            className="bg-meta-accent hover:bg-blue-600 text-white"
-            disabled={isUpdatingProfile}
-          >
-            {isUpdatingProfile ? 'Updating...' : 'Update Profile'}
-          </Button>
-        </CardContent>
-      </Card>
+            <Button
+              onClick={handleUpdateProfile}
+              className="bg-blue-600 hover:bg-blue-700 text-white w-full"
+              disabled={isUpdatingProfile}
+            >
+              {isUpdatingProfile ? 'Updating...' : 'Update Profile'}
+            </Button>
+          </CardContent>
+        </Card>
 
-      {/* Password Change */}
-      <Card className="bg-meta-card border-meta-border">
-        <CardHeader>
-          <CardTitle className="text-meta-light flex items-center">
-            <Lock className="h-5 w-5 mr-2" />
-            {assisted ? 'Set New Password (Assisted)' : 'Change Password'}
-          </CardTitle>
-          <CardDescription className="text-meta-muted">
-            {assisted
-              ? 'You are signed in via an assisted access link. Set a new password below to regain access.'
-              : 'Update your account password for enhanced security'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {!assisted && (
-            <div>
-              <Label htmlFor="current_password" className="text-meta-light">Current Password</Label>
-              <Input
-                id="current_password"
-                type="password"
-                value={passwordForm.current_password}
-                onChange={(e) => setPasswordForm(prev => ({ ...prev, current_password: e.target.value }))}
-                className="bg-meta-card border-meta-border text-meta-light"
-                placeholder="Enter your current password"
-              />
-            </div>
-          )}
-          <div>
-            <Label htmlFor="new_password" className="text-meta-light">New Password</Label>
-            <Input
-              id="new_password"
-              type="password"
-              value={passwordForm.new_password}
-              onChange={(e) => setPasswordForm(prev => ({ ...prev, new_password: e.target.value }))}
-              className="bg-meta-card border-meta-border text-meta-light"
-              placeholder="Enter new password (min 6 characters)"
-            />
-          </div>
-          <div>
-            <Label htmlFor="confirm_password" className="text-meta-light">Confirm New Password</Label>
-            <Input
-              id="confirm_password"
-              type="password"
-              value={passwordForm.confirm_password}
-              onChange={(e) => setPasswordForm(prev => ({ ...prev, confirm_password: e.target.value }))}
-              className="bg-meta-card border-meta-border text-meta-light"
-              placeholder="Confirm new password"
-            />
-          </div>
-          <Button 
-            onClick={handleChangePassword}
-            className="bg-meta-accent hover:bg-blue-600 text-white"
-            disabled={isChangingPassword}
-          >
-            {isChangingPassword ? 'Changing...' : assisted ? 'Set Password' : 'Change Password'}
-          </Button>
-        </CardContent>
-      </Card>
+        {/* Right Column — Account & Preferences */}
+        <div className="space-y-6">
+          {/* Password Change */}
+          <Card className="bg-meta-card border-meta-border">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-meta-light flex items-center text-lg">
+                <Lock className="h-5 w-5 mr-2" />
+                {assisted ? 'Set New Password' : 'Change Password'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {!assisted && (
+                <div>
+                  <Label htmlFor="current_password" className="text-meta-light text-xs">Current Password</Label>
+                  <Input
+                    id="current_password"
+                    type="password"
+                    value={passwordForm.current_password}
+                    onChange={(e) => setPasswordForm(prev => ({ ...prev, current_password: e.target.value }))}
+                    className="bg-meta-card border-meta-border text-meta-light h-9"
+                  />
+                </div>
+              )}
+              <div>
+                <Label htmlFor="new_password" className="text-meta-light text-xs">New Password <span className="text-meta-muted">(min 6 characters)</span></Label>
+                <Input
+                  id="new_password"
+                  type="password"
+                  value={passwordForm.new_password}
+                  onChange={(e) => setPasswordForm(prev => ({ ...prev, new_password: e.target.value }))}
+                  className="bg-meta-card border-meta-border text-meta-light h-9"
+                />
+              </div>
+              <div>
+                <Label htmlFor="confirm_password" className="text-meta-light text-xs">Confirm New Password</Label>
+                <Input
+                  id="confirm_password"
+                  type="password"
+                  value={passwordForm.confirm_password}
+                  onChange={(e) => setPasswordForm(prev => ({ ...prev, confirm_password: e.target.value }))}
+                  className="bg-meta-card border-meta-border text-meta-light h-9"
+                />
+              </div>
+              <Button
+                onClick={handleChangePassword}
+                className="bg-blue-600 hover:bg-blue-700 text-white w-full"
+                disabled={isChangingPassword}
+              >
+                {isChangingPassword ? 'Changing...' : assisted ? 'Set Password' : 'Change Password'}
+              </Button>
+            </CardContent>
+          </Card>
 
-      {/* Alert Notification Settings */}
-      <Card className="bg-meta-card border-meta-border">
-        <CardHeader>
-          <CardTitle className="text-meta-light flex items-center">
-            <MessageSquare className="h-5 w-5 mr-2" />
-            Alert Notifications
-          </CardTitle>
-          <CardDescription className="text-meta-muted">
-            Choose how you want to be reminded when you have unread messages.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="rounded-md border border-meta-border p-4 space-y-4 bg-meta-panel">
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="email-alerts-enabled" className="text-meta-light font-medium">
-                  Enable Daily Email Alerts
-                </Label>
-                <p className="text-sm text-meta-muted">
-                  Receive an email reminder when you have unread messages in your inbox.
+          {/* Alert Preferences */}
+          <Card className="bg-meta-card border-meta-border">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-meta-light flex items-center text-lg">
+                <MessageSquare className="h-5 w-5 mr-2" />
+                Alert Preferences
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="email-alerts-enabled" className="text-meta-light text-sm font-medium">Daily Email Alerts</Label>
+                  <p className="text-xs text-meta-muted">Reminder for unread messages</p>
+                </div>
+                <Switch
+                  id="email-alerts-enabled"
+                  checked={emailAlertsEnabled}
+                  onCheckedChange={handleToggleEmailAlerts}
+                  disabled={isUpdatingEmailAlerts}
+                />
+              </div>
+              <div>
+                <Label htmlFor="alert-email" className="text-meta-light text-xs">Alert Email Address</Label>
+                <Input
+                  id="alert-email"
+                  type="email"
+                  value={alertEmail}
+                  onChange={(e) => setAlertEmail(e.target.value)}
+                  onBlur={() => void handleSaveEmailAlertSettings()}
+                  placeholder={profile?.email || 'coach@example.edu'}
+                  className="bg-meta-card border-meta-border text-meta-light h-9"
+                  disabled={isUpdatingEmailAlerts}
+                />
+                <p className="text-xs text-meta-muted mt-1">
+                  Sends to <span className="text-meta-light font-medium">{alertEmail.trim() || profile?.email || 'your account email'}</span>. Leave blank for account email.
                 </p>
               </div>
-              <Switch
-                id="email-alerts-enabled"
-                checked={emailAlertsEnabled}
-                onCheckedChange={handleToggleEmailAlerts}
-                disabled={isUpdatingEmailAlerts}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="alert-email" className="text-meta-light">Alert Email Address</Label>
-              <Input
-                id="alert-email"
-                type="email"
-                value={alertEmail}
-                onChange={(e) => setAlertEmail(e.target.value)}
-                placeholder={profile?.email || 'coach@example.edu'}
-                className="bg-meta-card border-meta-border text-meta-light"
-                disabled={isUpdatingEmailAlerts}
-              />
-              <p className="text-sm text-meta-muted">
-                We will send alerts to <span className="text-meta-light font-semibold">{alertEmail.trim() || profile?.email || 'your account email'}</span>. Leave the field blank to use your account email.
-              </p>
-              <div className="flex justify-end">
-                <Button
-                  onClick={handleSaveEmailAlertSettings}
-                  className="bg-meta-accent hover:bg-blue-600 text-white"
-                  disabled={isUpdatingEmailAlerts}
-                >
-                  {isUpdatingEmailAlerts ? 'Saving...' : 'Save Email Alert Settings'}
-                </Button>
-              </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
-          <div className="rounded-md border border-meta-border p-4 space-y-2 bg-meta-panel">
-            <Label className="text-meta-light font-medium">
-              SMS Alerts (Future Feature)
-            </Label>
-            <p className="text-sm text-meta-muted">
-              We&apos;re focused on stabilizing the new message alert system, so SMS reminders are temporarily disabled.
-              Please use email alerts for now—SMS notifications will return in a future release.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Data Maintenance */}
-      <Card className="bg-meta-card border-meta-border">
-        <CardHeader>
-          <CardTitle className="text-meta-light flex items-center">
-            <Database className="h-5 w-5 mr-2" />
-            Data Maintenance
-          </CardTitle>
-          <CardDescription className="text-meta-muted">
-            Administrative functions for data management
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button
-            onClick={handleUpdateAllStatuses}
-            className="bg-meta-accent hover:bg-blue-600 text-white"
-            disabled={isUpdatingStatuses}
-          >
-            {isUpdatingStatuses ? 'Updating...' : 'Update All Competitor Statuses'}
-          </Button>
-        </CardContent>
-      </Card>
-
-
+        </div>
+      </div>
     </div>
   );
 }

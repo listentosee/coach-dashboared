@@ -37,6 +37,8 @@ export interface CampaignRow {
   total_dropped: number;
   total_blocked: number;
   total_skipped: number;
+  total_opened: number;
+  total_clicked: number;
 }
 
 interface CampaignStatusTableProps {
@@ -91,6 +93,34 @@ export function CampaignStatusTable({ campaigns, onUseAsTemplate }: CampaignStat
       cell: ({ row }) => (
         <span className="text-emerald-300">{row.original.total_delivered}</span>
       ),
+    },
+    {
+      accessorKey: "total_opened",
+      header: "Opened",
+      cell: ({ row }) => {
+        const { total_opened, total_delivered } = row.original;
+        if (total_delivered === 0) return <span>0</span>;
+        const pct = Math.round((total_opened / total_delivered) * 100);
+        return (
+          <span className="text-cyan-300" title={`${total_opened} of ${total_delivered} delivered`}>
+            {total_opened} <span className="text-xs text-slate-400">({pct}%)</span>
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: "total_clicked",
+      header: "Clicked",
+      cell: ({ row }) => {
+        const { total_clicked, total_delivered } = row.original;
+        if (total_delivered === 0) return <span>0</span>;
+        const pct = Math.round((total_clicked / total_delivered) * 100);
+        return (
+          <span className="text-violet-300" title={`${total_clicked} of ${total_delivered} delivered`}>
+            {total_clicked} <span className="text-xs text-slate-400">({pct}%)</span>
+          </span>
+        );
+      },
     },
     {
       accessorKey: "total_bounced",
@@ -158,6 +188,8 @@ export function CampaignStatusTable({ campaigns, onUseAsTemplate }: CampaignStat
                   {selectedCampaign.total_recipients > 0 && (
                     <span className="text-xs">
                       {selectedCampaign.total_delivered}/{selectedCampaign.total_recipients} delivered
+                      {selectedCampaign.total_opened > 0 && <> &middot; {selectedCampaign.total_opened} opened</>}
+                      {selectedCampaign.total_clicked > 0 && <> &middot; {selectedCampaign.total_clicked} clicked</>}
                     </span>
                   )}
                 </span>

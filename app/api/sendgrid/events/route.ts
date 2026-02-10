@@ -104,8 +104,23 @@ export async function POST(req: NextRequest) {
         recipientStatus = 'blocked';
       }
 
+      // Handle open/click engagement events (set timestamp, first occurrence only)
+      if (eventType === 'open' || eventType === 'click') {
+        const tsColumn = eventType === 'open' ? 'opened_at' : 'clicked_at';
+        const { error: engagementErr } = await supabase
+          .from('competitor_announcement_recipients')
+          .update({ [tsColumn]: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .match({ campaign_id: campaignId, competitor_id: competitorId })
+          .is(tsColumn, null);
+
+        if (!engagementErr) {
+          updatedAnnouncementRecipients += 1;
+        }
+        continue;
+      }
+
       if (!recipientStatus) {
-        // Not a delivery-outcome event (e.g., 'processed', 'open', 'click') — skip
+        // Not a delivery-outcome event (e.g., 'processed') — skip
         ignored += 1;
         continue;
       }

@@ -75,6 +75,8 @@ export default async function MailerDashboardPage() {
       total_dropped: Number(s?.total_dropped ?? 0),
       total_blocked: Number(s?.total_blocked ?? 0),
       total_skipped: Number(s?.total_skipped ?? 0),
+      total_opened: Number(s?.total_opened ?? 0),
+      total_clicked: Number(s?.total_clicked ?? 0),
     });
   }
 

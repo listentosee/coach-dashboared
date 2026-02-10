@@ -4,7 +4,10 @@ alter table public.competitor_announcement_recipients
   add column if not exists opened_at timestamptz,
   add column if not exists clicked_at timestamptz;
 
--- Update get_campaign_stats to include open/click counts
+-- Drop existing function first (return type is changing from 7 to 9 columns)
+drop function if exists public.get_campaign_stats(uuid);
+
+-- Recreate get_campaign_stats with open/click counts
 create or replace function public.get_campaign_stats(p_campaign_id uuid)
 returns table (
   total_recipients bigint,

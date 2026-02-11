@@ -77,16 +77,26 @@ export async function DELETE(
       }
     } else {
       // Unarchive all messages in the conversation by clearing archived_at
+      // First fetch message IDs, then update (.in() requires an array, not a subquery)
+      const { data: messageRows, error: msgError } = await supabase
+        .from('messages')
+        .select('id')
+        .eq('conversation_id', id)
+
+      if (msgError) {
+        return NextResponse.json({ error: msgError.message }, { status: 400 })
+      }
+
+      const messageIds = (messageRows ?? []).map((m: { id: string }) => m.id)
+      if (messageIds.length === 0) {
+        return NextResponse.json({ success: true })
+      }
+
       const { error: stateError } = await supabase
         .from('message_user_state')
         .update({ archived_at: null })
         .eq('user_id', user.id)
-        .in('message_id',
-          supabase
-            .from('messages')
-            .select('id')
-            .eq('conversation_id', id)
-        )
+        .in('message_id', messageIds)
 
       if (stateError) {
         return NextResponse.json({ error: stateError.message }, { status: 400 })

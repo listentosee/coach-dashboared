@@ -565,7 +565,7 @@ export function CoachInboxPane({
                       {onArchivedConversationRestore && (
                         <button
                           type="button"
-                          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-meta-muted hover:text-meta-foreground hover:bg-meta-surface/50 transition-colors"
+                          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-700/50 transition-colors"
                           onClick={() => onArchivedConversationRestore(conversationId)}
                           title="Restore entire conversation"
                           data-testid="restore-conversation"

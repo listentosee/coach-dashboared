@@ -25,7 +25,7 @@ export function ArchivedActions({ onRestore }: ArchivedActionsProps) {
     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
       <div
         onClick={handleRestore}
-        className="rounded p-1 hover:bg-meta-surface/80 text-meta-muted hover:text-meta-foreground transition-colors disabled:opacity-50 cursor-pointer"
+        className="rounded p-1 hover:bg-slate-700/80 text-slate-400 hover:text-slate-100 transition-colors cursor-pointer"
         title="Restore message"
         role="button"
         tabIndex={0}

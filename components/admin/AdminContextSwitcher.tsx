@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { supabase } from '@/lib/supabase/client'
 
-type Coach = { id: string; name?: string; email?: string }
+type Coach = { id: string; name: string; email?: string; competitorCount: number }
 
 export default function AdminContextSwitcher() {
   const [visible, setVisible] = useState(false)
@@ -36,7 +36,7 @@ export default function AdminContextSwitcher() {
       const c = await fetch('/api/users/coaches')
       if (c.ok) {
         const data = await c.json()
-        const list: Coach[] = (data.coaches || []).map((u: any) => ({ id: u.id, name: u.name, email: u.email }))
+        const list: Coach[] = (data.coaches || []).map((u: any) => ({ id: u.id, name: u.name || u.email || u.id, email: u.email, competitorCount: u.competitor_count ?? 0 }))
         setCoaches(list)
       }
     } finally { setLoading(false) }
@@ -55,7 +55,8 @@ export default function AdminContextSwitcher() {
     return coaches.filter(c => (c.name || '').toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q))
   }, [coaches, debouncedQuery])
 
-  const currentLabel = coachId ? (coachName || coaches.find(c => c.id === coachId)?.name || coaches.find(c => c.id === coachId)?.email || 'Selected coach') : 'All coaches'
+  const currentCoach = coachId ? coaches.find(c => c.id === coachId) : null
+  const currentLabel = currentCoach ? `${currentCoach.name} (${currentCoach.competitorCount})` : coachId ? (coachName || 'Selected coach') : 'All coaches'
 
   const setContext = async (id: string | null) => {
     setSubmitting(true)
@@ -98,7 +99,7 @@ export default function AdminContextSwitcher() {
           >
             <option value="">All coaches (read-only)</option>
             {filtered.map(c => (
-              <option key={c.id} value={c.id}>{c.name || c.email || c.id}</option>
+              <option key={c.id} value={c.id}>{c.name} ({c.competitorCount})</option>
             ))}
           </select>
           {coachId && (

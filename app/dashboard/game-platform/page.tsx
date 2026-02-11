@@ -170,7 +170,7 @@ export default function GamePlatformDashboard() {
   } | null>(null);
   const [flashCtfDrilldownOpen, setFlashCtfDrilldownOpen] = useState(false);
   const [leaderboardSort, setLeaderboardSort] = useState<{
-    column: 'name' | 'challenges';
+    column: 'name' | 'challenges' | 'lastActive';
     direction: 'asc' | 'desc';
   }>({ column: 'name', direction: 'asc' });
 
@@ -280,6 +280,10 @@ export default function GamePlatformDashboard() {
       const multiplier = leaderboardSort.direction === 'asc' ? 1 : -1;
       if (leaderboardSort.column === 'name') {
         return multiplier * a.name.localeCompare(b.name);
+      } else if (leaderboardSort.column === 'lastActive') {
+        const aTime = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
+        const bTime = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
+        return multiplier * (aTime - bTime);
       } else {
         return multiplier * (a.challenges - b.challenges);
       }
@@ -915,7 +919,24 @@ export default function GamePlatformDashboard() {
                           )}
                         </div>
                       </th>
-                      <th className="py-2 pr-3 font-medium">Last Active</th>
+                      <th
+                        className="py-2 pr-3 font-medium cursor-pointer hover:text-meta-accent select-none"
+                        onClick={() => {
+                          setLeaderboardSort({
+                            column: 'lastActive',
+                            direction: leaderboardSort.column === 'lastActive' && leaderboardSort.direction === 'asc' ? 'desc' : 'asc'
+                          });
+                        }}
+                      >
+                        <div className="flex items-center gap-1">
+                          Last Active
+                          {leaderboardSort.column === 'lastActive' ? (
+                            leaderboardSort.direction === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-50" />
+                          )}
+                        </div>
+                      </th>
                       <th className="py-2 pr-3 font-medium text-right">Actions</th>
                     </tr>
                   </thead>

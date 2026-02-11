@@ -238,13 +238,33 @@ export const handleCompetitorAnnouncementDispatch: JobHandler<'competitor_announ
       };
     }
 
-    // ---- 5. All batches succeeded — mark campaign as sending ----
-    // Status goes to 'sending' (not 'sent') because delivery confirmation
-    // comes later via SendGrid webhook events.
-    await supabase
-      .from('competitor_announcement_campaigns')
-      .update({ status: 'sending' })
-      .eq('id', campaignId);
+    // ---- 5. All batches succeeded — finalize campaign ----
+    // Transition remaining 'queued' recipients to 'unconfirmed' (dispatched to
+    // SendGrid but no delivery webhook received yet). This avoids campaigns
+    // getting stuck in 'sending' when providers like Yahoo/AOL never fire events.
+    const { error: unconfirmedErr } = await supabase
+      .from('competitor_announcement_recipients')
+      .update({ status: 'unconfirmed', updated_at: new Date().toISOString() })
+      .eq('campaign_id', campaignId)
+      .eq('status', 'queued');
+
+    if (unconfirmedErr) {
+      log.error('[competitor-announcement-dispatch] Failed to mark recipients as unconfirmed', {
+        campaignId,
+        error: unconfirmedErr.message,
+      });
+      // Non-fatal: fall back to 'sending' so webhooks can still close it
+      await supabase
+        .from('competitor_announcement_campaigns')
+        .update({ status: 'sending' })
+        .eq('id', campaignId);
+    } else {
+      // Mark campaign as complete immediately
+      await supabase
+        .from('competitor_announcement_campaigns')
+        .update({ status: 'sent', completed_at: new Date().toISOString() })
+        .eq('id', campaignId);
+    }
 
     log.info('[competitor-announcement-dispatch] Campaign dispatched successfully', {
       campaignId,

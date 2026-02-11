@@ -31,7 +31,7 @@ export interface CampaignRow {
   created_at: string;
   completed_at: string | null;
   total_recipients: number;
-  total_queued: number;
+  total_unconfirmed: number;
   total_delivered: number;
   total_bounced: number;
   total_dropped: number;
@@ -141,8 +141,16 @@ export function CampaignStatusTable({ campaigns, onUseAsTemplate }: CampaignStat
         ),
     },
     {
-      accessorKey: "total_queued",
-      header: "Queued",
+      accessorKey: "total_unconfirmed",
+      header: "Unconfirmed",
+      cell: ({ row }) =>
+        row.original.total_unconfirmed > 0 ? (
+          <span className="text-amber-300" title="Dispatched to SendGrid, no delivery confirmation received">
+            {row.original.total_unconfirmed}
+          </span>
+        ) : (
+          <span>0</span>
+        ),
     },
     {
       accessorKey: "created_at",

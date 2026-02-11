@@ -69,7 +69,7 @@ export default async function MailerDashboardPage() {
       created_at: c.created_at,
       completed_at: c.completed_at,
       total_recipients: Number(s?.total_recipients ?? 0),
-      total_queued: Number(s?.total_queued ?? 0),
+      total_unconfirmed: Number(s?.total_unconfirmed ?? 0),
       total_delivered: Number(s?.total_delivered ?? 0),
       total_bounced: Number(s?.total_bounced ?? 0),
       total_dropped: Number(s?.total_dropped ?? 0),

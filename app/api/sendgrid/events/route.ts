@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
   if (rows.length === 0) return NextResponse.json({ ok: true, processed: 0 });
 
   const invalidEvents = new Set(['bounce', 'dropped', 'blocked']);
-  const announcementTerminalStatuses = new Set(['delivered', 'bounced', 'dropped', 'blocked', 'skipped']);
+  const announcementTerminalStatuses = new Set(['delivered', 'bounced', 'dropped', 'blocked', 'skipped', 'unconfirmed']);
   let processed = 0;
   let ignored = 0;
   let updatedAgreements = 0;

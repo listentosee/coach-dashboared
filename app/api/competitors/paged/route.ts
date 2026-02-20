@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
         is_18_or_over, grade, division, program_track, parent_name, parent_email,
         gender, race, ethnicity, level_of_technology, years_competing,
         status, media_release_date, participation_agreement_date,
-        game_platform_id, game_platform_synced_at,
+        game_platform_id, game_platform_onboarding_email, game_platform_synced_at,
         profile_update_token, profile_update_token_expires,
         created_at, is_active, coach_id
       `)

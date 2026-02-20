@@ -39,6 +39,7 @@ export interface Competitor {
   media_release_date?: string;
   participation_agreement_signed: boolean;
   participation_agreement_date?: string;
+  game_platform_onboarding_email?: string | null;
   game_platform_id?: string;
   game_platform_synced_at?: string;
   game_platform_sync_error?: string | null;
@@ -124,7 +125,7 @@ export const createCompetitorColumns = (
       const coachLabel = directoryEntry?.name || competitor.coach_name || directoryEntry?.email || competitor.coach_email || idFallback;
       const showCoachHint = !!showCoachContextHint && coachLabel;
       const isOnboarded = Boolean(competitor.game_platform_id || competitor.game_platform_status);
-      const onboardedEmail = isOnboarded ? (competitor.email_personal || competitor.email_school) : null;
+      const onboardedEmail = isOnboarded ? (competitor.game_platform_onboarding_email || competitor.email_personal || competitor.email_school) : null;
       return (
         <div title={showCoachHint ? `Coach: ${coachLabel}` : undefined}>
           <div className="font-medium text-meta-light">

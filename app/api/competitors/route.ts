@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
         media_release_date,
         participation_agreement_date,
         game_platform_id,
+        game_platform_onboarding_email,
         game_platform_synced_at,
         game_platform_sync_error,
         profile_update_token,

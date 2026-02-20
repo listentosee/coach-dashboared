@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase/client';
@@ -31,6 +31,7 @@ function DashboardLayoutInner({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -87,6 +88,14 @@ function DashboardLayoutInner({
     window.addEventListener('unread-refresh', handler)
     return () => window.removeEventListener('unread-refresh', handler)
   }, [refreshUnread])
+
+  // Reset stale scroll locks left by Radix Dialog or @uiw/react-md-editor
+  // when the user navigates between dashboard sections via client-side routing.
+  useEffect(() => {
+    document.body.removeAttribute('data-scroll-locked');
+    document.body.style.overflow = '';
+    document.body.style.pointerEvents = '';
+  }, [pathname]);
 
   const handleSignOut = async () => {
     try {

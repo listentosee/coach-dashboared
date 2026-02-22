@@ -145,8 +145,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Competitor age information is missing. Please set is_18_or_over field.' }, { status: 400 });
   }
 
-  if (isAdult && !c.email_school) {
-    return NextResponse.json({ error: 'Adult competitor is missing school email address.' }, { status: 400 });
+  if (isAdult && !(c as any).email_personal && !c.email_school) {
+    return NextResponse.json({ error: 'Adult competitor is missing email address (personal or school).' }, { status: 400 });
   }
 
   if (!isAdult && (!c.parent_name || !c.parent_email)) {

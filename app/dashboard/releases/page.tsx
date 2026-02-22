@@ -37,6 +37,7 @@ interface Competitor {
   school: string;
   is_18_or_over: boolean;
   email_school: string;
+  email_personal?: string;
   parent_name: string;
   parent_email: string;
   parent_email_is_valid?: boolean | null;
@@ -61,6 +62,7 @@ interface Agreement {
   recipient_email_verification_sent_at?: string | null;
   recipient_email_verification_status?: string | null;
   recipient_email_verification_error?: string | null;
+  signers?: Array<{ role: string; email: string; name: string; status: string }>;
   metadata?: {
     mode: 'email' | 'print';
   };
@@ -357,8 +359,9 @@ export default function ReleaseManagementPage() {
       if (!comp) throw new Error('Competitor not found')
       const emailRegex = /.+@.+\..+/
       if (comp.is_18_or_over) {
-        if (!emailRegex.test((comp.email_school || '').trim())) {
-          throw new Error('Adult competitor requires a valid school email before sending.')
+        const adultEmail = (comp.email_personal || comp.email_school || '').trim()
+        if (!emailRegex.test(adultEmail)) {
+          throw new Error('Adult competitor requires a valid email (personal or school) before sending.')
         }
       } else {
         if (!emailRegex.test((comp.parent_email || '').trim())) {
@@ -749,8 +752,15 @@ export default function ReleaseManagementPage() {
             </div>
             <div className="text-xs text-meta-muted">{competitor.school}</div>
             <div className="text-xs text-meta-muted">
-              {competitor.is_18_or_over ? 'Adult' : 'Minor'} • 
-              {competitor.is_18_or_over ? ` ${competitor.email_school}` : ` ${competitor.parent_email}`}
+              {competitor.is_18_or_over ? 'Adult' : 'Minor'} •{' '}
+              {(() => {
+                const agreement = row.original.agreement;
+                const sentToEmail = agreement?.signers?.[0]?.email;
+                const fallbackEmail = competitor.is_18_or_over
+                  ? (competitor.email_personal || competitor.email_school)
+                  : competitor.parent_email;
+                return sentToEmail || fallbackEmail || 'No email';
+              })()}
             </div>
           </div>
         );

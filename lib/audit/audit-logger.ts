@@ -185,6 +185,9 @@ export class AuditLogger {
         skipped: number;
         errors: number;
       };
+      importMeta?: { fileName?: string; fileType?: string; columnMapping?: Record<string, string | null> };
+      fieldCoverage?: Record<string, number>;
+      statusBreakdown?: Record<string, number>;
     }
   ): Promise<void> {
     await this.logAction(supabase, {
@@ -194,7 +197,10 @@ export class AuditLogger {
       metadata: {
         coach_id: params.coachId,
         ...params.stats,
-        total_processed: params.stats.inserted + params.stats.updated + params.stats.skipped + params.stats.errors
+        total_processed: params.stats.inserted + params.stats.updated + params.stats.skipped + params.stats.errors,
+        import_meta: params.importMeta,
+        field_coverage: params.fieldCoverage,
+        status_breakdown: params.statusBreakdown,
       }
     });
   }

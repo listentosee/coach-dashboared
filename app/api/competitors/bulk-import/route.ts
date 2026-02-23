@@ -64,7 +64,11 @@ export async function POST(req: NextRequest) {
     // Coach-only: disallow admins even with acting context
     if (isAdmin) return NextResponse.json({ error: 'Bulk import is available to coaches only' }, { status: 403 })
 
-    const body = await req.json().catch(() => ({})) as { rows?: IncomingRow[], onConflict?: 'skip'|'update' }
+    const body = await req.json().catch(() => ({})) as {
+      rows?: IncomingRow[],
+      onConflict?: 'skip'|'update',
+      importMeta?: { fileName?: string; fileType?: string; columnMapping?: Record<string, string | null> }
+    }
     const onConflict = body.onConflict || 'skip'
     const inputRows: IncomingRow[] = Array.isArray(body.rows) ? body.rows : []
     if (inputRows.length === 0) return NextResponse.json({ error: 'No rows provided' }, { status: 400 })
@@ -74,6 +78,8 @@ export async function POST(req: NextRequest) {
     let inserted = 0, updated = 0, skipped = 0, errors = 0, duplicates = 0
     const errorDetails: Array<{ row: number; name: string; error: string }> = []
     const autoOnboardIds: string[] = []
+    const fieldCoverage: Record<string, number> = {}
+    const statusCounts: Record<string, number> = {}
 
     // Enumerations (strict)
     const allowedDivisions = ALLOWED_DIVISIONS as readonly string[]
@@ -126,6 +132,13 @@ export async function POST(req: NextRequest) {
         if (division !== 'college' && rawProgramTrack) {
           program_track = null
         }
+
+        // Track field coverage for audit logging
+        if (gender) fieldCoverage.gender = (fieldCoverage.gender ?? 0) + 1
+        if (race) fieldCoverage.race = (fieldCoverage.race ?? 0) + 1
+        if (ethnicity) fieldCoverage.ethnicity = (fieldCoverage.ethnicity ?? 0) + 1
+        if (level_of_technology) fieldCoverage.level_of_technology = (fieldCoverage.level_of_technology ?? 0) + 1
+        if (years_competing !== null && !Number.isNaN(years_competing)) fieldCoverage.years_competing = (fieldCoverage.years_competing ?? 0) + 1
 
         // Validate
         if (!first_name || !last_name || !grade || !division || isAdult === null) throw new Error('Missing required fields')
@@ -232,6 +245,7 @@ export async function POST(req: NextRequest) {
                 .update({ status: newStatus })
                 .eq('id', existingId)
             }
+            statusCounts[newStatus] = (statusCounts[newStatus] ?? 0) + 1
             if (newStatus === 'profile' && !updatedRow.game_platform_id) {
               autoOnboardIds.push(updatedRow.id)
             }
@@ -258,6 +272,7 @@ export async function POST(req: NextRequest) {
         }
 
         const computedStatus = calculateCompetitorStatus(candidate)
+        statusCounts[computedStatus] = (statusCounts[computedStatus] ?? 0) + 1
 
         const { data: insertedRow, error: insErr } = await supabase
           .from('competitors')
@@ -285,7 +300,10 @@ export async function POST(req: NextRequest) {
     await AuditLogger.logBulkImport(supabase, {
       userId: user.id,
       coachId: user.id,
-      stats: { inserted, updated, skipped, errors }
+      stats: { inserted, updated, skipped, errors },
+      importMeta: body.importMeta,
+      fieldCoverage,
+      statusBreakdown: statusCounts,
     });
 
     if (autoOnboardIds.length > 0) {

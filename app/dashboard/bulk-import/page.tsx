@@ -670,6 +670,18 @@ export default function BulkImportPage() {
     if (isAdmin) return
     setSubmitting(true)
     try {
+      // Build column mapping summary for audit logging
+      const columnMappingSummary: Record<string, string | null> = {}
+      for (const f of FIELDS) {
+        const idx = mapping[f.key]
+        columnMappingSummary[f.key] = idx != null && idx >= 0 ? (headers[idx] || `Column ${idx}`) : null
+      }
+      const importMeta = {
+        fileName,
+        fileType: fileName.endsWith('.xlsx') ? 'xlsx' as const : 'csv' as const,
+        columnMapping: columnMappingSummary,
+      }
+
       const total = currentRows.length
       setProgress({ total, created: 0, updated: 0, duplicates: 0, failed: 0 })
       const chunkSize = 100
@@ -678,7 +690,7 @@ export default function BulkImportPage() {
         const res = await fetch('/api/competitors/bulk-import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rows: chunk })
+          body: JSON.stringify({ rows: chunk, ...(start === 0 ? { importMeta } : {}) })
         })
         if (res.ok) {
           const j = await res.json()

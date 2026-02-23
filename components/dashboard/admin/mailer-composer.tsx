@@ -36,6 +36,7 @@ export function MailerComposer({ coaches = [], drafts = [], templateToLoad, onTe
   const [body, setBody] = useState('')
   const [preview, setPreview] = useState(false)
   const [coachId, setCoachId] = useState('')
+  const [audience, setAudience] = useState<'game_platform' | 'all'>('game_platform')
   const [dryRunLoading, setDryRunLoading] = useState(false)
   const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -69,7 +70,7 @@ export function MailerComposer({ coaches = [], drafts = [], templateToLoad, onTe
       const res = await fetch('/api/messaging/announcements/competitors/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject, body, dryRun: true, coachId: coachId || undefined }),
+        body: JSON.stringify({ subject, body, dryRun: true, coachId: coachId || undefined, audience }),
       })
       if (!res.ok) {
         const errBody = await res.json().catch(() => null)
@@ -86,7 +87,7 @@ export function MailerComposer({ coaches = [], drafts = [], templateToLoad, onTe
     } finally {
       setDryRunLoading(false)
     }
-  }, [subject, body, coachId])
+  }, [subject, body, coachId, audience])
 
   const handleSend = useCallback(async () => {
     setSendLoading(true)
@@ -95,7 +96,7 @@ export function MailerComposer({ coaches = [], drafts = [], templateToLoad, onTe
       const res = await fetch('/api/messaging/announcements/competitors/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject, body, coachId: coachId || undefined }),
+        body: JSON.stringify({ subject, body, coachId: coachId || undefined, audience }),
       })
       if (!res.ok) {
         const errBody = await res.json().catch(() => null)
@@ -119,7 +120,7 @@ export function MailerComposer({ coaches = [], drafts = [], templateToLoad, onTe
     } finally {
       setSendLoading(false)
     }
-  }, [subject, body, coachId, activeDraftId, router])
+  }, [subject, body, coachId, audience, activeDraftId, router])
 
   const handleSaveDraft = useCallback(async () => {
     setDraftSaving(true)
@@ -187,6 +188,7 @@ export function MailerComposer({ coaches = [], drafts = [], templateToLoad, onTe
     setBody('')
     setPreview(false)
     setCoachId('')
+    setAudience('game_platform')
     setDryRunResult(null)
     setConfirmOpen(false)
     setSendResult(null)
@@ -224,10 +226,28 @@ export function MailerComposer({ coaches = [], drafts = [], templateToLoad, onTe
       <div className="flex items-center gap-2 rounded-md border border-slate-600 bg-slate-800/60 px-3 py-2 text-sm text-slate-300">
         <Mail className="h-4 w-4 shrink-0 text-slate-400" />
         <span>
-          {coachId && coachLabel
-            ? `Email will be sent to ${coachLabel}'s competitors only.`
-            : 'Email will be sent to all competitors on the game platform.'}
+          {audience === 'all'
+            ? coachId && coachLabel
+              ? `Email will be sent to all of ${coachLabel}'s active competitors.`
+              : 'Email will be sent to all active competitors.'
+            : coachId && coachLabel
+              ? `Email will be sent to ${coachLabel}'s competitors on the game platform.`
+              : 'Email will be sent to all competitors on the game platform.'}
         </span>
+      </div>
+
+      {/* Audience filter */}
+      <div className="flex items-center gap-2">
+        <label htmlFor="audience-filter" className="text-sm text-slate-400 shrink-0">Audience:</label>
+        <select
+          id="audience-filter"
+          value={audience}
+          onChange={(e) => { setAudience(e.target.value as 'game_platform' | 'all'); setDryRunResult(null) }}
+          className="flex-1 rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200"
+        >
+          <option value="game_platform">Game platform competitors only</option>
+          <option value="all">All active competitors</option>
+        </select>
       </div>
 
       {/* Coach filter */}
@@ -380,8 +400,12 @@ export function MailerComposer({ coaches = [], drafts = [], templateToLoad, onTe
                 <p className="text-sm text-slate-300">
                   Send email to <span className="font-semibold text-slate-100">{dryRunResult?.recipientCount ?? '?'}</span>{' '}
                   {coachId && coachLabel
-                    ? `of ${coachLabel}'s competitors`
-                    : `competitor${(dryRunResult?.recipientCount ?? 0) !== 1 ? 's' : ''}`}?
+                    ? audience === 'all'
+                      ? `of ${coachLabel}'s active competitors`
+                      : `of ${coachLabel}'s game platform competitors`
+                    : audience === 'all'
+                      ? `active competitor${(dryRunResult?.recipientCount ?? 0) !== 1 ? 's' : ''}`
+                      : `game platform competitor${(dryRunResult?.recipientCount ?? 0) !== 1 ? 's' : ''}`}?
                 </p>
                 {(dryRunResult?.skippedCount ?? 0) > 0 && (
                   <p className="text-xs text-slate-400">

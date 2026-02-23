@@ -17,6 +17,7 @@ const requestBodySchema = z.object({
   body: z.string().min(1, 'Body is required'),
   dryRun: z.boolean().optional(),
   coachId: z.string().uuid().optional(),
+  audience: z.enum(['game_platform', 'all']).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { subject, body: markdownBody, dryRun, coachId } = parsed.data;
+    const { subject, body: markdownBody, dryRun, coachId, audience } = parsed.data;
 
     // ----- Convert markdown to HTML -----
     const bodyHtml = await marked.parse(markdownBody);
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
     });
 
     // ----- Resolve recipients -----
-    const { recipients, skipped } = await resolveRecipients(serviceClient, { coachId });
+    const { recipients, skipped } = await resolveRecipients(serviceClient, { coachId, audience });
 
     // Build skipped-reason summary (no PII — just counts by reason)
     const skippedReasons: Record<string, number> = {};

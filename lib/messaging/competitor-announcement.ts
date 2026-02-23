@@ -34,7 +34,8 @@ const emailSchema = z.string().email();
  * Resolves the set of competitors eligible to receive a competitor
  * announcement email.
  *
- * Eligibility: `game_platform_id IS NOT NULL`.
+ * Eligibility: active competitors. When audience is 'game_platform' (default),
+ * further filtered to `game_platform_id IS NOT NULL`.
  *
  * Email precedence:
  *   game_platform_onboarding_email > email_personal > email_school
@@ -48,12 +49,16 @@ const emailSchema = z.string().email();
  */
 export async function resolveRecipients(
   serviceClient: SupabaseClient,
-  options?: { coachId?: string }
+  options?: { coachId?: string; audience?: 'game_platform' | 'all' }
 ): Promise<RecipientResolution> {
   let query = serviceClient
     .from('competitors')
     .select('id, game_platform_onboarding_email, email_personal, email_school')
-    .not('game_platform_id', 'is', null);
+    .eq('is_active', true);
+
+  if (options?.audience !== 'all') {
+    query = query.not('game_platform_id', 'is', null);
+  }
 
   if (options?.coachId) {
     query = query.eq('coach_id', options.coachId);

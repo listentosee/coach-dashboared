@@ -109,7 +109,10 @@ export async function GET(
 
     const odlChallenges = summaryData?.filter(c => c.solved_at).length || 0; // Simplified
     const daysActive = new Set(summaryData?.map(c => c.solved_at?.split('T')[0])).size || 0;
-    const lastActivity = summaryData?.[0]?.solved_at || null;
+    const lastActivity = summaryData?.reduce<string | null>((latest, c) => {
+      if (!c.solved_at) return latest;
+      return !latest || c.solved_at > latest ? c.solved_at : latest;
+    }, null) ?? null;
 
     // Calculate domain breakdown from challenge solves (source of truth)
     let domains = [];

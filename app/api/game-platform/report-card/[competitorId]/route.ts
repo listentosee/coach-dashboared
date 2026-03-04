@@ -109,10 +109,15 @@ export async function GET(
 
     const odlChallenges = summaryData?.filter(c => c.solved_at).length || 0; // Simplified
     const daysActive = new Set(summaryData?.map(c => c.solved_at?.split('T')[0])).size || 0;
-    const lastActivity = summaryData?.reduce<string | null>((latest, c) => {
-      if (!c.solved_at) return latest;
-      return !latest || c.solved_at > latest ? c.solved_at : latest;
-    }, null) ?? null;
+
+    // Use game_platform_stats.last_activity for consistency with the dashboard leaderboard
+    // (includes platform login activity, Flash CTF events, and challenge solves)
+    const { data: statsRow } = await supabase
+      .from('game_platform_stats')
+      .select('last_activity')
+      .eq('competitor_id', competitor.id)
+      .maybeSingle();
+    const lastActivity = statsRow?.last_activity ?? null;
 
     // Calculate domain breakdown from challenge solves (source of truth)
     let domains = [];

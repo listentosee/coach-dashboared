@@ -1,5 +1,4 @@
-import { formatDistanceToNow } from 'date-fns';
-import { Trophy, Calendar, Target } from 'lucide-react';
+import { Trophy, Target } from 'lucide-react';
 
 interface Props {
   competitor: {
@@ -14,7 +13,6 @@ interface Props {
   summary: {
     totalPoints: number;
     totalChallenges: number;
-    lastActivity: string | null;
   } | null;
 }
 
@@ -38,17 +36,6 @@ export default function ReportCardHeader({ competitor, summary }: Props) {
               <span className="capitalize">{competitor.division.replace('_', ' ')}</span>
             )}
           </div>
-          {summary && (
-            <div className="flex items-center gap-2 text-sm text-blue-100">
-              <Calendar className="h-4 w-4" />
-              <span>
-                Last activity:{' '}
-                {summary.lastActivity
-                  ? formatDistanceToNow(new Date(summary.lastActivity), { addSuffix: true })
-                  : 'No activity yet'}
-              </span>
-            </div>
-          )}
         </div>
 
         {summary && (

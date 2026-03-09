@@ -11,7 +11,8 @@ export type JobTaskType =
   | 'admin_alert_dispatch'
   | 'release_parent_email_verification'
   | 'message_read_receipts_backfill'
-  | 'competitor_announcement_dispatch';
+  | 'competitor_announcement_dispatch'
+  | 'game_platform_flash_ctf_sync';
 
 export interface GamePlatformSyncPayload {
   dryRun?: boolean;
@@ -81,6 +82,11 @@ export interface CompetitorAnnouncementDispatchPayload {
   campaignId: string;
 }
 
+export interface GamePlatformFlashCtfSyncPayload {
+  dryRun?: boolean;
+  coachId?: string | null;
+}
+
 export interface JobPayloadMap {
   game_platform_sync: GamePlatformSyncPayload;
   game_platform_totals_sweep: GamePlatformTotalsSweepPayload;
@@ -92,6 +98,7 @@ export interface JobPayloadMap {
   release_parent_email_verification: ReleaseParentEmailVerificationPayload;
   message_read_receipts_backfill: MessageReadReceiptsBackfillPayload;
   competitor_announcement_dispatch: CompetitorAnnouncementDispatchPayload;
+  game_platform_flash_ctf_sync: GamePlatformFlashCtfSyncPayload;
 }
 
 export type JobPayload<T extends JobTaskType = JobTaskType> = JobPayloadMap[T];

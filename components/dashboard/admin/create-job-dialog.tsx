@@ -28,6 +28,7 @@ const TASK_TYPES = [
   { value: 'admin_alert_dispatch', label: 'Admin Instant Alerts (admin_alert_dispatch)' },
   { value: 'release_parent_email_verification', label: 'Release Parent Email Verification (release_parent_email_verification)' },
   { value: 'message_read_receipts_backfill', label: 'Message Read Receipt Backfill (message_read_receipts_backfill)' },
+  { value: 'game_platform_flash_ctf_sync', label: 'Flash CTF Sync (game_platform_flash_ctf_sync)' },
 ];
 
 const TASKS_WITH_COACH_FILTER = new Set([
@@ -37,6 +38,7 @@ const TASKS_WITH_COACH_FILTER = new Set([
   'game_platform_onboard_competitors',
   'game_platform_onboard_coaches',
   'sms_digest_processor',
+  'game_platform_flash_ctf_sync',
 ]);
 
 const COMMON_INTERVALS = [
@@ -47,6 +49,7 @@ const COMMON_INTERVALS = [
   { value: 360, label: '6 hours' },
   { value: 720, label: '12 hours' },
   { value: 1440, label: '24 hours (daily)' },
+  { value: 10080, label: '7 days (weekly)' },
 ];
 
 const DURATION_OPTIONS = [
@@ -186,6 +189,11 @@ export function CreateJobDialog() {
             return {
               dryRun: false,
               batchSize: 500,
+            };
+          case 'game_platform_flash_ctf_sync':
+            return {
+              dryRun: false,
+              coachId: formData.coachId || null,
             };
           default:
             return { batchSize: 50, coachId: formData.coachId || null };
@@ -346,6 +354,13 @@ export function CreateJobDialog() {
             <div className="p-3 border rounded bg-gray-50 text-sm text-gray-700">
               Sends instant alerts to all admins with notifications enabled every time the job runs.
               Use the recurring schedule to control how often (recommended: every 5 minutes).
+            </div>
+          )}
+
+          {formData.task_type === 'game_platform_flash_ctf_sync' && (
+            <div className="p-3 border rounded bg-gray-50 text-sm text-gray-700">
+              Forces a full Flash CTF resync for all competitors without touching ODL data.
+              Flash CTFs happen once per month — schedule weekly to stay current.
             </div>
           )}
 

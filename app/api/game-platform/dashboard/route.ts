@@ -683,30 +683,25 @@ export async function GET(request: NextRequest) {
       return events.slice(0, 8);
     })();
 
-    // Calculate Flash CTF momentum data for Monthly CTF panel
-    const today = new Date();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-    const threeMonthsAgo = new Date();
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-    const twelveMonthsAgo = new Date();
-    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+    // Build Flash CTF momentum data
 
-    // Query Flash CTF events for all synced competitors
-    const syncedCompetitorIds = (competitors || [])
-      .filter(c => c.game_platform_id)
-      .map(c => c.game_platform_id);
-
-    let flashCtfMomentum: any = {
-      students: [],
-      alerts: { noParticipation: 0, declining: 0 },
-      monthlyTotals: []
-    };
+    let flashCtfMomentum: any = { students: [] };
 
     // Calculate monthly CTF participants from the normalized flash_ctf_events table
     let monthlyCtfParticipantsFromEvents = 0;
 
-    if (syncedCompetitorIds.length > 0) {
+    // Build reverse lookup: synced_user_id -> competitor record
+    const syncedIdToCompetitor = new Map<string, any>();
+    for (const competitor of competitorMap.values()) {
+      if (competitor.game_platform_id) {
+        syncedIdToCompetitor.set(competitor.game_platform_id, competitor);
+      }
+    }
+
+    // Use the full set of synced IDs (includes profile mapping fallbacks)
+    const allSyncedIds = Array.from(syncedIdToCompetitor.keys());
+
+    if (allSyncedIds.length > 0) {
       const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
       const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const flashClient = (serviceRoleKey && serviceUrl)
@@ -716,8 +711,7 @@ export async function GET(request: NextRequest) {
       const { data: flashEvents } = await flashClient
           .from('game_platform_flash_ctf_events')
           .select('synced_user_id, event_id, flash_ctf_name, challenges_solved, points_earned, max_points_possible, rank, started_at, raw_payload')
-          .in('synced_user_id', syncedCompetitorIds)
-        .gte('started_at', twelveMonthsAgo.toISOString())
+          .in('synced_user_id', allSyncedIds)
         .order('started_at', { ascending: false });
 
       // Calculate participants within the selected time range
@@ -726,7 +720,6 @@ export async function GET(request: NextRequest) {
         for (const event of flashEvents) {
           if (!event.started_at) continue;
           const eventDate = new Date(event.started_at);
-          // Check if event is within the selected time range
           if (rangeStartTime === null || eventDate >= rangeStartTime) {
             if (event.synced_user_id) {
               participantsInRange.add(event.synced_user_id);
@@ -736,126 +729,42 @@ export async function GET(request: NextRequest) {
         monthlyCtfParticipantsFromEvents = participantsInRange.size;
       }
 
-      const studentDataMap = new Map();
-      const monthlyTotalsMap = new Map();
+      // Group events by competitor, building per-student summaries with nested events
+      const studentDataMap = new Map<string, {
+        competitorId: string;
+        name: string;
+        totalCtfs: number;
+        totalScore: number;
+        events: any[];
+      }>();
 
       (flashEvents || []).forEach(event => {
         if (!event.synced_user_id) return;
-        const competitor = competitorMap.get(Array.from(competitorMap.values()).find((c: any) => c.game_platform_id === event.synced_user_id)?.id || '');
+        const competitor = syncedIdToCompetitor.get(event.synced_user_id);
         if (!competitor) return;
-
-        const eventDate = new Date(event.started_at);
-        const monthKey = `${eventDate.getFullYear()}-${String(eventDate.getMonth() + 1).padStart(2, '0')}`;
 
         if (!studentDataMap.has(competitor.id)) {
           studentDataMap.set(competitor.id, {
             competitorId: competitor.id,
             name: `${competitor.first_name} ${competitor.last_name}`.trim(),
-            thisMonthEvents: 0,
-            last3MonthsEvents: 0,
-            totalEvents12mo: 0,
-            challengesSolved: 0,
-            lastParticipated: null,
+            totalCtfs: 0,
+            totalScore: 0,
+            events: [],
           });
         }
 
-        const student = studentDataMap.get(competitor.id);
-        student.totalEvents12mo += 1;
-        student.challengesSolved += event.challenges_solved || 0;
+        const student = studentDataMap.get(competitor.id)!;
+        student.totalCtfs += 1;
+        student.totalScore += event.points_earned || 0;
 
-        if (!student.lastParticipated || event.started_at > student.lastParticipated) {
-          student.lastParticipated = event.started_at;
-        }
-
-        if (eventDate.getMonth() === currentMonth && eventDate.getFullYear() === currentYear) {
-          student.thisMonthEvents += 1;
-        }
-
-        if (eventDate >= threeMonthsAgo) {
-          student.last3MonthsEvents += 1;
-        }
-
-        const totalCount = monthlyTotalsMap.get(monthKey) || { month: monthKey, participants: new Set() };
-        totalCount.participants.add(competitor.id);
-        monthlyTotalsMap.set(monthKey, totalCount);
-      });
-
-      // Add competitors with no Flash CTF participation
-      (competitors || []).forEach(c => {
-        if (c.game_platform_id && !studentDataMap.has(c.id)) {
-          studentDataMap.set(c.id, {
-            competitorId: c.id,
-            name: `${c.first_name} ${c.last_name}`.trim(),
-            thisMonthEvents: 0,
-            last3MonthsEvents: 0,
-            totalEvents12mo: 0,
-            challengesSolved: 0,
-            lastParticipated: null,
-          });
-        }
-      });
-
-      let noParticipation = 0;
-      let declining = 0;
-
-      const students = Array.from(studentDataMap.values()).map(student => {
-        const last3MonthsAvg = student.last3MonthsEvents / 3;
-        let status: 'none' | 'declining' | 'active' = 'active';
-
-        if (student.thisMonthEvents === 0 && student.totalEvents12mo === 0) {
-          status = 'none';
-          noParticipation += 1;
-        } else if (student.thisMonthEvents === 0 && student.totalEvents12mo > 0) {
-          status = 'declining';
-          declining += 1;
-        } else if (last3MonthsAvg > 0 && student.thisMonthEvents < last3MonthsAvg * 0.5) {
-          status = 'declining';
-          declining += 1;
-        }
-
-        return {
-          ...student,
-          last3MonthsAvg: Math.round(last3MonthsAvg * 10) / 10,
-          status,
-        };
-      });
-
-      students.sort((a, b) => {
-        const statusOrder = { none: 0, declining: 1, active: 2 };
-        if (statusOrder[a.status] !== statusOrder[b.status]) {
-          return statusOrder[a.status] - statusOrder[b.status];
-        }
-        if (!a.lastParticipated && !b.lastParticipated) return 0;
-        if (!a.lastParticipated) return -1;
-        if (!b.lastParticipated) return 1;
-        return a.lastParticipated < b.lastParticipated ? -1 : 1;
-      });
-
-      const monthlyTotalsArray = [];
-      for (let i = 11; i >= 0; i--) {
-        const date = new Date();
-        date.setMonth(date.getMonth() - i);
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        const data = monthlyTotalsMap.get(monthKey);
-        monthlyTotalsArray.push({
-          month: monthKey,
-          participants: data ? data.participants.size : 0,
-        });
-      }
-
-      // Group Flash CTF events by competitor for drill-down
-      const eventsByCompetitor = new Map<string, any[]>();
-      (flashEvents || []).forEach(event => {
-        const competitor = Array.from(competitorMap.values()).find((c: any) => c.game_platform_id === event.synced_user_id);
-        if (!competitor) return;
-
-        if (!eventsByCompetitor.has(competitor.id)) {
-          eventsByCompetitor.set(competitor.id, []);
-        }
         // Extract challenge details from raw_payload
         const challengeDetails: Array<{ name: string; category: string; points: number; solvedAt: string }> = [];
-        if (event.raw_payload && Array.isArray(event.raw_payload.challenge_solves)) {
-          event.raw_payload.challenge_solves.forEach((ch: any) => {
+        const rawPayload = typeof event.raw_payload === 'string'
+          ? (() => { try { return JSON.parse(event.raw_payload); } catch { return null; } })()
+          : event.raw_payload;
+
+        if (rawPayload && Array.isArray(rawPayload.challenge_solves)) {
+          rawPayload.challenge_solves.forEach((ch: any) => {
             challengeDetails.push({
               name: ch.challenge_title || 'Unknown Challenge',
               category: normalizeChallengeCategoryLabel(ch.challenge_category),
@@ -865,14 +774,12 @@ export async function GET(request: NextRequest) {
           });
         }
 
-        const payloadMaxPoints = typeof event?.raw_payload?.max_points_possible === 'number'
-          ? event.raw_payload.max_points_possible
-          : null;
-        const payloadRank = typeof event?.raw_payload?.rank === 'number'
-          ? event.raw_payload.rank
-          : null;
+        const payloadMaxPoints = typeof rawPayload?.max_points_possible === 'number'
+          ? rawPayload.max_points_possible : null;
+        const payloadRank = typeof rawPayload?.rank === 'number'
+          ? rawPayload.rank : null;
 
-        eventsByCompetitor.get(competitor.id)!.push({
+        student.events.push({
           eventName: event.flash_ctf_name,
           date: event.started_at,
           challenges: event.challenges_solved || 0,
@@ -883,12 +790,11 @@ export async function GET(request: NextRequest) {
         });
       });
 
-      flashCtfMomentum = {
-        students,
-        alerts: { noParticipation, declining },
-        monthlyTotals: monthlyTotalsArray,
-        eventsByCompetitor: Object.fromEntries(eventsByCompetitor),
-      };
+      // Sort students by total score descending
+      const students = Array.from(studentDataMap.values())
+        .sort((a, b) => b.totalScore - a.totalScore);
+
+      flashCtfMomentum = { students };
     }
 
     const response = {

@@ -2076,8 +2076,10 @@ export async function syncAllCompetitorGameStats({
 
   // Sentinel user detection for Flash CTF events
   // Flash CTF events are monthly and global - if one user has a new event, all users can participate
-  // We check a "sentinel" user to detect new events before syncing all users
+  // We check a "sentinel" user to detect new events, and also identify competitors who
+  // are missing data for known events so they get synced too.
   let hasNewFlashCtfEvent = false;
+  const competitorsNeedingFlashSync = new Set<string>(); // competitor IDs that need Flash CTF sync
   const resolvedClient = resolveClient(client, logger);
 
   if (!forceFlashCtfSync && competitors && competitors.length > 0) {
@@ -2107,9 +2109,44 @@ export async function syncAllCompetitorGameStats({
 
         if (newEventNames.length > 0) {
           hasNewFlashCtfEvent = true;
-          logger?.info?.(`✨ New Flash CTF event(s) detected: ${newEventNames.join(', ')}`);
+          logger?.info?.(`New Flash CTF event(s) detected: ${newEventNames.join(', ')}`);
         } else {
           logger?.info?.(`No new Flash CTF events (checked ${sentinelEventNames.length} known events)`);
+        }
+
+        // Even if no new events globally, check which competitors are missing
+        // data for existing events (e.g. newly enrolled students, or students
+        // whose prior sync was skipped). Compare each competitor's synced event
+        // count against the total known events.
+        if (!hasNewFlashCtfEvent) {
+          const competitorGameIds = (competitors || [])
+            .filter(c => c.game_platform_id)
+            .map(c => ({ id: c.id, gpId: c.game_platform_id! }));
+
+          if (competitorGameIds.length > 0) {
+            const { data: eventCounts } = await statsClient
+              .from('game_platform_flash_ctf_events')
+              .select('synced_user_id')
+              .in('synced_user_id', competitorGameIds.map(c => c.gpId));
+
+            // Count events per synced user
+            const countBySyncedId = new Map<string, number>();
+            for (const row of eventCounts || []) {
+              countBySyncedId.set(row.synced_user_id, (countBySyncedId.get(row.synced_user_id) || 0) + 1);
+            }
+
+            const totalKnownEvents = sentinelEventNames.length;
+            for (const { id, gpId } of competitorGameIds) {
+              const userEventCount = countBySyncedId.get(gpId) || 0;
+              if (userEventCount < totalKnownEvents) {
+                competitorsNeedingFlashSync.add(id);
+              }
+            }
+
+            if (competitorsNeedingFlashSync.size > 0) {
+              logger?.info?.(`${competitorsNeedingFlashSync.size} competitor(s) missing Flash CTF events - will sync their Flash CTF data`);
+            }
+          }
         }
       } else {
         logger?.info?.('Sentinel user has no Flash CTF events');
@@ -2136,6 +2173,8 @@ export async function syncAllCompetitorGameStats({
   }
 
   for (const competitor of competitors || []) {
+    // Sync Flash CTF if: new event detected globally, or this specific competitor is missing events
+    const shouldSyncFlash = hasNewFlashCtfEvent || competitorsNeedingFlashSync.has(competitor.id);
     const result = await syncCompetitorGameStats({
       supabase,
       client,
@@ -2145,7 +2184,7 @@ export async function syncAllCompetitorGameStats({
       globalAfterTimeUnix: globalAfterTime,
       ctfOnly,
       forceFlashCtfSync,
-      skipFlashCtfSync: !hasNewFlashCtfEvent, // Skip Flash CTF if no new events
+      skipFlashCtfSync: !shouldSyncFlash,
     });
     results.push(result);
   }

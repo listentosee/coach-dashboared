@@ -90,22 +90,10 @@ interface DashboardData {
     students: Array<{
       competitorId: string;
       name: string;
-      thisMonthEvents: number;
-      last3MonthsAvg: number;
-      totalEvents12mo: number;
-      challengesSolved: number;
-      lastParticipated: string | null;
-      status: 'none' | 'declining' | 'active';
+      totalCtfs: number;
+      totalScore: number;
+      events: Array<{ eventName: string; date: string; challenges: number; points: number; pointsPossible?: number | null; rank?: number | null; challengeDetails?: Array<{ name: string; category: string; points: number; solvedAt: string }> }>;
     }>;
-    alerts: {
-      noParticipation: number;
-      declining: number;
-    };
-    monthlyTotals: Array<{
-      month: string;
-      participants: number;
-    }>;
-    eventsByCompetitor?: Record<string, Array<{ eventName: string; date: string; challenges: number; points: number; pointsPossible?: number | null; rank?: number | null; challengeDetails?: Array<{ name: string; category: string; points: number; solvedAt: string }> }>>;
   };
 }
 
@@ -160,7 +148,6 @@ export default function GamePlatformDashboard() {
   } | null>(null);
   const [competitorDrilldownOpen, setCompetitorDrilldownOpen] = useState(false);
   const [teamInitialDataset, setTeamInitialDataset] = useState<string | undefined>(undefined);
-  const [ctfView, setCtfView] = useState<'score' | 'pace'>('score');
   const [flashCtfDrilldown, setFlashCtfDrilldown] = useState<{
     competitorId: string;
     name: string;
@@ -367,27 +354,8 @@ export default function GamePlatformDashboard() {
       student => allowedCompetitorIds!.has(student.competitorId)
     );
 
-    // Recalculate alerts based on filtered students
-    const noParticipation = filteredStudents.filter(s => s.status === 'none').length;
-    const declining = filteredStudents.filter(s => s.status === 'declining').length;
-
-    // Filter eventsByCompetitor
-    const filteredEventsByCompetitor = dashboard.flashCtfMomentum.eventsByCompetitor
-      ? Object.fromEntries(
-          Object.entries(dashboard.flashCtfMomentum.eventsByCompetitor).filter(
-            ([competitorId]) => allowedCompetitorIds!.has(competitorId)
-          )
-        )
-      : undefined;
-
     return {
       students: filteredStudents,
-      alerts: {
-        noParticipation,
-        declining,
-      },
-      monthlyTotals: dashboard.flashCtfMomentum.monthlyTotals, // Keep monthly totals as-is (global stats)
-      eventsByCompetitor: filteredEventsByCompetitor,
     };
   }, [dashboard, coachScope, division]);
 
@@ -528,50 +496,6 @@ export default function GamePlatformDashboard() {
         accessorKey: 'challenges',
         header: 'Challenges',
         cell: ({ row }) => <span className="text-meta-light">{formatNumber(row.original.challenges)}</span>,
-      },
-    ],
-    []
-  );
-
-  const flashCtfEventColumns = useMemo<ColumnDef<{ eventName: string; date: string; challenges: number; points: number; pointsPossible?: number | null; rank?: number | null }>[]>(
-    () => [
-      {
-        accessorKey: 'eventName',
-        header: 'Event',
-        cell: ({ row }) => <span className="text-meta-light">{row.original.eventName}</span>,
-      },
-      {
-        accessorKey: 'date',
-        header: 'Date',
-        cell: ({ row }) => <span className="text-meta-light">{new Date(row.original.date).toLocaleDateString()}</span>,
-      },
-      {
-        accessorKey: 'challenges',
-        header: 'Challenges',
-        cell: ({ row }) => <span className="text-meta-light">{formatNumber(row.original.challenges)}</span>,
-      },
-      {
-        accessorKey: 'points',
-        header: 'Points Achieved',
-        cell: ({ row }) => <span className="text-meta-light">{formatNumber(row.original.points)}</span>,
-      },
-      {
-        accessorKey: 'pointsPossible',
-        header: 'Points Possible',
-        cell: ({ row }) => (
-          <span className="text-meta-light">
-            {typeof row.original.pointsPossible === 'number' ? formatNumber(row.original.pointsPossible) : '—'}
-          </span>
-        ),
-      },
-      {
-        accessorKey: 'rank',
-        header: 'Rank',
-        cell: ({ row }) => (
-          <span className="text-meta-light">
-            {typeof row.original.rank === 'number' ? `#${row.original.rank}` : '—'}
-          </span>
-        ),
       },
     ],
     []
@@ -833,42 +757,31 @@ export default function GamePlatformDashboard() {
           }}
           title={
             flashCtfDrilldown?.eventName
-              ? `${flashCtfDrilldown.eventName} - ${flashCtfDrilldown.name}`
-              : flashCtfDrilldown?.name
-              ? `Flash CTF History: ${flashCtfDrilldown.name}`
-              : 'Flash CTF History'
+              ? `${flashCtfDrilldown.eventName} — ${flashCtfDrilldown.name}`
+              : 'Flash CTF Details'
           }
           description={
-            flashCtfDrilldown?.challenges
+            flashCtfDrilldown?.events?.[0]
               ? (() => {
-                  const eventMeta = flashCtfDrilldown.events?.[0];
-                  const points = typeof eventMeta?.points === 'number' ? formatNumber(eventMeta.points) : '—';
-                  const pointsPossible = typeof eventMeta?.pointsPossible === 'number'
+                  const eventMeta = flashCtfDrilldown.events[0];
+                  const points = typeof eventMeta.points === 'number' ? formatNumber(eventMeta.points) : '—';
+                  const pointsPossible = typeof eventMeta.pointsPossible === 'number'
                     ? formatNumber(eventMeta.pointsPossible)
                     : null;
-                  const rank = typeof eventMeta?.rank === 'number' ? `#${eventMeta.rank}` : '—';
-                  const pointsLabel = pointsPossible ? `${points} / ${pointsPossible} pts` : `${points} pts`;
-                  return `Challenges solved in ${flashCtfDrilldown.eventName} • ${pointsLabel} • Rank ${rank}`;
+                  const rank = typeof eventMeta.rank === 'number' ? `#${eventMeta.rank}` : null;
+                  const parts = [pointsPossible ? `${points} / ${pointsPossible} pts` : `${points} pts`];
+                  if (rank) parts.push(`Rank ${rank}`);
+                  return parts.join(' · ');
                 })()
-              : 'All Flash CTF events this competitor has participated in'
+              : ''
           }
-          datasets={flashCtfDrilldown ? (
-            flashCtfDrilldown.challenges
-              ? [{
-                  key: 'challenges',
-                  label: 'Challenges',
-                  columns: flashCtfChallengeColumns,
-                  data: flashCtfDrilldown.challenges,
-                  emptyMessage: 'No challenges recorded for this event.',
-                }]
-              : [{
-                  key: 'events',
-                  label: 'Flash CTF Events',
-                  columns: flashCtfEventColumns,
-                  data: flashCtfDrilldown.events,
-                  emptyMessage: 'No Flash CTF participation recorded.',
-                }]
-          ) : []}
+          datasets={flashCtfDrilldown?.challenges ? [{
+            key: 'challenges',
+            label: 'Challenges Solved',
+            columns: flashCtfChallengeColumns,
+            data: flashCtfDrilldown.challenges,
+            emptyMessage: 'No challenge details recorded for this event.',
+          }] : []}
         />
 
         <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
@@ -994,43 +907,21 @@ export default function GamePlatformDashboard() {
 
           <Card className="border-meta-border bg-meta-card">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Monthly CTF Momentum</CardTitle>
-                  <CardDescription>Flash CTF participation from synced stats</CardDescription>
-                </div>
-                <Tabs value={ctfView} onValueChange={(value) => setCtfView(value as 'score' | 'pace')}>
-                  <TabsList className="bg-meta-dark border border-meta-border">
-                    <TabsTrigger value="score">Score</TabsTrigger>
-                    <TabsTrigger value="pace">Pace</TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
+              <CardTitle>Flash CTF Summary</CardTitle>
+              <CardDescription>Student participation and scores across Flash CTF events</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="h-96">
                 {filteredFlashCtfMomentum ? (
                   <MonthlyCtfMomentum
-                    view={ctfView}
                     data={filteredFlashCtfMomentum}
-                    onStudentClick={(competitorId, name, eventName) => {
-                      const allEvents = filteredFlashCtfMomentum.eventsByCompetitor?.[competitorId] || [];
-                      // Filter to specific event if eventName is provided
-                      const events = eventName
-                        ? allEvents.filter(e => e.eventName === eventName)
-                        : allEvents;
-
-                      // Extract challenge details if a specific event is selected
-                      const challenges = eventName && events.length > 0 && events[0].challengeDetails
-                        ? events[0].challengeDetails
-                        : undefined;
-
+                    onEventClick={(competitorId: string, name: string, event) => {
                       setFlashCtfDrilldown({
                         competitorId,
                         name,
-                        eventName,
-                        events,
-                        challenges
+                        eventName: event.eventName,
+                        events: [event],
+                        challenges: event.challengeDetails,
                       });
                       setFlashCtfDrilldownOpen(true);
                     }}

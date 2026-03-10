@@ -85,6 +85,8 @@ export interface CompetitorAnnouncementDispatchPayload {
 export interface GamePlatformFlashCtfSyncPayload {
   dryRun?: boolean;
   coachId?: string | null;
+  batchSize?: number;
+  cursor?: { createdAt: string; id: string } | null;
 }
 
 export interface JobPayloadMap {

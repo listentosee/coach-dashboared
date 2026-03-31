@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
 import { DemographicCharts, DemographicChartConfig } from '@/components/dashboard/admin/demographic-charts'
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase'
+import { CoachSummaryTable, CoachSummaryRow } from '@/components/dashboard/admin/coach-summary-table'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,6 +58,66 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
     statusCounts[s] = count || 0
   }
   statusCounts.profile = (statusCounts.profile || 0) + (statusCounts.compliance || 0)
+
+  // Coach summary grid data
+  const [
+    { data: allCompetitors },
+    { data: allTeamMembers },
+    { data: allGameProfiles },
+    { data: allTeams },
+  ] = await Promise.all([
+    serviceSupabase.from('competitors').select('id, coach_id, status'),
+    serviceSupabase.from('team_members').select('competitor_id, team_id'),
+    serviceSupabase.from('game_platform_profiles').select('competitor_id, status').in('status', ['approved', 'user_created']),
+    serviceSupabase.from('teams').select('id, coach_id, image_url'),
+  ])
+
+  // Build lookup sets
+  const competitorsWithTeam = new Set(
+    (allTeamMembers || []).map((tm: any) => tm.competitor_id)
+  )
+  const activeGameCompetitors = new Set(
+    (allGameProfiles || []).map((gp: any) => gp.competitor_id)
+  )
+
+  const coachSummaryMap = new Map<string, CoachSummaryRow>()
+  for (const c of (coaches || [])) {
+    coachSummaryMap.set(c.id, {
+      coach_id: c.id,
+      coach_name: c.full_name || c.email || c.id,
+      total_competitors: 0,
+      pending: 0,
+      in_game_compliant: 0,
+      in_game_non_compliant: 0,
+      in_teams: 0,
+      not_in_team: 0,
+      active_in_game_platform: 0,
+      total_teams: 0,
+      teams_without_image: 0,
+    })
+  }
+
+  for (const comp of (allCompetitors || [])) {
+    const row = coachSummaryMap.get(comp.coach_id)
+    if (!row) continue
+    row.total_competitors++
+    if (comp.status === 'pending') row.pending++
+    if (comp.status === 'complete') row.in_game_compliant++
+    if (comp.status === 'in_the_game_not_compliant') row.in_game_non_compliant++
+    if (competitorsWithTeam.has(comp.id)) row.in_teams++
+    else row.not_in_team++
+    if (activeGameCompetitors.has(comp.id)) row.active_in_game_platform++
+  }
+
+  for (const team of (allTeams || [])) {
+    const row = coachSummaryMap.get(team.coach_id)
+    if (!row) continue
+    row.total_teams++
+    if (!team.image_url) row.teams_without_image++
+  }
+
+  const coachSummaryData: CoachSummaryRow[] = Array.from(coachSummaryMap.values())
+    .sort((a, b) => a.coach_name.localeCompare(b.coach_name))
 
   // Release/Agreement status approximation
   // complete: any required agreement dates present
@@ -267,6 +328,18 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Coach summary grid */}
+        <div className="rounded border border-meta-border bg-meta-card p-5">
+          <div className="mb-4">
+            <div className="text-sm text-meta-muted">Management</div>
+            <div className="text-meta-light text-lg font-semibold">Coach Summary</div>
+            <p className="text-sm text-meta-muted mt-1">
+              Click a coach to view their competitors in the dashboard.
+            </p>
+          </div>
+          <CoachSummaryTable data={coachSummaryData} />
         </div>
 
         {/* Competitor breakdown */}

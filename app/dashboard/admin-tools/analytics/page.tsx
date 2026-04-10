@@ -6,6 +6,134 @@ import { CoachSummaryTable, CoachSummaryRow } from '@/components/dashboard/admin
 
 export const dynamic = 'force-dynamic'
 
+type ActivityBucket = 'school_day' | 'weekday_before_school' | 'weekday_after_school' | 'weekend' | 'unknown'
+
+interface MetricRow {
+  label: string
+  value: number
+  secondary?: string
+}
+
+const numberFormatter = new Intl.NumberFormat('en-US')
+const pacificActivityFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/Los_Angeles',
+  weekday: 'short',
+  hour: '2-digit',
+  hourCycle: 'h23',
+})
+
+function formatNumber(value: number) {
+  return numberFormatter.format(value)
+}
+
+function formatDivisionLabel(division?: string | null, programTrack?: string | null) {
+  const normalizedDivision = (division || '').trim().toLowerCase()
+  if (normalizedDivision === 'college') {
+    return (programTrack || '').trim().toLowerCase() === 'adult_ed' ? 'ROP College' : 'Traditional College'
+  }
+  if (normalizedDivision === 'middle_school') return 'Middle School'
+  if (normalizedDivision === 'high_school') return 'High School'
+  return 'Unassigned'
+}
+
+function normalizeChallengeCategoryLabel(raw?: string | null) {
+  if (!raw) return 'Uncategorized'
+  const cleaned = raw.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!cleaned) return 'Uncategorized'
+
+  switch (cleaned) {
+    case 'crypto':
+    case 'cryptography':
+      return 'Cryptography'
+    case 'foren':
+    case 'forensics':
+      return 'Forensics'
+    case 'reven':
+    case 'reverse engineering':
+    case 'reversing':
+      return 'Reverse Engineering'
+    case 'binexp':
+    case 'binary exploitation':
+      return 'Binary Exploitation'
+    case 'osint':
+      return 'OSINT'
+    case 'web':
+      return 'Web'
+    case 'operating systems':
+    case 'operating system':
+    case 'os':
+      return 'Operating Systems'
+    case 'misc':
+    case 'miscellaneous':
+      return 'Miscellaneous'
+    default:
+      return cleaned.replace(/\b\w/g, (match) => match.toUpperCase())
+  }
+}
+
+function classifyPacificActivity(timestamp?: string | null): ActivityBucket {
+  if (!timestamp) return 'unknown'
+
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return 'unknown'
+
+  const parts = pacificActivityFormatter.formatToParts(date)
+  const weekday = parts.find((part) => part.type === 'weekday')?.value
+  const hourPart = parts.find((part) => part.type === 'hour')?.value
+  const hour = hourPart ? Number.parseInt(hourPart, 10) : Number.NaN
+
+  if (!weekday || Number.isNaN(hour)) return 'unknown'
+
+  const isWeekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)
+  if (!isWeekday) return 'weekend'
+  if (hour < 9) return 'weekday_before_school'
+  if (hour >= 15) return 'weekday_after_school'
+  return 'school_day'
+}
+
+function MetricBarList({
+  rows,
+  emptyMessage,
+}: {
+  rows: MetricRow[]
+  emptyMessage: string
+}) {
+  if (!rows.length) {
+    return (
+      <div className="rounded border border-dashed border-meta-border/60 bg-meta-dark/30 p-6 text-sm text-meta-muted">
+        {emptyMessage}
+      </div>
+    )
+  }
+
+  const maxValue = Math.max(...rows.map((row) => row.value), 1)
+
+  return (
+    <div className="space-y-3">
+      {rows.map((row) => {
+        const width = Math.max((row.value / maxValue) * 100, row.value > 0 ? 8 : 0)
+        return (
+          <div key={row.label} className="rounded border border-meta-border/50 bg-meta-dark/40 p-3">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium text-meta-light">{row.label}</div>
+                {row.secondary ? <div className="text-xs text-meta-muted">{row.secondary}</div> : null}
+              </div>
+              <div className="text-lg font-semibold text-meta-light">{formatNumber(row.value)}</div>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-meta-dark">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-sky-400 to-emerald-400"
+                style={{ width: `${width}%` }}
+              />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default async function AdminAnalyticsPage({ searchParams }: { searchParams?: Promise<{ coach_id?: string }> }) {
   const cookieStore = await cookies()
   const supabase = createServerComponentClient({ cookies: () => cookieStore })
@@ -231,18 +359,8 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   const divisionCounts = new Map<string, number>()
   if (demographicRows.length) {
     for (const row of demographicRows) {
-      const division = (row.division || '').trim().toLowerCase()
-      if (division === 'college') {
-        const track = (row.program_track || 'traditional').trim().toLowerCase()
-        const label = track === 'adult_ed' ? 'ROP College' : 'Traditional College'
-        divisionCounts.set(label, (divisionCounts.get(label) ?? 0) + 1)
-      } else if (division === 'middle_school') {
-        divisionCounts.set('Middle School', (divisionCounts.get('Middle School') ?? 0) + 1)
-      } else if (division === 'high_school') {
-        divisionCounts.set('High School', (divisionCounts.get('High School') ?? 0) + 1)
-      } else {
-        divisionCounts.set('Unassigned', (divisionCounts.get('Unassigned') ?? 0) + 1)
-      }
+      const label = formatDivisionLabel(row.division, row.program_track)
+      divisionCounts.set(label, (divisionCounts.get(label) ?? 0) + 1)
     }
   }
 
@@ -279,6 +397,246 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
         .sort((a, b) => b.value - a.value),
     })
   }
+
+  let platformCompetitors: Array<{
+    id: string
+    division: string | null
+    program_track: string | null
+    game_platform_id: string | null
+    team_members:
+      | Array<{ team_id: string | null; teams: { id: string; division: string | null } | null }>
+      | { team_id: string | null; teams: { id: string; division: string | null } | null }
+      | null
+  }> = []
+
+  {
+    let platformCompetitorsQuery = serviceSupabase
+      .from('competitors')
+      .select(`
+        id,
+        division,
+        program_track,
+        game_platform_id,
+        team_members(team_id, teams(id, division))
+      `)
+
+    if (coachId) {
+      platformCompetitorsQuery = platformCompetitorsQuery.eq('coach_id', coachId)
+    }
+
+    const { data } = await platformCompetitorsQuery
+    if (data) {
+      platformCompetitors = data as typeof platformCompetitors
+    }
+  }
+
+  const platformCompetitorIds = platformCompetitors.map((competitor) => competitor.id)
+
+  let platformMappings: Array<{ competitor_id: string | null; synced_user_id: string | null }> = []
+  let platformStatsRows: Array<{ competitor_id: string; challenges_completed: number | null }> = []
+
+  if (platformCompetitorIds.length) {
+    const [{ data: mappingData }, { data: statsData }] = await Promise.all([
+      serviceSupabase
+        .from('game_platform_profiles')
+        .select('competitor_id, synced_user_id')
+        .in('competitor_id', platformCompetitorIds),
+      serviceSupabase
+        .from('game_platform_stats')
+        .select('competitor_id, challenges_completed')
+        .in('competitor_id', platformCompetitorIds),
+    ])
+
+    platformMappings = (mappingData || []) as typeof platformMappings
+    platformStatsRows = (statsData || []) as typeof platformStatsRows
+  }
+
+  const syncedUserIdByCompetitorId = new Map<string, string>()
+  for (const mapping of platformMappings) {
+    if (mapping.competitor_id && mapping.synced_user_id) {
+      syncedUserIdByCompetitorId.set(mapping.competitor_id, mapping.synced_user_id)
+    }
+  }
+
+  const statsByCompetitorId = new Map<string, number>()
+  for (const row of platformStatsRows) {
+    statsByCompetitorId.set(row.competitor_id, Number(row.challenges_completed) || 0)
+  }
+
+  const competitorScope = platformCompetitors.map((competitor) => {
+    const teamMembership = Array.isArray(competitor.team_members)
+      ? competitor.team_members[0] ?? null
+      : competitor.team_members ?? null
+    const teamDivision = teamMembership?.teams?.division ?? null
+    const divisionLabel = formatDivisionLabel(teamDivision || competitor.division, competitor.program_track)
+    const syncedUserId = competitor.game_platform_id || syncedUserIdByCompetitorId.get(competitor.id) || null
+    return {
+      competitorId: competitor.id,
+      divisionLabel,
+      syncedUserId,
+    }
+  })
+
+  const syncedUserIds = Array.from(new Set(
+    competitorScope
+      .map((competitor) => competitor.syncedUserId)
+      .filter((value): value is string => Boolean(value))
+  ))
+
+  let platformChallengeSolves: Array<{
+    synced_user_id: string
+    challenge_category: string | null
+    solved_at: string | null
+  }> = []
+  let platformFlashEvents: Array<{
+    synced_user_id: string
+    event_id: string
+    started_at: string | null
+  }> = []
+
+  if (syncedUserIds.length) {
+    const [{ data: solvesData }, { data: flashData }] = await Promise.all([
+      serviceSupabase
+        .from('game_platform_challenge_solves')
+        .select('synced_user_id, challenge_category, solved_at')
+        .in('synced_user_id', syncedUserIds),
+      serviceSupabase
+        .from('game_platform_flash_ctf_events')
+        .select('synced_user_id, event_id, started_at')
+        .in('synced_user_id', syncedUserIds),
+    ])
+
+    platformChallengeSolves = (solvesData || []) as typeof platformChallengeSolves
+    platformFlashEvents = (flashData || []) as typeof platformFlashEvents
+  }
+
+  const divisionSolveTotals = new Map<string, number>()
+  const divisionLinkedCompetitors = new Map<string, number>()
+  const ctfEntriesByDivision = new Map<string, number>()
+  const ctfParticipantsByDivision = new Map<string, Set<string>>()
+  const scopeBySyncedUserId = new Map<string, { divisionLabel: string }>()
+  const solveCountBySyncedUserId = new Map<string, number>()
+  const topicCounts = new Map<string, number>()
+
+  const activityCounts = {
+    total: 0,
+    schoolDay: 0,
+    outsideSchool: 0,
+    weekdayBeforeSchool: 0,
+    weekdayAfterSchool: 0,
+    weekend: 0,
+  }
+
+  const recordActivity = (timestamp?: string | null) => {
+    const bucket = classifyPacificActivity(timestamp)
+    if (bucket === 'unknown') return
+    activityCounts.total += 1
+    if (bucket === 'school_day') {
+      activityCounts.schoolDay += 1
+      return
+    }
+    activityCounts.outsideSchool += 1
+    if (bucket === 'weekday_before_school') activityCounts.weekdayBeforeSchool += 1
+    if (bucket === 'weekday_after_school') activityCounts.weekdayAfterSchool += 1
+    if (bucket === 'weekend') activityCounts.weekend += 1
+  }
+
+  for (const competitor of competitorScope) {
+    divisionSolveTotals.set(competitor.divisionLabel, divisionSolveTotals.get(competitor.divisionLabel) ?? 0)
+    ctfEntriesByDivision.set(competitor.divisionLabel, ctfEntriesByDivision.get(competitor.divisionLabel) ?? 0)
+    ctfParticipantsByDivision.set(competitor.divisionLabel, ctfParticipantsByDivision.get(competitor.divisionLabel) ?? new Set())
+    if (competitor.syncedUserId) {
+      divisionLinkedCompetitors.set(
+        competitor.divisionLabel,
+        (divisionLinkedCompetitors.get(competitor.divisionLabel) ?? 0) + 1,
+      )
+      scopeBySyncedUserId.set(competitor.syncedUserId, {
+        divisionLabel: competitor.divisionLabel,
+      })
+    }
+  }
+
+  for (const solve of platformChallengeSolves) {
+    solveCountBySyncedUserId.set(
+      solve.synced_user_id,
+      (solveCountBySyncedUserId.get(solve.synced_user_id) ?? 0) + 1,
+    )
+    const topic = normalizeChallengeCategoryLabel(solve.challenge_category)
+    topicCounts.set(topic, (topicCounts.get(topic) ?? 0) + 1)
+    recordActivity(solve.solved_at)
+  }
+
+  for (const event of platformFlashEvents) {
+    recordActivity(event.started_at)
+    const scope = scopeBySyncedUserId.get(event.synced_user_id)
+    if (!scope) continue
+    ctfEntriesByDivision.set(scope.divisionLabel, (ctfEntriesByDivision.get(scope.divisionLabel) ?? 0) + 1)
+    const participants = ctfParticipantsByDivision.get(scope.divisionLabel) ?? new Set<string>()
+    participants.add(event.synced_user_id)
+    ctfParticipantsByDivision.set(scope.divisionLabel, participants)
+  }
+
+  let totalChallengesSolved = 0
+  let linkedPlatformCompetitors = 0
+
+  for (const competitor of competitorScope) {
+    if (competitor.syncedUserId) {
+      linkedPlatformCompetitors += 1
+    }
+    const challengesSolved = statsByCompetitorId.get(competitor.competitorId)
+      ?? (competitor.syncedUserId ? solveCountBySyncedUserId.get(competitor.syncedUserId) : undefined)
+      ?? 0
+    divisionSolveTotals.set(
+      competitor.divisionLabel,
+      (divisionSolveTotals.get(competitor.divisionLabel) ?? 0) + challengesSolved,
+    )
+    totalChallengesSolved += challengesSolved
+  }
+
+  const outsideSchoolPct = activityCounts.total === 0
+    ? 0
+    : Math.round((activityCounts.outsideSchool / activityCounts.total) * 100)
+
+  const ctfParticipationRows: MetricRow[] = Array.from(ctfParticipantsByDivision.entries())
+    .map(([label, participants]) => {
+      const participantCount = participants.size
+      const entryCount = ctfEntriesByDivision.get(label) ?? 0
+      const linkedCount = divisionLinkedCompetitors.get(label) ?? 0
+      const participationRate = linkedCount === 0 ? 0 : Math.round((participantCount / linkedCount) * 100)
+      return {
+        label,
+        value: participantCount,
+        secondary: `${formatNumber(entryCount)} event ${entryCount === 1 ? 'entry' : 'entries'}${linkedCount ? ` • ${participationRate}% of linked competitors` : ''}`,
+      }
+    })
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
+
+  const divisionChallengeRows: MetricRow[] = Array.from(divisionSolveTotals.entries())
+    .map(([label, value]) => ({
+      label,
+      value,
+      secondary: `${formatNumber(divisionLinkedCompetitors.get(label) ?? 0)} linked competitors`,
+    }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
+
+  const rawTopicRows: MetricRow[] = Array.from(topicCounts.entries())
+    .map(([label, value]) => ({
+      label,
+      value,
+      secondary: `${platformChallengeSolves.length === 0 ? 0 : Math.round((value / platformChallengeSolves.length) * 100)}% of solves`,
+    }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
+
+  const topicClusterRows: MetricRow[] = rawTopicRows.length <= 8
+    ? rawTopicRows
+    : [
+        ...rawTopicRows.slice(0, 7),
+        {
+          label: 'Other',
+          value: rawTopicRows.slice(7).reduce((sum, row) => sum + row.value, 0),
+          secondary: `${Math.round((rawTopicRows.slice(7).reduce((sum, row) => sum + row.value, 0) / Math.max(platformChallengeSolves.length, 1)) * 100)}% of solves`,
+        },
+      ]
 
   const pct = (n: number | null | undefined) => {
     const total = competitorCount || 0
@@ -405,23 +763,103 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
           <DemographicCharts charts={demographicCharts} />
         </div>
 
-        {/* Game platform placeholder */}
+        {/* Game platform analytics */}
         <div className="rounded border border-meta-border bg-meta-card p-5">
-          <div className="text-sm text-meta-muted">Game Platform</div>
-          <div className="text-meta-light text-lg font-semibold mb-2">Integration Pending</div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            <div className="bg-meta-dark/60 rounded p-3 border border-meta-border/50">
-              <div className="text-meta-muted">Challenge Participation</div>
-              <div className="text-meta-light">Coming soon</div>
+          <div className="mb-4">
+            <div className="text-sm text-meta-muted">Game Platform</div>
+            <div className="text-meta-light text-lg font-semibold">Challenge & Activity Analytics</div>
+            <p className="mt-1 text-sm text-meta-muted">
+              Challenge totals are derived from synced platform stats. Activity windows use Pacific time and treat Monday-Friday, 9am-3pm as the school day.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <div className="rounded border border-meta-border/50 bg-meta-dark/50 p-4">
+              <div className="text-sm text-meta-muted">Total Challenges Solved</div>
+              <div className="mt-2 text-4xl font-extrabold tracking-wider text-meta-light">{formatNumber(totalChallengesSolved)}</div>
+              <div className="mt-2 text-sm text-meta-muted">
+                Across {formatNumber(linkedPlatformCompetitors)} linked competitors in the current scope.
+              </div>
             </div>
-            <div className="bg-meta-dark/60 rounded p-3 border border-meta-border/50">
-              <div className="text-meta-muted">Flash CTF</div>
-              <div className="text-meta-light">Coming soon</div>
+
+            <div className="rounded border border-meta-border/50 bg-meta-dark/50 p-4">
+              <div className="text-sm text-meta-muted">Outside School Day Activity</div>
+              <div className="mt-2 flex items-end gap-3">
+                <div className="text-4xl font-extrabold tracking-wider text-meta-light">{formatNumber(activityCounts.outsideSchool)}</div>
+                <div className="pb-1 text-sm text-meta-muted">{outsideSchoolPct}% of recorded activity</div>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-meta-dark">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-300"
+                  style={{ width: `${outsideSchoolPct}%` }}
+                />
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-meta-muted">
+                <div className="rounded border border-meta-border/40 bg-meta-card/40 p-2">
+                  <div>Before 9am</div>
+                  <div className="mt-1 text-sm font-semibold text-meta-light">{formatNumber(activityCounts.weekdayBeforeSchool)}</div>
+                </div>
+                <div className="rounded border border-meta-border/40 bg-meta-card/40 p-2">
+                  <div>After 3pm</div>
+                  <div className="mt-1 text-sm font-semibold text-meta-light">{formatNumber(activityCounts.weekdayAfterSchool)}</div>
+                </div>
+                <div className="rounded border border-meta-border/40 bg-meta-card/40 p-2">
+                  <div>Weekend</div>
+                  <div className="mt-1 text-sm font-semibold text-meta-light">{formatNumber(activityCounts.weekend)}</div>
+                </div>
+              </div>
             </div>
-            <div className="bg-meta-dark/60 rounded p-3 border border-meta-border/50">
-              <div className="text-meta-muted">Finals Leaderboard</div>
-              <div className="text-meta-light">Coming soon</div>
+
+            <div className="rounded border border-meta-border/50 bg-meta-dark/50 p-4">
+              <div className="text-sm text-meta-muted">Flash CTF Participation</div>
+              <div className="mt-2 text-4xl font-extrabold tracking-wider text-meta-light">
+                {formatNumber(ctfParticipationRows.reduce((sum, row) => sum + row.value, 0))}
+              </div>
+              <div className="mt-2 text-sm text-meta-muted">
+                Unique competitors with at least one Flash CTF event in the current scope.
+              </div>
+              <div className="mt-3 text-sm text-meta-muted">
+                {formatNumber(platformFlashEvents.length)} total event {platformFlashEvents.length === 1 ? 'entry' : 'entries'}
+              </div>
             </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <div className="rounded border border-meta-border/50 bg-meta-dark/30 p-4">
+              <div className="mb-3">
+                <div className="text-sm text-meta-muted">Flash CTF</div>
+                <div className="text-base font-semibold text-meta-light">Participation by Division</div>
+              </div>
+              <MetricBarList
+                rows={ctfParticipationRows}
+                emptyMessage="No Flash CTF participation found for the current scope."
+              />
+            </div>
+
+            <div className="rounded border border-meta-border/50 bg-meta-dark/30 p-4">
+              <div className="mb-3">
+                <div className="text-sm text-meta-muted">Game Platform</div>
+                <div className="text-base font-semibold text-meta-light">Challenges Solved by Division</div>
+              </div>
+              <MetricBarList
+                rows={divisionChallengeRows}
+                emptyMessage="No linked game platform competitors found for the current scope."
+              />
+            </div>
+          </div>
+
+          <div className="mt-6 rounded border border-meta-border/50 bg-meta-dark/30 p-4">
+            <div className="mb-3">
+              <div className="text-sm text-meta-muted">Challenge Solves</div>
+              <div className="text-base font-semibold text-meta-light">Topic Clustering</div>
+              <p className="mt-1 text-sm text-meta-muted">
+                Categories are normalized from challenge metadata and grouped into the dominant topic clusters.
+              </p>
+            </div>
+            <MetricBarList
+              rows={topicClusterRows}
+              emptyMessage="No challenge solve topics found for the current scope."
+            />
           </div>
         </div>
       </div>

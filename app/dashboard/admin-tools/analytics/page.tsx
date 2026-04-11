@@ -14,6 +14,16 @@ interface MetricRow {
   secondary?: string
 }
 
+interface ServiceSupabaseLike {
+  from: (table: string) => {
+    select: (columns: string) => {
+      in: (column: string, values: string[]) => {
+        range: (from: number, to: number) => Promise<{ data: any[] | null; error: any }>
+      }
+    }
+  }
+}
+
 const numberFormatter = new Intl.NumberFormat('en-US')
 const pacificActivityFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/Los_Angeles',
@@ -24,6 +34,56 @@ const pacificActivityFormatter = new Intl.DateTimeFormat('en-US', {
 
 function formatNumber(value: number) {
   return numberFormatter.format(value)
+}
+
+async function fetchAllRowsByIds<T>({
+  client,
+  table,
+  columns,
+  idColumn,
+  ids,
+  chunkSize = 50,
+  pageSize = 1000,
+}: {
+  client: ServiceSupabaseLike
+  table: string
+  columns: string
+  idColumn: string
+  ids: string[]
+  chunkSize?: number
+  pageSize?: number
+}): Promise<T[]> {
+  if (!ids.length) return []
+
+  const rows: T[] = []
+
+  for (let chunkStart = 0; chunkStart < ids.length; chunkStart += chunkSize) {
+    const chunk = ids.slice(chunkStart, chunkStart + chunkSize)
+    let from = 0
+
+    while (true) {
+      const { data, error } = await client
+        .from(table)
+        .select(columns)
+        .in(idColumn, chunk)
+        .range(from, from + pageSize - 1)
+
+      if (error) {
+        throw error
+      }
+
+      const page = (data || []) as T[]
+      rows.push(...page)
+
+      if (page.length < pageSize) {
+        break
+      }
+
+      from += pageSize
+    }
+  }
+
+  return rows
 }
 
 function formatDivisionLabel(division?: string | null, programTrack?: string | null) {
@@ -495,19 +555,25 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   }> = []
 
   if (syncedUserIds.length) {
-    const [{ data: solvesData }, { data: flashData }] = await Promise.all([
-      serviceSupabase
-        .from('game_platform_challenge_solves')
-        .select('synced_user_id, challenge_category, solved_at')
-        .in('synced_user_id', syncedUserIds),
-      serviceSupabase
-        .from('game_platform_flash_ctf_events')
-        .select('synced_user_id, event_id, started_at')
-        .in('synced_user_id', syncedUserIds),
+    const [solvesData, flashData] = await Promise.all([
+      fetchAllRowsByIds<typeof platformChallengeSolves[number]>({
+        client: serviceSupabase as ServiceSupabaseLike,
+        table: 'game_platform_challenge_solves',
+        columns: 'synced_user_id, challenge_category, solved_at',
+        idColumn: 'synced_user_id',
+        ids: syncedUserIds,
+      }),
+      fetchAllRowsByIds<typeof platformFlashEvents[number]>({
+        client: serviceSupabase as ServiceSupabaseLike,
+        table: 'game_platform_flash_ctf_events',
+        columns: 'synced_user_id, event_id, started_at',
+        idColumn: 'synced_user_id',
+        ids: syncedUserIds,
+      }),
     ])
 
-    platformChallengeSolves = (solvesData || []) as typeof platformChallengeSolves
-    platformFlashEvents = (flashData || []) as typeof platformFlashEvents
+    platformChallengeSolves = solvesData
+    platformFlashEvents = flashData
   }
 
   const divisionSolveTotals = new Map<string, number>()
@@ -596,6 +662,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   const outsideSchoolPct = activityCounts.total === 0
     ? 0
     : Math.round((activityCounts.outsideSchool / activityCounts.total) * 100)
+  const recordedActivityCount = activityCounts.total
 
   const ctfParticipationRows: MetricRow[] = Array.from(ctfParticipantsByDivision.entries())
     .map(([label, participants]) => {
@@ -769,7 +836,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
             <div className="text-sm text-meta-muted">Game Platform</div>
             <div className="text-meta-light text-lg font-semibold">Challenge & Activity Analytics</div>
             <p className="mt-1 text-sm text-meta-muted">
-              Challenge totals are derived from synced platform stats. Activity windows use Pacific time and treat Monday-Friday, 9am-3pm as the school day.
+              Total challenges solved comes from synced aggregate stats. School-day activity is calculated from timestamped solve and Flash CTF records in Pacific time, Monday-Friday, 9am-3pm.
             </p>
           </div>
 
@@ -786,13 +853,18 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
               <div className="text-sm text-meta-muted">Outside School Day Activity</div>
               <div className="mt-2 flex items-end gap-3">
                 <div className="text-4xl font-extrabold tracking-wider text-meta-light">{formatNumber(activityCounts.outsideSchool)}</div>
-                <div className="pb-1 text-sm text-meta-muted">{outsideSchoolPct}% of recorded activity</div>
+                <div className="pb-1 text-sm text-meta-muted">
+                  {outsideSchoolPct}% of {formatNumber(recordedActivityCount)} timestamped events
+                </div>
               </div>
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-meta-dark">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-300"
                   style={{ width: `${outsideSchoolPct}%` }}
                 />
+              </div>
+              <div className="mt-2 text-xs text-meta-muted">
+                Separate denominator from total challenges solved.
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-meta-muted">
                 <div className="rounded border border-meta-border/40 bg-meta-card/40 p-2">

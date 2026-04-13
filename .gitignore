@@ -5,6 +5,7 @@
 
 # dependencies
 /node_modules
+/.pnpm-store/
 
 # next.js
 /.next/

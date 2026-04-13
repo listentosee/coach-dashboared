@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import 'leaflet/dist/leaflet.css';
 import { Toaster } from 'sonner';
 // NOTE: Avoid network fetch for Google Fonts at build time.
 // Use a CSS fallback font class (tailwind's font-sans) to keep builds offline-safe.

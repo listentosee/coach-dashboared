@@ -3,6 +3,7 @@ import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
 import { DemographicCharts, DemographicChartConfig } from '@/components/dashboard/admin/demographic-charts'
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase'
 import { CoachSummaryTable, CoachSummaryRow } from '@/components/dashboard/admin/coach-summary-table'
+import { SchoolDistributionMap } from '@/components/dashboard/admin/school-distribution-map'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,6 +13,15 @@ interface MetricRow {
   label: string
   value: number
   secondary?: string
+}
+
+interface SchoolMapPoint {
+  id: string
+  coachName: string
+  schoolName: string
+  division: string | null
+  lat: number
+  lon: number
 }
 
 interface ServiceSupabaseLike {
@@ -220,6 +230,44 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
     .select('coach_id, competitor_count')
 
   const coachCountMap = new Map((coachCounts || []).map((row: any) => [row.coach_id, Number(row.competitor_count) || 0]))
+
+  let schoolMapPoints: SchoolMapPoint[] = []
+  {
+    let schoolMapQuery = supabase
+      .from('profiles')
+      .select('id, full_name, email, school_name, division, school_geo')
+      .eq('role', 'coach')
+
+    if (coachId) {
+      schoolMapQuery = schoolMapQuery.eq('id', coachId)
+    }
+
+    const { data: schoolRows } = await schoolMapQuery
+
+    schoolMapPoints = ((schoolRows || []) as Array<{
+      id: string
+      full_name: string | null
+      email: string | null
+      school_name: string | null
+      division: string | null
+      school_geo: { lat?: unknown; lon?: unknown } | null
+    }>)
+      .map((row) => {
+        const lat = typeof row.school_geo?.lat === 'number' ? row.school_geo.lat : null
+        const lon = typeof row.school_geo?.lon === 'number' ? row.school_geo.lon : null
+        if (lat === null || lon === null || !row.school_name) return null
+
+        return {
+          id: row.id,
+          coachName: row.full_name || row.email || row.id,
+          schoolName: row.school_name,
+          division: row.division ?? null,
+          lat,
+          lon,
+        }
+      })
+      .filter((row): row is SchoolMapPoint => Boolean(row))
+  }
 
   // Basic counts (optionally filtered by coach)
   const [{ count: coachCount }, { count: competitorCount }, { count: teamCount }] = await Promise.all([
@@ -765,6 +813,17 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
             </p>
           </div>
           <CoachSummaryTable data={coachSummaryData} />
+        </div>
+
+        <div className="rounded border border-meta-border bg-meta-card p-5">
+          <div className="mb-4">
+            <div className="text-sm text-meta-muted">School Locations</div>
+            <div className="text-meta-light text-lg font-semibold">Geographic Distribution</div>
+            <p className="text-sm text-meta-muted mt-1">
+              Uses stored school coordinates from coach profiles only. No live geocoding happens in analytics.
+            </p>
+          </div>
+          <SchoolDistributionMap points={schoolMapPoints} />
         </div>
 
         {/* Competitor breakdown */}

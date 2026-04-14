@@ -10,18 +10,20 @@ Add a simple admin workflow to:
 4. Require a Fillout survey before download
 5. Track whether the link was received/opened and whether the certificate was downloaded
 6. Store Fillout survey responses in JSONB for later reporting and demographic analysis
+7. Reuse the same Fillout intake path for coach feedback with a separate form
 
-This document is for review before implementation. It is intentionally minimal.
+This document reflects the approved and implemented baseline. It stays intentionally minimal.
 
 ## Assumptions
 
 - Survey collection will be handled by **Fillout.com**, not by building survey forms in this app.
 - Bulk email delivery will use the **existing competitor/student mailer flow** already in the dashboard.
+- Coach feedback delivery will use the **existing coach mailer flow** already in the dashboard.
 - Certificate PDFs will be stored in **Supabase Storage**.
 - The certificate template file will live at:
   - `public/certificate/Certificate-2026.pdf`
 - The PDF should be personalized by replacing the `{{competitor}}` placeholder with the competitor name.
-- “Active competitors” means competitors with recent competition activity. The exact rule should be confirmed before implementation.
+- “Active competitors” means competitors with a GP ID and any activity.
 
 ## Goals
 
@@ -30,6 +32,7 @@ This document is for review before implementation. It is intentionally minimal.
 - Avoid introducing a new survey system into the dashboard app
 - Avoid creating a large new campaign framework unless the existing mailer absolutely requires a minimal companion table
 - Preserve Fillout responses in a form that can be joined back to competitor demographics
+- Reuse the same webhook and JSONB storage pattern for coach feedback
 
 ## Proposed Scope
 
@@ -86,7 +89,7 @@ Prefer a **small extension table** over modifying the competitor table with seve
 Create two small tables:
 
 1. `competitor_certificates`
-2. `competitor_certificate_survey_results`
+2. `survey_results`
 
 #### `competitor_certificates`
 
@@ -108,13 +111,15 @@ Columns like:
 - `created_at`
 - `updated_at`
 
-#### `competitor_certificate_survey_results`
+#### `survey_results`
 
 Columns like:
 
 - `id`
-- `competitor_id`
-- `competitor_certificate_id`
+- `type` (`competitor` | `coach`)
+- `competitor_id` nullable
+- `coach_profile_id` nullable
+- `competitor_certificate_id` nullable
 - `fillout_submission_id`
 - `fillout_form_id`
 - `submitted_at`
@@ -130,6 +135,7 @@ Suggested `results_jsonb` contents:
 Why this is preferred:
 
 - keeps certificate concerns out of the main competitor record
+- allows competitor and coach survey data to live in one place
 - supports future years cleanly
 - avoids cluttering `competitors`
 - preserves survey data for later analysis without forcing every question into its own SQL column
@@ -182,6 +188,7 @@ Keep the route surface small.
   - receives Fillout completion event
   - stores the Fillout response payload in JSONB
   - marks survey complete for the matching competitor/token
+  - or stores coach feedback for the matching coach context
 
 - `GET /api/certificates/download/[token]`
   - validates token
@@ -196,7 +203,7 @@ Use Fillout in the simplest possible way while still preserving the response dat
 - Include a stable identifier in the Fillout link, ideally the certificate claim token
 - On completion, Fillout calls our webhook
 - Webhook validates the request
-- Webhook writes one row to `competitor_certificate_survey_results`
+- Webhook writes one row to `survey_results`
 - Webhook marks the matching certificate record complete
 
 Preferred matching key:
@@ -207,8 +214,17 @@ Fallback matching key:
 
 - `competitor_id`
 
+For coach feedback:
+
+- use a separate Fillout form
+- send through the existing coach mailer
+- post to the same webhook
+- write `type = coach`
+- match by `coach_profile_id` or a signed coach token carried in the Fillout URL
+
 Persist only the survey data needed for traceability and later analysis:
 
+- `type`
 - `fillout_submission_id`
 - `fillout_form_id`
 - `submitted_at`
@@ -217,9 +233,35 @@ Persist only the survey data needed for traceability and later analysis:
 
 Avoid building any internal survey-taking UI. The app only launches Fillout, receives the webhook, stores JSONB results, and gates download.
 
+## Coach Feedback Extension
+
+This is possible without materially increasing the scope.
+
+Keep the certificate flow unchanged, and extend only the survey intake path:
+
+- competitor certificate survey uses Fillout form A
+- coach feedback uses Fillout form B
+- both forms post to the same webhook
+- both forms write to `survey_results`
+
+Result mapping:
+
+- competitor row:
+  - `type = competitor`
+  - `competitor_id`
+  - `competitor_certificate_id`
+
+- coach row:
+  - `type = coach`
+  - `coach_profile_id`
+
+This gives one JSONB survey table for reporting while keeping certificate-specific state in `competitor_certificates`.
+
 ## Fillout Form Setup Guide
 
 This is the minimum required Fillout setup for the certificate workflow.
+
+For coach feedback, use the same setup pattern with a second Fillout form and `type = coach`.
 
 ### 1. Create one dedicated Fillout form
 
@@ -231,39 +273,48 @@ Suggested form name:
 
 Do not reuse a general-purpose survey form. Keep this one tied to the certificate flow so the webhook and payload assumptions stay stable.
 
+Create a second dedicated form for coach feedback.
+
+Suggested form name:
+
+- `2026 Coach Feedback Survey`
+
 ### 2. Register hidden fields / URL parameters
 
 In Fillout form settings, register these URL parameters first.
 
-Required:
+Required for competitor form:
 
+- `type`
+- `id`
 - `claim_token`
-- `competitor_id`
-- `certificate_id`
+
+Required for coach form:
+
+- `type`
+- `id`
 
 Recommended:
 
-- `student_id`
-- `certificate_year`
 - `survey_version`
 
 Why:
 
 - `claim_token` is the primary match key back to our app
-- `competitor_id` is the fallback match key
-- `certificate_id` is useful for debugging and joins
-- the others help with traceability and versioning
+- `type` tells the webhook whether to route to competitor or coach storage
+- `id` is interpreted by the app as either `competitor_id` or `coach_profile_id`
+- `survey_version` helps with traceability and versioning
 
 Implementation note:
 
-- these values should be passed from the claim page into the Fillout form URL or embed
+- these values should be passed from the claim page or coach mailer link into the Fillout form URL or embed
 - these fields should not be editable by the student
 
 ### 3. Add visible survey questions
 
 Keep the survey short.
 
-Recommended first-pass questions:
+Recommended first-pass competitor questions:
 
 1. `overall_experience`
    - single select
@@ -310,7 +361,7 @@ If any of the tracking values are surfaced as fields in the form, configure them
 Requirement:
 
 - tracking fields must be treated as hidden/pre-filled values only
-- students should never edit `claim_token`, `competitor_id`, or `certificate_id`
+- respondents should never edit `claim_token`, `type`, or `id`
 
 ### 6. Choose the in-app presentation mode
 
@@ -332,9 +383,9 @@ In Fillout:
 - choose `Webhook`
 - configure the webhook endpoint to our app
 
-Planned endpoint:
+Webhook URL:
 
-- `POST /api/certificates/fillout/webhook`
+- `https://coach.cyber-guild.org/api/certificates/fillout/webhook`
 
 Requirements for the webhook:
 
@@ -346,7 +397,7 @@ Requirements for the webhook:
 App-side expectations:
 
 - the webhook handler will store the full payload in `results_jsonb`
-- the handler will also extract `claim_token`, `competitor_id`, `fillout_submission_id`, `fillout_form_id`, and `submitted_at`
+- the handler will also extract `type`, `id`, `claim_token`, `fillout_submission_id`, `fillout_form_id`, and `submitted_at`
 - the handler will mark `survey_completed_at` on the certificate record
 
 ### 8. Configure the ending behavior
@@ -371,9 +422,9 @@ Requirement:
 
 Before the form goes live, verify that one test submission includes:
 
-- hidden `claim_token`
-- hidden `competitor_id`
-- hidden `certificate_id`
+- hidden `type`
+- hidden `id`
+- hidden `claim_token` for competitor submissions
 - Fillout submission ID
 - Fillout form ID
 - submission timestamp
@@ -403,7 +454,8 @@ This will make JSONB analysis much easier when joining against:
 
 The person setting up the form should confirm all of the following:
 
-- one dedicated certificate survey form exists
+- one dedicated competitor certificate survey form exists
+- one dedicated coach feedback form exists
 - hidden fields are registered
 - all answer options use stable custom values
 - the form is embedded in-app, not linked as a detached external survey
@@ -415,7 +467,7 @@ The person setting up the form should confirm all of the following:
 
 Keep the Fillout setup lean:
 
-- one form
+- two forms
 - one webhook
 - one redirect target
 - one survey version at launch
@@ -438,15 +490,20 @@ Certificate emails only need:
 - body
 - claim link
 
+Coach feedback emails only need:
+
+- coach email
+- subject
+- body
+- Fillout feedback link
+
 If the existing mailer already supports open/click tracking, reuse it.
 
 Do not build a second large campaign system unless the current mailer cannot send individualized links without a minimal helper table.
 
-## Eligibility Rule To Confirm
+## Eligibility Rule
 
-This must be decided before coding.
-
-Suggested definition:
+Use this definition:
 
 - competitor is active
 - has a student/game-platform ID
@@ -455,9 +512,7 @@ Suggested definition:
   - recent challenge solve activity
   - recent flash CTF activity
 
-Open question:
-
-- should “active” mean **any activity during the season**, or **activity within a rolling recent window**?
+For v1, treat this as any activity.
 
 ## Admin UI Plan
 
@@ -487,7 +542,7 @@ No separate analytics service is needed in the first version.
 For reporting:
 
 - store Fillout results in JSONB
-- join `competitor_certificate_survey_results` back to `competitors`
+- join `survey_results` back to `competitors` or coach `profiles`
 - analyze later by demographic strata such as grade, division, program track, gender, race, and ethnicity
 
 ## Non-Goals
@@ -500,33 +555,36 @@ For reporting:
 - No complex event-sourcing model
 - No attempt to flatten every Fillout answer into first-class SQL columns in v1
 
-## Open Questions
+## Resolved Decisions
 
-1. What exact rule defines an “active” competitor for certificate eligibility? A: with GP ID and any activity.
-2. Should the Fillout step be an in-app redirect, or should the claim page show a button to open Fillout? A: in app
-3. Does the existing mailer already support per-recipient merge values cleanly, or do we need a very small helper layer for unique links? A: Mailer does not currently support merge. Will need to provide this
-4. Should a student be allowed to download multiple times, or only once? A: yes
-5. Should coaches/admins have a manual “mark survey complete” override? A: no
-6. Should we store the full Fillout webhook payload, or just the extracted response block plus selected metadata? A: full payload would be helpful during development
+- Active competitor means a competitor with a GP ID and any activity
+- Fillout is handled in app
+- The mailer needs a small helper layer for per-recipient unique links
+- Students may download multiple times
+- No manual admin/coach survey-complete override in v1
+- Store the full Fillout webhook payload during development
+- Coach Fillout form ID: `bJKURVuG1zus`
+- Competitor Fillout form ID: `ca1hRrHGijus`
+- Coach form URL params: `type`, `id`
+- Competitor form URL params: `type`, `id`, `claim_token`
 
 ## Recommended Implementation Order
 
-1. Confirm eligibility rule
-2. Confirm Fillout webhook payload and identifier strategy
-3. Add minimal certificate table
-4. Add minimal JSONB survey results table
-5. Implement certificate generation/upload
-6. Implement claim token + email send
-7. Implement Fillout webhook completion handling + JSONB storage
-8. Implement gated download route
-9. Add a small admin page for preview/generate/send
+1. Add minimal certificate table
+2. Add minimal shared JSONB survey results table with `type`
+3. Implement certificate generation/upload
+4. Implement claim token + email send
+5. Implement Fillout webhook completion handling + JSONB storage
+6. Implement gated download route
+7. Add coach feedback send flow using existing coach mailer
+8. Add a small admin page for preview/generate/send
 
 ## Recommendation
 
 Build this as a **thin certificate feature**:
 
 - one small certificate table
-- one small JSONB survey results table
+- one small shared JSONB survey results table
 - one storage bucket
 - one admin page
 - one Fillout webhook

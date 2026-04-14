@@ -22,6 +22,10 @@ export function buildAnalyticsShareUrl(token: string) {
   return `${base.replace(/\/$/, '')}/shared/analytics/${token}`;
 }
 
+export function buildAnalyticsShareUrlFromBase(baseUrl: string, token: string) {
+  return `${baseUrl.replace(/\/$/, '')}/shared/analytics/${token}`;
+}
+
 export async function createAnalyticsShareLink(options: {
   createdBy: string;
   expiresInDays?: number | null;

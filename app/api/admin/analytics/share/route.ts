@@ -3,12 +3,31 @@ import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { z } from 'zod';
 import { isUserAdmin } from '@/lib/utils/admin-check';
-import { createAnalyticsShareLink } from '@/lib/analytics/share-links';
+import {
+  buildAnalyticsShareUrlFromBase,
+  createAnalyticsShareLink,
+} from '@/lib/analytics/share-links';
 
 const requestBodySchema = z.object({
   expiresInDays: z.number().int().min(1).max(365).optional(),
   maxUses: z.number().int().min(1).max(500).optional(),
 });
+
+function resolvePublicBaseUrl(req: NextRequest) {
+  const forwardedHost = req.headers.get('x-forwarded-host');
+  const forwardedProto = req.headers.get('x-forwarded-proto');
+
+  if (forwardedHost) {
+    return `${forwardedProto || 'https'}://${forwardedHost}`.replace(/\/$/, '');
+  }
+
+  const host = req.headers.get('host');
+  if (host) {
+    return `${req.nextUrl.protocol}//${host}`.replace(/\/$/, '');
+  }
+
+  return (process.env.NEXT_PUBLIC_APP_URL || 'https://coach.cyber-guild.org').replace(/\/$/, '');
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,11 +57,12 @@ export async function POST(req: NextRequest) {
       expiresInDays: parsed.data.expiresInDays,
       maxUses: parsed.data.maxUses,
     });
+    const publicBaseUrl = resolvePublicBaseUrl(req);
 
     return NextResponse.json({
       ok: true,
       link: result.link,
-      url: result.url,
+      url: buildAnalyticsShareUrlFromBase(publicBaseUrl, result.link.token),
     });
   } catch (error) {
     console.error('Create analytics share link error', error);

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Check, Copy, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,6 +18,7 @@ export function AnalyticsSharePanel() {
   const [expiresInDays, setExpiresInDays] = useState('30');
   const [maxUses, setMaxUses] = useState('25');
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ShareResponse | null>(null);
 
@@ -43,10 +44,23 @@ export function AnalyticsSharePanel() {
       }
 
       setResult(json as ShareResponse);
+      setCopied(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function copyShareLink() {
+    if (!result?.url) return;
+
+    try {
+      await navigator.clipboard.writeText(result.url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError('Could not copy link to clipboard');
     }
   }
 
@@ -86,7 +100,13 @@ export function AnalyticsSharePanel() {
       {result ? (
         <div className="mt-4 rounded border border-meta-border/60 bg-meta-dark/40 p-4">
           <div className="text-sm text-meta-muted">Share URL</div>
-          <div className="mt-2 break-all text-sm text-meta-light">{result.url}</div>
+          <div className="mt-2 flex flex-col gap-3 md:flex-row md:items-start">
+            <div className="min-w-0 flex-1 break-all text-sm text-meta-light">{result.url}</div>
+            <Button type="button" variant="outline" onClick={copyShareLink}>
+              {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+              {copied ? 'Copied' : 'Copy Link'}
+            </Button>
+          </div>
           <div className="mt-3 text-xs text-meta-muted">
             Expires: {result.link.expires_at ? new Date(result.link.expires_at).toLocaleString() : 'never'} • Max uses: {result.link.max_uses ?? 'unlimited'}
           </div>

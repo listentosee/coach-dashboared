@@ -42,6 +42,7 @@ type MondayAddressColumns = {
   mailingAddress?: string;
   city?: string;
   state?: string;
+  county?: string;
   zip?: string;
 };
 
@@ -50,6 +51,7 @@ type MondayColumnMap = {
   mailingAddress?: string;
   city?: string;
   state?: string;
+  county?: string;
   zip?: string;
 };
 
@@ -58,6 +60,7 @@ const mondayColumnTitles: Record<keyof MondayColumnMap, string> = {
   mailingAddress: 'Mailing Address',
   city: 'City',
   state: 'State',
+  county: 'County',
   zip: 'Zip',
 };
 
@@ -121,6 +124,7 @@ async function getMondayColumnMap(): Promise<MondayColumnMap | null> {
         mailingAddress: byTitle.get(mondayColumnTitles.mailingAddress),
         city: byTitle.get(mondayColumnTitles.city),
         state: byTitle.get(mondayColumnTitles.state),
+        county: byTitle.get(mondayColumnTitles.county),
         zip: byTitle.get(mondayColumnTitles.zip),
       };
     })();
@@ -151,7 +155,104 @@ async function getMondayAddress(mondayCoachId: string): Promise<MondayAddressCol
     mailingAddress: columnMap.mailingAddress ? byId.get(columnMap.mailingAddress) || '' : '',
     city: columnMap.city ? byId.get(columnMap.city) || '' : '',
     state: columnMap.state ? byId.get(columnMap.state) || '' : '',
+    county: columnMap.county ? byId.get(columnMap.county) || '' : '',
     zip: columnMap.zip ? byId.get(columnMap.zip) || '' : '',
+  };
+}
+
+function cleanAddressPart(value?: string) {
+  const cleaned = value?.trim();
+  return cleaned ? cleaned : null;
+}
+
+function normalizeState(value?: string) {
+  const cleaned = cleanAddressPart(value);
+  if (!cleaned) return null;
+  if (/^\d{5}(?:-\d{4})?$/.test(cleaned)) return null;
+  if (/^[A-Z]{2}$/.test(cleaned)) return cleaned;
+  if (/^california$/i.test(cleaned)) return 'California';
+  return null;
+}
+
+function normalizeZip(value?: string) {
+  const cleaned = cleanAddressPart(value);
+  if (!cleaned) return null;
+  const match = cleaned.match(/\b\d{5}(?:-\d{4})?\b/);
+  return match ? match[0] : null;
+}
+
+function normalizeWhitespace(value: string) {
+  return value.replace(/\r/g, '').trim();
+}
+
+function parseStructuredAddress(rawAddress: string | null) {
+  if (!rawAddress) {
+    return {
+      streetAddress: null,
+      city: null,
+      state: null,
+      zip: null,
+    };
+  }
+
+  const normalized = normalizeWhitespace(rawAddress);
+  if (!normalized) {
+    return {
+      streetAddress: null,
+      city: null,
+      state: null,
+      zip: null,
+    };
+  }
+
+  const lines = normalized
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => line.toLowerCase() !== 'united states');
+
+  const singleLine = lines.join(', ').replace(/\s+/g, ' ').trim();
+  const match = singleLine.match(/^(.*?)(?:,\s*|\s+)([A-Za-z .'-]+?)(?:,\s*|\s+)([A-Z]{2}|California)\s+(\d{5}(?:-\d{4})?)$/i);
+
+  if (match) {
+    const [, street, city, state, zip] = match;
+    return {
+      streetAddress: cleanAddressPart(street),
+      city: cleanAddressPart(city),
+      state: cleanAddressPart(state),
+      zip: normalizeZip(zip),
+    };
+  }
+
+  const cityZipOnlyMatch = singleLine.match(/^(.*?)(?:,\s*|\s+)([A-Za-z .'-]+?)(?:,\s*|\s+)(\d{5}(?:-\d{4})?)$/i);
+  if (cityZipOnlyMatch) {
+    const [, street, city, zip] = cityZipOnlyMatch;
+    return {
+      streetAddress: cleanAddressPart(street),
+      city: cleanAddressPart(city),
+      state: null,
+      zip: normalizeZip(zip),
+    };
+  }
+
+  if (lines.length >= 2) {
+    const street = cleanAddressPart(lines[0]);
+    const cityStateLine = lines[1].match(/^([A-Za-z .'-]+),?\s+([A-Z]{2}|California)\s+(\d{5}(?:-\d{4})?)$/i);
+    if (cityStateLine) {
+      return {
+        streetAddress: street,
+        city: cleanAddressPart(cityStateLine[1]),
+        state: cleanAddressPart(cityStateLine[2]),
+        zip: normalizeZip(cityStateLine[3]),
+      };
+    }
+  }
+
+  return {
+    streetAddress: cleanAddressPart(lines[0] || normalized),
+    city: null,
+    state: null,
+    zip: normalizeZip(normalized),
   };
 }
 
@@ -231,10 +332,10 @@ async function main() {
     try {
       let geoQuery = buildSchoolQuery(schoolName, coach.region || null);
       let querySource: 'school' | 'address' = 'school';
+      const mondayAddress = coach.monday_coach_id ? await getMondayAddress(coach.monday_coach_id) : null;
 
-      if (coach.monday_coach_id) {
-        const mondayAddress = await getMondayAddress(coach.monday_coach_id);
-        const addressQuery = mondayAddress ? buildAddressQuery(mondayAddress) : '';
+      if (mondayAddress) {
+        const addressQuery = buildAddressQuery(mondayAddress);
 
         if (addressQuery) {
           geoQuery = addressQuery;
@@ -249,7 +350,19 @@ async function main() {
         continue;
       }
 
-      const schoolGeo = { lat: result.lat, lon: result.lon };
+      const parsedAddress = parseStructuredAddress(
+        cleanAddressPart(mondayAddress?.streetAddress) || cleanAddressPart(mondayAddress?.mailingAddress)
+      );
+
+      const schoolGeo = {
+        lat: result.lat,
+        lon: result.lon,
+        street_address: parsedAddress.streetAddress,
+        city: cleanAddressPart(mondayAddress?.city) || parsedAddress.city,
+        state: normalizeState(mondayAddress?.state) || parsedAddress.state,
+        county: cleanAddressPart(mondayAddress?.county),
+        zip: normalizeZip(mondayAddress?.zip) || parsedAddress.zip,
+      };
 
       if (dryRun) {
         console.log(`  [DRY] ${label} — ${geoQuery} => ${JSON.stringify(schoolGeo)}`);

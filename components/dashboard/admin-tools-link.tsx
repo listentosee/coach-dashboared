@@ -73,6 +73,11 @@ export default function AdminToolsLink() {
               Analytics
             </Button>
           </Link>
+          <Link href="/dashboard/admin-tools/school-geo">
+            <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
+              School Geo
+            </Button>
+          </Link>
           <Link href="/dashboard/admin-tools/jobs">
             <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
               Job Queue

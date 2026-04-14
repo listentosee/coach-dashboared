@@ -1,0 +1,1 @@
+comment on column public.profiles.school_geo is 'Stored school geolocation payload for analytics map and manual address cleanup, e.g. {"lat": 34.1083, "lon": -117.2898, "street_address": "123 Main St", "city": "Riverside", "state": "CA", "county": "Riverside", "zip": "92501"}.';

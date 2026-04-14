@@ -41,9 +41,16 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-function CustomTooltip({ active, payload }: TooltipProps<number, string>) {
+function CustomTooltip({
+  active,
+  payload,
+  total,
+  showPercentages,
+}: TooltipProps<number, string> & {
+  total: number;
+  showPercentages: boolean;
+}) {
   if (!active || !payload?.length) return null;
-  const total = payload.reduce((sum, entry) => sum + (Number(entry.value) || 0), 0);
 
   return (
     <div className="max-w-[200px] rounded-md border border-slate-700/70 bg-slate-950/90 px-3 py-2 text-xs text-slate-100 shadow-xl backdrop-blur">
@@ -55,7 +62,11 @@ function CustomTooltip({ active, payload }: TooltipProps<number, string>) {
           />
           <span className="font-medium text-slate-50">{entry.name}</span>
           <span className="ml-auto text-slate-300">
-            {total > 0 ? `${Math.round(((Number(entry.value) || 0) / total) * 100)}%` : '0%'}
+            {showPercentages
+              ? total > 0
+                ? `${Math.round(((Number(entry.value) || 0) / total) * 100)}%`
+                : '0%'
+              : Number(entry.value) || 0}
           </span>
         </div>
       ))}
@@ -80,51 +91,54 @@ export function DemographicCharts({
 
   return (
     <div className={`grid grid-cols-1 gap-6 ${columnClass}`}>
-      {charts.map((chart) => (
-        <div key={chart.title} className="rounded border border-meta-border bg-meta-card/80 p-4">
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-meta-light">{chart.title}</h3>
-            {chart.description && (
-              <p className="text-sm text-meta-muted">{chart.description}</p>
+      {charts.map((chart) => {
+        const total = chart.data.reduce((sum, item) => sum + item.value, 0);
+
+        return (
+          <div key={chart.title} className="rounded border border-meta-border bg-meta-card/80 p-4">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-meta-light">{chart.title}</h3>
+              {chart.description && (
+                <p className="text-sm text-meta-muted">{chart.description}</p>
+              )}
+            </div>
+            {chart.data.length === 0 ? (
+              <EmptyState message="No responses recorded yet." />
+            ) : (
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={chart.data}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={45}
+                      outerRadius={90}
+                      paddingAngle={2}
+                    >
+                      {chart.data.map((entry, index) => (
+                        <Cell key={`${chart.title}-${entry.name}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<CustomTooltip total={total} showPercentages={showPercentages} />} />
+                    <Legend
+                      verticalAlign="bottom"
+                      height={42}
+                      formatter={(value, _entry, index) => {
+                        if (!showPercentages) return value;
+                        const slice = chart.data[index];
+                        const percentage = total > 0 && slice ? Math.round((slice.value / total) * 100) : 0;
+                        return `${value} (${percentage}%)`;
+                      }}
+                      wrapperStyle={{ color: '#94A3B8', fontSize: '0.75rem' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
             )}
           </div>
-          {chart.data.length === 0 ? (
-            <EmptyState message="No responses recorded yet." />
-          ) : (
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={chart.data}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={45}
-                    outerRadius={90}
-                    paddingAngle={2}
-                  >
-                    {chart.data.map((entry, index) => (
-                      <Cell key={`${chart.title}-${entry.name}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend
-                    verticalAlign="bottom"
-                    height={42}
-                    formatter={(value, _entry, index) => {
-                      if (!showPercentages) return value;
-                      const total = chart.data.reduce((sum, item) => sum + item.value, 0);
-                      const slice = chart.data[index];
-                      const percentage = total > 0 && slice ? Math.round((slice.value / total) * 100) : 0;
-                      return `${value} (${percentage}%)`;
-                    }}
-                    wrapperStyle={{ color: '#94A3B8', fontSize: '0.75rem' }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

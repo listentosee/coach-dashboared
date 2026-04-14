@@ -4,7 +4,7 @@
 
 Provide a simple way to share a donor-safe analytics view with expirable and optionally use-limited magic links.
 
-This is not a shared admin page. It is a separate read-only public report.
+This is not a public admin login bypass. It is a separate read-only shared route that mirrors the admin analytics story as closely as practical while excluding admin-only controls and the coach table.
 
 ## Scope
 
@@ -14,6 +14,8 @@ This is not a shared admin page. It is a separate read-only public report.
 - support optional expiration
 - support optional max-use limits
 - track basic link usage
+- generate the public URL on the current running domain
+- allow one-click copy from the admin analytics page
 
 ## Out of Scope
 
@@ -21,7 +23,9 @@ This is not a shared admin page. It is a separate read-only public report.
 - no editing from the shared page
 - no student names
 - no coach emails
-- no full admin dashboard mirror
+- no coach summary table
+- no admin filters
+- no share-management controls on the public page
 
 ## Data Model
 
@@ -62,7 +66,8 @@ When an admin creates a link:
 
 - generate an opaque token
 - save expiration and max-use settings
-- return the public share URL
+- return the public share URL using the current request domain
+- allow the admin to copy the URL directly from the share panel
 
 When a donor opens a link:
 
@@ -76,18 +81,26 @@ When a donor opens a link:
 
 ## Shared Report Content
 
-The shared report should include only high-level outcomes such as:
+The shared report should include the same core sections shown in `Admin Tools -> Analytics`, except for the coach table and admin controls.
 
-- participation counts
-- demographic aggregates
+Included sections:
+
+- top stat tiles
 - school distribution map
-- other event-level summary metrics already shown in analytics
+- competitor status distribution
+- release / agreement pipeline
+- division mix
+- demographic charts
+- game platform challenge and activity analytics
+- Flash CTF participation
+- challenge topic clustering
 
-The shared report should exclude:
+Excluded sections:
 
-- admin controls
-- operational tooling
-- direct profile details
+- coach summary table
+- coach filter controls
+- share creation controls
+- direct contact information
 - student-level personally identifying data
 
 ## Admin UI
@@ -99,6 +112,7 @@ Keep the admin UI small:
 - input for max uses
 - button to create the share link
 - returned URL ready to copy
+- explicit `Copy Link` button
 
 ## Implementation References
 
@@ -110,12 +124,16 @@ Keep the admin UI small:
 
 ## Status
 
-Implemented baseline:
+Implemented current state:
 
 - share-link creation route exists
 - donor-safe shared page exists
 - analytics admin page includes the share panel
 - migration has been applied
+- public links use the current running domain
+- the share panel has a working clipboard copy action
+- the shared page now mirrors the admin analytics page content much more closely
+- the shared page still excludes the coach table and admin-only controls
 
 ## Recommendation
 

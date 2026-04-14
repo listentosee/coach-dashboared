@@ -43,6 +43,7 @@ function EmptyState({ message }: { message: string }) {
 
 function CustomTooltip({ active, payload }: TooltipProps<number, string>) {
   if (!active || !payload?.length) return null;
+  const total = payload.reduce((sum, entry) => sum + (Number(entry.value) || 0), 0);
 
   return (
     <div className="max-w-[200px] rounded-md border border-slate-700/70 bg-slate-950/90 px-3 py-2 text-xs text-slate-100 shadow-xl backdrop-blur">
@@ -53,7 +54,9 @@ function CustomTooltip({ active, payload }: TooltipProps<number, string>) {
             style={{ backgroundColor: entry.color || '#38bdf8' }}
           />
           <span className="font-medium text-slate-50">{entry.name}</span>
-          <span className="ml-auto text-slate-300">{entry.value}</span>
+          <span className="ml-auto text-slate-300">
+            {total > 0 ? `${Math.round(((Number(entry.value) || 0) / total) * 100)}%` : '0%'}
+          </span>
         </div>
       ))}
     </div>
@@ -63,9 +66,11 @@ function CustomTooltip({ active, payload }: TooltipProps<number, string>) {
 export function DemographicCharts({
   charts,
   columns = 3,
+  showPercentages = false,
 }: {
   charts: DemographicChartConfig[]
   columns?: 1 | 2 | 3
+  showPercentages?: boolean
 }) {
   if (!charts.length) {
     return <EmptyState message="No demographic data available." />;
@@ -105,6 +110,13 @@ export function DemographicCharts({
                   <Legend
                     verticalAlign="bottom"
                     height={42}
+                    formatter={(value, _entry, index) => {
+                      if (!showPercentages) return value;
+                      const total = chart.data.reduce((sum, item) => sum + item.value, 0);
+                      const slice = chart.data[index];
+                      const percentage = total > 0 && slice ? Math.round((slice.value / total) * 100) : 0;
+                      return `${value} (${percentage}%)`;
+                    }}
                     wrapperStyle={{ color: '#94A3B8', fontSize: '0.75rem' }}
                   />
                 </PieChart>

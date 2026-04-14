@@ -207,7 +207,7 @@ export default async function SharedAnalyticsPage({ params }: SharedAnalyticsPag
               <div className="text-sm text-meta-muted">Division & College Track</div>
               <div className="text-meta-light text-lg font-semibold">Enrollment Mix</div>
             </div>
-            <DemographicCharts charts={[report.divisionChart]} columns={1} />
+            <DemographicCharts charts={[report.divisionChart]} columns={1} showPercentages />
           </div>
 
           <div className="rounded border border-meta-border bg-meta-card p-5">
@@ -218,16 +218,13 @@ export default async function SharedAnalyticsPage({ params }: SharedAnalyticsPag
                 Includes only competitors who are Profile or above.
               </p>
             </div>
-            <DemographicCharts charts={report.demographicCharts} />
+            <DemographicCharts charts={report.demographicCharts} showPercentages />
           </div>
 
           <div className="rounded border border-meta-border bg-meta-card p-5">
             <div className="mb-4">
               <div className="text-sm text-meta-muted">Game Platform</div>
               <div className="text-meta-light text-lg font-semibold">Challenge & Activity Analytics</div>
-              <p className="mt-1 text-sm text-meta-muted">
-                Total challenges solved comes from synced aggregate stats. School-day activity is calculated from timestamped solve and Flash CTF records in Pacific time, Monday-Friday, 9am-3pm.
-              </p>
             </div>
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -247,9 +244,7 @@ export default async function SharedAnalyticsPage({ params }: SharedAnalyticsPag
                   <div className="text-4xl font-extrabold tracking-wider text-meta-light">
                     {formatNumber(report.activityCounts.outsideSchool)}
                   </div>
-                  <div className="pb-1 text-sm text-meta-muted">
-                    {report.outsideSchoolPct}% of {formatNumber(report.activityCounts.total)} timestamped events
-                  </div>
+                  <div className="pb-1 text-sm text-meta-muted">{report.outsideSchoolPct}%</div>
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-meta-dark">
                   <div
@@ -257,7 +252,6 @@ export default async function SharedAnalyticsPage({ params }: SharedAnalyticsPag
                     style={{ width: `${report.outsideSchoolPct}%` }}
                   />
                 </div>
-                <div className="mt-2 text-xs text-meta-muted">Separate denominator from total challenges solved.</div>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-meta-muted">
                   <div className="rounded border border-meta-border/40 bg-meta-card/40 p-2">
                     <div>Before 9am</div>

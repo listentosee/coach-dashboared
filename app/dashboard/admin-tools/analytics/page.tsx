@@ -4,6 +4,7 @@ import { DemographicCharts, DemographicChartConfig } from '@/components/dashboar
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase'
 import { CoachSummaryTable, CoachSummaryRow } from '@/components/dashboard/admin/coach-summary-table'
 import { SchoolDistributionMap } from '@/components/dashboard/admin/school-distribution-map'
+import { AnalyticsSharePanel } from '@/components/dashboard/admin/analytics-share-panel'
 
 export const dynamic = 'force-dynamic'
 
@@ -769,6 +770,8 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
           <h1 className="text-3xl font-bold tracking-wide text-meta-light">Operations Analytics</h1>
           <p className="text-meta-muted mt-2">Live overview of coaches, teams, competitors and forms</p>
         </div>
+
+        <AnalyticsSharePanel />
 
         {/* Coach selector + Stat tiles */}
         <form className="flex items-center justify-between" action="/dashboard/admin-tools/analytics" method="get">

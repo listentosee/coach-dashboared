@@ -40,6 +40,7 @@ export type SharedAnalyticsReport = {
     complete: number;
   };
   divisionChart: DemographicChartConfig;
+  countyChart: DemographicChartConfig;
   demographicCharts: DemographicChartConfig[];
   totalChallengesSolved: number;
   linkedPlatformCompetitors: number;
@@ -248,7 +249,7 @@ export async function buildSharedAnalyticsReport(): Promise<SharedAnalyticsRepor
     email: string | null;
     school_name: string | null;
     division: string | null;
-    school_geo: { lat?: unknown; lon?: unknown } | null;
+    school_geo: { lat?: unknown; lon?: unknown; county?: unknown } | null;
   }>)
     .map((row) => {
       const lat = typeof row.school_geo?.lat === 'number' ? row.school_geo.lat : null;
@@ -265,6 +266,26 @@ export async function buildSharedAnalyticsReport(): Promise<SharedAnalyticsRepor
       };
     })
     .filter((row): row is SharedSchoolMapPoint => Boolean(row));
+
+  const countyCounts = new Map<string, number>();
+  for (const row of ((schoolRows || []) as Array<{
+    school_geo: { county?: unknown } | null;
+  }>)) {
+    const county =
+      typeof row.school_geo?.county === 'string' && row.school_geo.county.trim()
+        ? row.school_geo.county.trim()
+        : null;
+    if (!county) continue;
+    countyCounts.set(county, (countyCounts.get(county) ?? 0) + 1);
+  }
+
+  const countyChart: DemographicChartConfig = {
+    title: 'County Distribution',
+    description: 'Participating coach records with a stored county value.',
+    data: Array.from(countyCounts.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value),
+  };
 
   const competitorRows = (demographicData || []) as Array<{
     gender: string | null;
@@ -633,6 +654,7 @@ export async function buildSharedAnalyticsReport(): Promise<SharedAnalyticsRepor
     statusCounts,
     releasePipeline,
     divisionChart,
+    countyChart,
     demographicCharts,
     totalChallengesSolved,
     linkedPlatformCompetitors,

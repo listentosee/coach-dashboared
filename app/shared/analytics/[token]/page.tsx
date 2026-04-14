@@ -207,7 +207,7 @@ export default async function SharedAnalyticsPage({ params }: SharedAnalyticsPag
               <div className="text-sm text-meta-muted">Division & College Track</div>
               <div className="text-meta-light text-lg font-semibold">Enrollment Mix</div>
             </div>
-            <DemographicCharts charts={[report.divisionChart]} columns={1} showPercentages />
+            <DemographicCharts charts={[report.divisionChart, report.countyChart]} columns={2} showPercentages />
           </div>
 
           <div className="rounded border border-meta-border bg-meta-card p-5">

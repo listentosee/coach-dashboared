@@ -80,6 +80,45 @@ export async function POST(req: NextRequest) {
     const emailType = getEventArg(event, 'email_type');
     const eventType = (event.event ? String(event.event) : '').trim().toLowerCase();
 
+    // ---- Competitor certificate email events ----
+    if (emailType === 'competitor_certificate') {
+      const certificateId = getEventArg(event, 'certificate_id');
+      if (!certificateId || !eventType) {
+        ignored += 1;
+        continue;
+      }
+
+      if (eventType === 'open' || eventType === 'click') {
+        const tsColumn = eventType === 'open' ? 'opened_at' : 'clicked_at';
+        const { error: engagementErr } = await supabase
+          .from('competitor_certificates')
+          .update({ [tsColumn]: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('id', certificateId)
+          .is(tsColumn, null);
+
+        if (!engagementErr) {
+          updatedAnnouncementRecipients += 1;
+        }
+        continue;
+      }
+
+      if (eventType === 'delivered') {
+        const { error: deliveredErr } = await supabase
+          .from('competitor_certificates')
+          .update({ emailed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('id', certificateId)
+          .is('emailed_at', null);
+
+        if (!deliveredErr) {
+          updatedAgreements += 1;
+        }
+        continue;
+      }
+
+      ignored += 1;
+      continue;
+    }
+
     // ---- Competitor announcement email events ----
     if (emailType === 'competitor_announcement') {
       const campaignId = getEventArg(event, 'campaign_id');
@@ -268,4 +307,3 @@ export async function POST(req: NextRequest) {
 }
 
 export const runtime = 'nodejs';
-

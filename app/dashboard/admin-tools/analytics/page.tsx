@@ -316,6 +316,9 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   const activeGameCompetitors = new Set(
     (allGameProfiles || []).map((gp: any) => gp.competitor_id)
   )
+  const teamsWithMembers = new Set(
+    (allTeamMembers || []).map((tm: any) => tm.team_id)
+  )
 
   const coachSummaryMap = new Map<string, CoachSummaryRow>()
   for (const c of (coaches || [])) {
@@ -331,6 +334,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
       active_in_game_platform: 0,
       total_teams: 0,
       teams_without_image: 0,
+      teams_without_members: 0,
     })
   }
 
@@ -351,6 +355,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
     if (!row) continue
     row.total_teams++
     if (!team.image_url) row.teams_without_image++
+    if (!teamsWithMembers.has(team.id)) row.teams_without_members++
   }
 
   const coachSummaryData: CoachSummaryRow[] = Array.from(coachSummaryMap.values())

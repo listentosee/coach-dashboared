@@ -117,20 +117,38 @@ export function DataTable<TData, TValue>({
 
   if (stickyHeader && scrollContainerClassName) {
     const visibleCols = table.getVisibleFlatColumns()
-    const totalSize = visibleCols.reduce((sum, col) => sum + col.getSize(), 0)
+    const totalWidth = visibleCols.reduce((sum, col) => sum + col.getSize(), 0)
     const colGroup = (
       <colgroup>
         {visibleCols.map((col) => (
-          <col key={col.id} style={{ width: `${(col.getSize() / totalSize) * 100}%` }} />
+          <col key={col.id} style={{ width: `${col.getSize()}px` }} />
         ))}
       </colgroup>
     )
     return (
       <div className="w-full">
         <div className="rounded-md border">
-          <Table className="table-fixed">{colGroup}{headerMarkup}</Table>
           <div className={scrollContainerClassName}>
-            <Table className="table-fixed">{colGroup}{bodyMarkup}</Table>
+            <Table className="table-fixed" style={{ width: `${totalWidth}px`, minWidth: '100%' }}>
+              {colGroup}
+              <TableHeader className="sticky top-0 z-10 bg-meta-card">
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <TableHead key={header.id} className="bg-meta-card">
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext()
+                            )}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableHeader>
+              {bodyMarkup}
+            </Table>
           </div>
         </div>
       </div>

@@ -18,6 +18,7 @@ export interface CoachSummaryRow {
   active_in_game_platform: number
   total_teams: number
   teams_without_image: number
+  teams_without_members: number
 }
 
 const sortableHeader = (label: string, column: any) => (
@@ -35,7 +36,7 @@ const columns: ColumnDef<CoachSummaryRow>[] = [
   {
     accessorKey: 'coach_name',
     header: ({ column }) => sortableHeader('Coach', column),
-    size: 200,
+    size: 220,
     cell: ({ row }) => (
       <span className="font-medium text-meta-light">{row.original.coach_name}</span>
     ),
@@ -43,46 +44,65 @@ const columns: ColumnDef<CoachSummaryRow>[] = [
   {
     accessorKey: 'total_competitors',
     header: ({ column }) => sortableHeader('Competitors', column),
+    size: 140,
     cell: ({ row }) => row.original.total_competitors,
   },
   {
     accessorKey: 'pending',
     header: ({ column }) => sortableHeader('Pending', column),
+    size: 120,
     cell: ({ row }) => row.original.pending,
   },
   {
     accessorKey: 'in_game_compliant',
     header: ({ column }) => sortableHeader('In Game', column),
+    size: 120,
     cell: ({ row }) => row.original.in_game_compliant,
   },
   {
     accessorKey: 'in_game_non_compliant',
     header: ({ column }) => sortableHeader('In Game NC', column),
+    size: 140,
     cell: ({ row }) => row.original.in_game_non_compliant,
   },
   {
     accessorKey: 'in_teams',
     header: ({ column }) => sortableHeader('In Teams', column),
+    size: 120,
     cell: ({ row }) => row.original.in_teams,
   },
   {
     accessorKey: 'not_in_team',
     header: ({ column }) => sortableHeader('No Team', column),
+    size: 120,
     cell: ({ row }) => row.original.not_in_team,
   },
   {
     accessorKey: 'active_in_game_platform',
     header: ({ column }) => sortableHeader('Active GP', column),
+    size: 130,
     cell: ({ row }) => row.original.active_in_game_platform,
   },
   {
     accessorKey: 'total_teams',
     header: ({ column }) => sortableHeader('Teams', column),
+    size: 110,
     cell: ({ row }) => row.original.total_teams,
+  },
+  {
+    accessorKey: 'teams_without_members',
+    header: ({ column }) => sortableHeader('Empty Teams', column),
+    size: 140,
+    cell: ({ row }) => (
+      <span className={row.original.teams_without_members > 0 ? 'text-yellow-400' : ''}>
+        {row.original.teams_without_members}
+      </span>
+    ),
   },
   {
     accessorKey: 'teams_without_image',
     header: ({ column }) => sortableHeader('No Image', column),
+    size: 120,
     cell: ({ row }) => (
       <span className={row.original.teams_without_image > 0 ? 'text-yellow-400' : ''}>
         {row.original.teams_without_image}
@@ -111,6 +131,7 @@ export function CoachSummaryTable({ data }: { data: CoachSummaryRow[] }) {
       initialSortId="coach_name"
       onRowClick={handleRowClick}
       scrollContainerClassName="max-h-[600px] overflow-auto"
+
       stickyHeader
     />
   )

@@ -250,7 +250,7 @@ export default async function GamePlatformRosterPage({
                   Failed to load roster: {errorMessage}
                 </div>
               ) : (
-                <GamePlatformRosterTable rows={rows} />
+                <GamePlatformRosterTable rows={rows} coachLabel={coachLabel} />
               )}
             </>
           )}

@@ -5,7 +5,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/ui/data-table";
-import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
+import { ChevronDown, ChevronUp, ChevronsUpDown, Download } from "lucide-react";
 
 export interface GamePlatformRosterRow {
   competitor_id: string;
@@ -50,6 +50,56 @@ const formatDate = (value?: string | null) => {
   return date.toLocaleString();
 };
 
+const CSV_COLUMNS: Array<{ header: string; key: keyof GamePlatformRosterRow }> = [
+  { header: 'Competitor', key: 'competitor_name' },
+  { header: 'School Email', key: 'email_school' },
+  { header: 'Personal Email', key: 'email_personal' },
+  { header: 'Onboarded Email Type', key: 'onboarded_email_type' },
+  { header: 'Game Platform ID', key: 'game_platform_id' },
+  { header: 'MetaCTF Role', key: 'metactf_role' },
+  { header: 'MetaCTF User ID', key: 'metactf_user_id' },
+  { header: 'MetaCTF Username', key: 'metactf_username' },
+  { header: 'MetaCTF Status', key: 'metactf_status' },
+  { header: 'Last Result', key: 'last_result' },
+  { header: 'Last Attempt', key: 'last_attempt_at' },
+  { header: 'Last Activity', key: 'last_accessed_at' },
+  { header: 'Last Login', key: 'last_login_at' },
+  { header: 'Error Message', key: 'error_message' },
+];
+
+const escapeCsv = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  if (/[",\n\r]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+};
+
+const buildCsv = (rows: GamePlatformRosterRow[]): string => {
+  const header = CSV_COLUMNS.map((c) => escapeCsv(c.header)).join(',');
+  const lines = rows.map((row) =>
+    CSV_COLUMNS.map((c) => escapeCsv(row[c.key])).join(',')
+  );
+  return [header, ...lines].join('\r\n');
+};
+
+const downloadCsv = (rows: GamePlatformRosterRow[], coachLabel: string | null) => {
+  const csv = buildCsv(rows);
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const slug = (coachLabel || 'roster').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const datestamp = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `game-platform-roster-${slug || 'coach'}-${datestamp}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
 const sortHeader = (label: string) => ({ column }: { column: any }) => (
   <Button
     variant="ghost"
@@ -67,7 +117,7 @@ const sortHeader = (label: string) => ({ column }: { column: any }) => (
   </Button>
 );
 
-export function GamePlatformRosterTable({ rows }: { rows: GamePlatformRosterRow[] }) {
+export function GamePlatformRosterTable({ rows, coachLabel }: { rows: GamePlatformRosterRow[]; coachLabel?: string | null }) {
   const columns = useMemo<ColumnDef<GamePlatformRosterRow>[]>(() => [
     {
       accessorKey: "competitor_name",
@@ -221,11 +271,26 @@ export function GamePlatformRosterTable({ rows }: { rows: GamePlatformRosterRow[
   ], []);
 
   return (
-    <DataTable
-      columns={columns}
-      data={rows}
-      initialSortId="competitor_name"
-      scrollContainerClassName="max-h-[70vh] overflow-auto"
-    />
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => downloadCsv(rows, coachLabel ?? null)}
+          disabled={rows.length === 0}
+          className="gap-2"
+        >
+          <Download className="h-4 w-4" />
+          Export CSV
+        </Button>
+      </div>
+      <DataTable
+        columns={columns}
+        data={rows}
+        initialSortId="competitor_name"
+        scrollContainerClassName="max-h-[70vh] overflow-auto"
+      />
+    </div>
   );
 }

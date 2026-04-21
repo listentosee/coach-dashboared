@@ -10,6 +10,8 @@ import { handleGamePlatformOnboardCoaches } from './gamePlatformOnboardCoaches';
 import { handleMessageReadReceiptsBackfill } from './messageReadReceiptsBackfill';
 import { handleCompetitorAnnouncementDispatch } from './competitorAnnouncementDispatch';
 import { handleGamePlatformFlashCtfSync } from './gamePlatformFlashCtfSync';
+import { handleTeamImageBulkGenerate } from './teamImageBulkGenerate';
+import { handleTeamImageGenerate } from './teamImageGenerate';
 
 const handlers: Record<JobTaskType, JobHandler<any>> = {
   game_platform_sync: handleGamePlatformSync,
@@ -23,6 +25,8 @@ const handlers: Record<JobTaskType, JobHandler<any>> = {
   message_read_receipts_backfill: handleMessageReadReceiptsBackfill,
   competitor_announcement_dispatch: handleCompetitorAnnouncementDispatch,
   game_platform_flash_ctf_sync: handleGamePlatformFlashCtfSync,
+  team_image_bulk_generate: handleTeamImageBulkGenerate,
+  team_image_generate: handleTeamImageGenerate,
 };
 
 export function getJobHandler<T extends JobTaskType>(taskType: T): JobHandler<T> {

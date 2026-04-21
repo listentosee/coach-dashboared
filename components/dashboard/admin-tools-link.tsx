@@ -103,6 +103,11 @@ export default function AdminToolsLink() {
               Coach Library
             </Button>
           </Link>
+          <Link href="/dashboard/admin-tools/team-image-generator">
+            <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
+              Team Image Generator
+            </Button>
+          </Link>
           <Link href="/dashboard/admin-tools/certificates">
             <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
               Certificates

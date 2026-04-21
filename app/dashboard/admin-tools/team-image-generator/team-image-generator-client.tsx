@@ -155,24 +155,34 @@ export function TeamImageGeneratorClient() {
   };
 
   const submitRegen = async () => {
-    if (!regenTarget?.candidate) return;
-    const isEmptyPlaceholder = !regenTarget.candidate.prompt_used;
+    if (!regenTarget) return;
+    const hasPendingCandidate =
+      !!regenTarget.candidate && regenTarget.candidate.status === 'pending';
+    const isEmptyPlaceholder = hasPendingCandidate && !regenTarget.candidate?.prompt_used;
+    // Instructions required when regenerating an already-generated image
+    // (pending + has prompt, or complete/generated). Optional only for empty placeholders.
     if (!isEmptyPlaceholder && !regenInstructions.trim()) {
       toast.error('Please enter regeneration instructions');
       return;
     }
     setRegenSubmitting(true);
     try {
-      const res = await fetch(`/api/admin/team-images/${regenTarget.candidate.id}/regen`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instructions: regenInstructions }),
-      });
+      const res = hasPendingCandidate
+        ? await fetch(`/api/admin/team-images/${regenTarget.candidate!.id}/regen`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ instructions: regenInstructions }),
+          })
+        : await fetch('/api/admin/team-images/generate-for-team', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teamId: regenTarget.team_id, instructions: regenInstructions }),
+          });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error ?? 'Regen failed');
       }
-      toast.success(`Image generated for ${regenTarget.team_name}`);
+      toast.success(`New image generated for ${regenTarget.team_name} — review the pending candidate.`);
       setRegenTarget(null);
       setRegenInstructions('');
       await refresh();
@@ -369,10 +379,17 @@ interface TeamCardProps {
 
 function TeamCard({ team, onAccept, onRegen, onReject }: TeamCardProps) {
   const canAccept = team.status === 'pending' && !!team.signed_url;
-  const canRegen = team.status === 'pending' && !!team.candidate;
   const canReject = team.status === 'pending' && !!team.candidate;
+  // Regen is allowed on pending items AND on teams that already have an image
+  // (complete/generated) — the latter creates a new pending candidate for review.
+  const canRegen =
+    (team.status === 'pending' && !!team.candidate) ||
+    team.status === 'complete' ||
+    team.status === 'generated';
   const showEmptyPlaceholderActions =
     team.status === 'pending' && !!team.candidate && !team.candidate.prompt_used;
+  const showStandaloneRegen =
+    (team.status === 'complete' || team.status === 'generated') && !!team.signed_url;
 
   return (
     <Card className="bg-meta-card border-meta-border overflow-hidden">
@@ -433,11 +450,9 @@ function TeamCard({ team, onAccept, onRegen, onReject }: TeamCardProps) {
             >
               <Check className="h-4 w-4 mr-1" /> Accept
             </Button>
-            {canRegen && (
-              <Button size="sm" variant="outline" onClick={onRegen} className="flex-1">
-                <RefreshCw className="h-4 w-4 mr-1" /> Regen
-              </Button>
-            )}
+            <Button size="sm" variant="outline" onClick={onRegen} className="flex-1">
+              <RefreshCw className="h-4 w-4 mr-1" /> Regen
+            </Button>
             {canReject && (
               <Button
                 size="sm"
@@ -448,6 +463,13 @@ function TeamCard({ team, onAccept, onRegen, onReject }: TeamCardProps) {
                 <X className="h-4 w-4 mr-1" /> Reject
               </Button>
             )}
+          </div>
+        )}
+        {showStandaloneRegen && (
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={onRegen} className="flex-1">
+              <RefreshCw className="h-4 w-4 mr-1" /> Regen
+            </Button>
           </div>
         )}
       </CardContent>

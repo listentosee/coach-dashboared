@@ -1,12 +1,12 @@
 /**
- * Export all team images from Supabase Storage, organized by school / coach.
+ * Export all team images from Supabase Storage, organized by division / coach.
  *
  * Usage:
  *   pnpm tsx scripts/export-team-images.ts
  *
  * Output:
  *   team-images-export/
- *     School-Name/
+ *     Division/            (College, High-School, Middle-School, ROP, Unknown)
  *       Coach-Name/
  *         Team-Name.png
  */
@@ -46,9 +46,17 @@ function coachDirName(row: { coach_name: string | null; coach_email: string | nu
   return `unknown-${row.coach_id.slice(0, 8)}`;
 }
 
-function schoolDirName(schoolName: string | null): string {
-  if (schoolName && schoolName.trim()) return sanitizeName(schoolName);
-  return 'unknown-school';
+const DIVISION_LABELS: Record<string, string> = {
+  college: 'College',
+  high_school: 'High-School',
+  middle_school: 'Middle-School',
+  rop: 'ROP',
+};
+
+function divisionDirName(division: string | null): string {
+  if (!division) return 'Unknown-Division';
+  const label = DIVISION_LABELS[division.toLowerCase()];
+  return label ?? sanitizeName(division);
 }
 
 async function main() {
@@ -60,7 +68,8 @@ async function main() {
       name,
       image_url,
       coach_id,
-      profiles!teams_coach_id_fkey ( full_name, first_name, last_name, email, school_name )
+      division,
+      profiles!teams_coach_id_fkey ( full_name, first_name, last_name, email )
     `)
     .not('image_url', 'is', null);
 
@@ -88,18 +97,17 @@ async function main() {
       first_name: string | null;
       last_name: string | null;
       email: string | null;
-      school_name: string | null;
     } | null;
     const coachName = profile?.full_name
       ?? (profile?.first_name && profile?.last_name ? `${profile.first_name} ${profile.last_name}` : null);
     const coachEmail = profile?.email ?? null;
-    const schoolName = profile?.school_name ?? null;
+    const division = (team as { division: string | null }).division ?? null;
 
-    const schoolDir = schoolDirName(schoolName);
+    const divisionDir = divisionDirName(division);
     const coachDir = coachDirName({ coach_name: coachName, coach_email: coachEmail, coach_id: team.coach_id });
     const ext = getExtension(team.image_url!);
     const fileName = `${sanitizeName(team.name)}${ext}`;
-    const fullDir = path.join(OUTPUT_DIR, schoolDir, coachDir);
+    const fullDir = path.join(OUTPUT_DIR, divisionDir, coachDir);
     const filePath = path.join(fullDir, fileName);
 
     // Download from storage
@@ -109,7 +117,7 @@ async function main() {
 
     if (dlError || !blob) {
       console.log(
-        `  [SKIP] "${team.name}" (school: ${schoolName ?? 'unknown'}, coach: ${coachName ?? coachEmail ?? 'unknown'}) — ${dlError?.message ?? 'empty response'}`,
+        `  [SKIP] "${team.name}" (division: ${division ?? 'unknown'}, coach: ${coachName ?? coachEmail ?? 'unknown'}) — ${dlError?.message ?? 'empty response'}`,
       );
       skipped++;
       continue;
@@ -120,7 +128,7 @@ async function main() {
     const buffer = Buffer.from(await blob.arrayBuffer());
     fs.writeFileSync(filePath, buffer);
 
-    console.log(`  [OK] ${schoolDir}/${coachDir}/${fileName} (${(buffer.length / 1024).toFixed(1)} KB)`);
+    console.log(`  [OK] ${divisionDir}/${coachDir}/${fileName} (${(buffer.length / 1024).toFixed(1)} KB)`);
     exported++;
   }
 

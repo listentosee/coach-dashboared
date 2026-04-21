@@ -25,11 +25,8 @@ export interface BuildPromptInput {
 }
 
 const STYLE_PRESETS = [
-  'vibrant digital illustration with clean line art and flat colors',
   'cinematic cyberpunk neon aesthetic with subtle glow effects',
-  'bold comic-book style with halftone shading and dynamic angles',
   'polished esports team poster look with dramatic lighting',
-  'modern flat vector illustration with geometric shapes',
   'stylized anime-inspired illustration with soft shading',
   'retro 80s synthwave with grid horizon and sunset palette',
   'high-tech futuristic aesthetic with holographic elements',

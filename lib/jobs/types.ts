@@ -12,7 +12,9 @@ export type JobTaskType =
   | 'release_parent_email_verification'
   | 'message_read_receipts_backfill'
   | 'competitor_announcement_dispatch'
-  | 'game_platform_flash_ctf_sync';
+  | 'game_platform_flash_ctf_sync'
+  | 'team_image_bulk_generate'
+  | 'team_image_generate';
 
 export interface GamePlatformSyncPayload {
   dryRun?: boolean;
@@ -82,6 +84,21 @@ export interface CompetitorAnnouncementDispatchPayload {
   campaignId: string;
 }
 
+export interface TeamImageBulkGeneratePayload {
+  /** When provided, only generate for these team ids. Otherwise: all teams without image_url. */
+  teamIds?: string[];
+  requestedBy?: string;
+}
+
+export interface TeamImageGeneratePayload {
+  teamId: string;
+  /** Optional freeform admin instructions (set on regen). */
+  regenInstructions?: string;
+  /** When regenerating, mark this prior candidate as superseded. */
+  supersedesCandidateId?: string;
+  requestedBy?: string;
+}
+
 export interface GamePlatformFlashCtfSyncPayload {
   dryRun?: boolean;
   coachId?: string | null;
@@ -101,6 +118,8 @@ export interface JobPayloadMap {
   message_read_receipts_backfill: MessageReadReceiptsBackfillPayload;
   competitor_announcement_dispatch: CompetitorAnnouncementDispatchPayload;
   game_platform_flash_ctf_sync: GamePlatformFlashCtfSyncPayload;
+  team_image_bulk_generate: TeamImageBulkGeneratePayload;
+  team_image_generate: TeamImageGeneratePayload;
 }
 
 export type JobPayload<T extends JobTaskType = JobTaskType> = JobPayloadMap[T];

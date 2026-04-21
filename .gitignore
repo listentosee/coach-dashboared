@@ -116,3 +116,6 @@ app/print.css
 /data/
 # local data exports (do not track)
 data/
+
+# Local-only output from scripts/export-team-images.ts
+team-images-export/

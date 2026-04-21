@@ -16,19 +16,27 @@ import {
 } from '@/components/ui/dialog';
 import { Check, RefreshCw, X, Sparkles, Loader2, AlertCircle } from 'lucide-react';
 
-interface Candidate {
+type TeamStatus = 'pending' | 'generated' | 'complete' | 'failed' | 'missing';
+
+interface CandidateInfo {
   id: string;
+  status: string;
+  prompt_used: string | null;
+  regen_instructions: string | null;
+  error_message: string | null;
+  generated_at: string;
+  candidate_path: string | null;
+}
+
+interface TeamRow {
   team_id: string;
   team_name: string;
   coach_name: string | null;
   school_name: string | null;
-  candidate_path: string | null;
+  status: TeamStatus;
+  image_path: string | null;
   signed_url: string | null;
-  prompt_used: string | null;
-  regen_instructions: string | null;
-  status: string;
-  error_message: string | null;
-  generated_at: string;
+  candidate: CandidateInfo | null;
 }
 
 interface StatusSummary {
@@ -37,26 +45,29 @@ interface StatusSummary {
   in_flight_jobs: number;
 }
 
+type ViewFilter = 'all' | 'pending' | 'generated' | 'complete' | 'missing' | 'failed';
+
 export function TeamImageGeneratorClient() {
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [teams, setTeams] = useState<TeamRow[]>([]);
   const [summary, setSummary] = useState<StatusSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'all'>('pending');
+  const [preloading, setPreloading] = useState(false);
+  const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
 
-  const [regenTarget, setRegenTarget] = useState<Candidate | null>(null);
+  const [regenTarget, setRegenTarget] = useState<TeamRow | null>(null);
   const [regenInstructions, setRegenInstructions] = useState('');
   const [regenSubmitting, setRegenSubmitting] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const [candRes, statusRes] = await Promise.all([
-        fetch(`/api/admin/team-images/candidates?status=${statusFilter}`),
+      const [listRes, statusRes] = await Promise.all([
+        fetch('/api/admin/team-images/candidates?filter=all'),
         fetch('/api/admin/team-images/status'),
       ]);
-      if (candRes.ok) {
-        const data = await candRes.json();
-        setCandidates(data.candidates ?? []);
+      if (listRes.ok) {
+        const data = await listRes.json();
+        setTeams(data.teams ?? []);
       }
       if (statusRes.ok) {
         setSummary(await statusRes.json());
@@ -64,20 +75,19 @@ export function TeamImageGeneratorClient() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, []);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  // Auto-refresh every 5s while jobs are in-flight
+  // Auto-refresh every 5s while any job is in flight
   useEffect(() => {
     if (!summary || summary.in_flight_jobs === 0) return;
     const id = setInterval(refresh, 5000);
     return () => clearInterval(id);
   }, [summary, refresh]);
 
-  const [preloading, setPreloading] = useState(false);
   const handlePreload = async () => {
     setPreloading(true);
     try {
@@ -87,7 +97,7 @@ export function TeamImageGeneratorClient() {
         throw new Error(err.error ?? 'Preload failed');
       }
       const body = await res.json();
-      toast.success(`Preloaded ${body.created} placeholder(s) (skipped ${body.skipped}). Click Regen on each to generate.`);
+      toast.success(`Preloaded ${body.created} placeholder(s) (skipped ${body.skipped}).`);
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Preload failed');
@@ -114,10 +124,11 @@ export function TeamImageGeneratorClient() {
     }
   };
 
-  const handleAccept = async (c: Candidate) => {
-    const res = await fetch(`/api/admin/team-images/${c.id}/accept`, { method: 'POST' });
+  const handleAccept = async (t: TeamRow) => {
+    if (!t.candidate) return;
+    const res = await fetch(`/api/admin/team-images/${t.candidate.id}/accept`, { method: 'POST' });
     if (res.ok) {
-      toast.success(`Accepted image for ${c.team_name}`);
+      toast.success(`Accepted image for ${t.team_name}`);
       await refresh();
     } else {
       const err = await res.json().catch(() => ({}));
@@ -125,11 +136,12 @@ export function TeamImageGeneratorClient() {
     }
   };
 
-  const handleReject = async (c: Candidate) => {
-    if (!confirm(`Reject the generated image for "${c.team_name}"? The team record will be left untouched.`)) return;
-    const res = await fetch(`/api/admin/team-images/${c.id}/reject`, { method: 'POST' });
+  const handleReject = async (t: TeamRow) => {
+    if (!t.candidate) return;
+    if (!confirm(`Reject the generated image for "${t.team_name}"? The team record will be left untouched.`)) return;
+    const res = await fetch(`/api/admin/team-images/${t.candidate.id}/reject`, { method: 'POST' });
     if (res.ok) {
-      toast.success(`Rejected image for ${c.team_name}`);
+      toast.success(`Rejected image for ${t.team_name}`);
       await refresh();
     } else {
       const err = await res.json().catch(() => ({}));
@@ -137,21 +149,21 @@ export function TeamImageGeneratorClient() {
     }
   };
 
-  const openRegen = (c: Candidate) => {
-    setRegenTarget(c);
+  const openRegen = (t: TeamRow) => {
+    setRegenTarget(t);
     setRegenInstructions('');
   };
 
   const submitRegen = async () => {
-    if (!regenTarget) return;
-    const isEmptyPlaceholder = !regenTarget.prompt_used;
+    if (!regenTarget?.candidate) return;
+    const isEmptyPlaceholder = !regenTarget.candidate.prompt_used;
     if (!isEmptyPlaceholder && !regenInstructions.trim()) {
       toast.error('Please enter regeneration instructions');
       return;
     }
     setRegenSubmitting(true);
     try {
-      const res = await fetch(`/api/admin/team-images/${regenTarget.id}/regen`, {
+      const res = await fetch(`/api/admin/team-images/${regenTarget.candidate.id}/regen`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ instructions: regenInstructions }),
@@ -170,6 +182,18 @@ export function TeamImageGeneratorClient() {
       setRegenSubmitting(false);
     }
   };
+
+  // Counts per status for filter buttons
+  const counts: Record<ViewFilter, number> = {
+    all: teams.length,
+    pending: teams.filter((t) => t.status === 'pending').length,
+    generated: teams.filter((t) => t.status === 'generated').length,
+    complete: teams.filter((t) => t.status === 'complete').length,
+    missing: teams.filter((t) => t.status === 'missing').length,
+    failed: teams.filter((t) => t.status === 'failed').length,
+  };
+
+  const visibleTeams = viewFilter === 'all' ? teams : teams.filter((t) => t.status === viewFilter);
 
   return (
     <div className="space-y-6">
@@ -221,44 +245,40 @@ export function TeamImageGeneratorClient() {
         </CardContent>
       </Card>
 
-      {/* Filter */}
-      <div className="flex gap-2">
-        <Button
-          variant={statusFilter === 'pending' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setStatusFilter('pending')}
-        >
-          Pending
-        </Button>
-        <Button
-          variant={statusFilter === 'all' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setStatusFilter('all')}
-        >
-          All
-        </Button>
-        <Button variant="ghost" size="sm" onClick={refresh} disabled={loading}>
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 items-center">
+        {(['all', 'pending', 'generated', 'complete', 'missing', 'failed'] as ViewFilter[]).map((f) => (
+          <Button
+            key={f}
+            variant={viewFilter === f ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setViewFilter(f)}
+            className="capitalize"
+          >
+            {f} <span className="ml-1.5 text-xs opacity-75">{counts[f]}</span>
+          </Button>
+        ))}
+        <Button variant="ghost" size="sm" onClick={refresh} disabled={loading} className="ml-auto">
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
         </Button>
       </div>
 
-      {/* Candidates grid */}
+      {/* Teams grid grouped by coach */}
       {loading ? (
         <div className="text-meta-muted">Loading…</div>
-      ) : candidates.length === 0 ? (
+      ) : visibleTeams.length === 0 ? (
         <Card className="bg-meta-card border-meta-border">
           <CardContent className="py-12 text-center text-meta-muted">
-            No {statusFilter === 'pending' ? 'pending' : ''} candidates.
+            No teams matching &quot;{viewFilter}&quot;.
           </CardContent>
         </Card>
       ) : (
         (() => {
-          // Group candidates by coach_name (alphabetized, unknown last)
-          const groups = new Map<string, Candidate[]>();
-          for (const c of candidates) {
-            const key = c.coach_name ?? '— Unknown coach —';
+          const groups = new Map<string, TeamRow[]>();
+          for (const t of visibleTeams) {
+            const key = t.coach_name ?? '— Unknown coach —';
             const arr = groups.get(key) ?? [];
-            arr.push(c);
+            arr.push(t);
             groups.set(key, arr);
           }
           const sortedKeys = Array.from(groups.keys()).sort((a, b) => {
@@ -281,91 +301,14 @@ export function TeamImageGeneratorClient() {
                       </span>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {group.map((c) => (
-            <Card key={c.id} className="bg-meta-card border-meta-border overflow-hidden">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-meta-light text-base flex items-start justify-between gap-2">
-                  <span className="line-clamp-2">{c.team_name}</span>
-                  <StatusBadge status={c.status} />
-                </CardTitle>
-                <div className="text-xs text-meta-muted">
-                  {c.coach_name ?? 'Unknown coach'}
-                  {c.school_name ? ` · ${c.school_name}` : ''}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="aspect-video bg-slate-800 rounded overflow-hidden flex items-center justify-center">
-                  {c.status === 'failed' ? (
-                    <div className="p-4 text-center text-red-400 text-sm">
-                      <AlertCircle className="h-6 w-6 mx-auto mb-2" />
-                      {c.error_message ?? 'Generation failed'}
-                    </div>
-                  ) : c.signed_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={c.signed_url} alt={c.team_name} className="w-full h-full object-cover" />
-                  ) : c.status === 'pending' && c.prompt_used ? (
-                    <Loader2 className="h-8 w-8 animate-spin text-meta-muted" />
-                  ) : c.status === 'pending' ? (
-                    <div className="text-meta-muted text-sm text-center px-4">
-                      Empty placeholder — click <strong>Generate</strong> to create an image.
-                    </div>
-                  ) : (
-                    <div className="text-meta-muted text-sm">No image</div>
-                  )}
-                </div>
-                {c.regen_instructions && (
-                  <div className="text-xs text-meta-muted italic line-clamp-2">
-                    Regen: {c.regen_instructions}
-                  </div>
-                )}
-                {c.status === 'pending' && !c.prompt_used && (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => openRegen(c)}
-                      className="flex-1 bg-meta-accent hover:bg-meta-accent/80"
-                    >
-                      <Sparkles className="h-4 w-4 mr-1" /> Generate
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleReject(c)}
-                      className="flex-1 border-red-600 text-red-500 hover:bg-red-600 hover:text-white"
-                    >
-                      <X className="h-4 w-4 mr-1" /> Reject
-                    </Button>
-                  </div>
-                )}
-                {c.status === 'pending' && c.signed_url && (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => handleAccept(c)}
-                      className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                    >
-                      <Check className="h-4 w-4 mr-1" /> Accept
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openRegen(c)}
-                      className="flex-1"
-                    >
-                      <RefreshCw className="h-4 w-4 mr-1" /> Regen
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleReject(c)}
-                      className="flex-1 border-red-600 text-red-500 hover:bg-red-600 hover:text-white"
-                    >
-                      <X className="h-4 w-4 mr-1" /> Reject
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                      {group.map((t) => (
+                        <TeamCard
+                          key={t.team_id}
+                          team={t}
+                          onAccept={() => handleAccept(t)}
+                          onRegen={() => openRegen(t)}
+                          onReject={() => handleReject(t)}
+                        />
                       ))}
                     </div>
                   </div>
@@ -381,10 +324,11 @@ export function TeamImageGeneratorClient() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {regenTarget?.prompt_used ? 'Regenerate' : 'Generate'} image for &quot;{regenTarget?.team_name}&quot;
+              {regenTarget?.candidate?.prompt_used ? 'Regenerate' : 'Generate'} image for &quot;
+              {regenTarget?.team_name}&quot;
             </DialogTitle>
             <DialogDescription>
-              {regenTarget?.prompt_used
+              {regenTarget?.candidate?.prompt_used
                 ? 'Enter instructions for the regeneration. These will be added to the prompt.'
                 : 'Optionally enter styling instructions. Leave blank to use the default randomized style.'}
             </DialogDescription>
@@ -403,11 +347,11 @@ export function TeamImageGeneratorClient() {
               onClick={submitRegen}
               disabled={
                 regenSubmitting ||
-                (!!regenTarget?.prompt_used && !regenInstructions.trim())
+                (!!regenTarget?.candidate?.prompt_used && !regenInstructions.trim())
               }
             >
               {regenSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {regenTarget?.prompt_used ? 'Regenerate' : 'Generate'}
+              {regenTarget?.candidate?.prompt_used ? 'Regenerate' : 'Generate'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -416,15 +360,110 @@ export function TeamImageGeneratorClient() {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; className: string }> = {
+interface TeamCardProps {
+  team: TeamRow;
+  onAccept: () => void;
+  onRegen: () => void;
+  onReject: () => void;
+}
+
+function TeamCard({ team, onAccept, onRegen, onReject }: TeamCardProps) {
+  const canAccept = team.status === 'pending' && !!team.signed_url;
+  const canRegen = team.status === 'pending' && !!team.candidate;
+  const canReject = team.status === 'pending' && !!team.candidate;
+  const showEmptyPlaceholderActions =
+    team.status === 'pending' && !!team.candidate && !team.candidate.prompt_used;
+
+  return (
+    <Card className="bg-meta-card border-meta-border overflow-hidden">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-meta-light text-base flex items-start justify-between gap-2">
+          <span className="line-clamp-2">{team.team_name}</span>
+          <StatusBadge status={team.status} />
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="aspect-video bg-slate-800 rounded overflow-hidden flex items-center justify-center">
+          {team.status === 'failed' ? (
+            <div className="p-4 text-center text-red-400 text-sm">
+              <AlertCircle className="h-6 w-6 mx-auto mb-2" />
+              {team.candidate?.error_message ?? 'Generation failed'}
+            </div>
+          ) : team.signed_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={team.signed_url} alt={team.team_name} className="w-full h-full object-cover" />
+          ) : showEmptyPlaceholderActions ? (
+            <div className="text-meta-muted text-sm text-center px-4">
+              Empty placeholder — click <strong>Generate</strong> to create an image.
+            </div>
+          ) : team.status === 'missing' ? (
+            <div className="text-meta-muted text-sm text-center px-4">
+              No image. Use <strong>Preload</strong> or <strong>Generate All</strong> to create one.
+            </div>
+          ) : (
+            <Loader2 className="h-8 w-8 animate-spin text-meta-muted" />
+          )}
+        </div>
+        {team.candidate?.regen_instructions && (
+          <div className="text-xs text-meta-muted italic line-clamp-2">
+            Regen: {team.candidate.regen_instructions}
+          </div>
+        )}
+        {showEmptyPlaceholderActions && (
+          <div className="flex gap-2">
+            <Button size="sm" onClick={onRegen} className="flex-1 bg-meta-accent hover:bg-meta-accent/80">
+              <Sparkles className="h-4 w-4 mr-1" /> Generate
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onReject}
+              className="flex-1 border-red-600 text-red-500 hover:bg-red-600 hover:text-white"
+            >
+              <X className="h-4 w-4 mr-1" /> Reject
+            </Button>
+          </div>
+        )}
+        {canAccept && !showEmptyPlaceholderActions && (
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={onAccept}
+              className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+            >
+              <Check className="h-4 w-4 mr-1" /> Accept
+            </Button>
+            {canRegen && (
+              <Button size="sm" variant="outline" onClick={onRegen} className="flex-1">
+                <RefreshCw className="h-4 w-4 mr-1" /> Regen
+              </Button>
+            )}
+            {canReject && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onReject}
+                className="flex-1 border-red-600 text-red-500 hover:bg-red-600 hover:text-white"
+              >
+                <X className="h-4 w-4 mr-1" /> Reject
+              </Button>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatusBadge({ status }: { status: TeamStatus }) {
+  const map: Record<TeamStatus, { label: string; className: string }> = {
     pending: { label: 'Pending', className: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
-    accepted: { label: 'Accepted', className: 'bg-green-500/20 text-green-300 border-green-500/40' },
-    rejected: { label: 'Rejected', className: 'bg-red-500/20 text-red-300 border-red-500/40' },
+    generated: { label: 'Generated', className: 'bg-sky-500/20 text-sky-300 border-sky-500/40' },
+    complete: { label: 'Complete', className: 'bg-green-500/20 text-green-300 border-green-500/40' },
+    missing: { label: 'Missing', className: 'bg-slate-500/20 text-slate-300 border-slate-500/40' },
     failed: { label: 'Failed', className: 'bg-red-500/20 text-red-300 border-red-500/40' },
-    superseded: { label: 'Superseded', className: 'bg-slate-500/20 text-slate-300 border-slate-500/40' },
   };
-  const s = map[status] ?? { label: status, className: '' };
+  const s = map[status];
   return (
     <Badge variant="outline" className={`shrink-0 ${s.className}`}>
       {s.label}

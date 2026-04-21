@@ -116,6 +116,7 @@ export function buildPrompt(input: BuildPromptInput): BuiltPrompt {
     `- Render the school name "${input.schoolName}" as secondary text (smaller, clean).`,
     `- Each avatar should look like a student of the described age/grade, gender, and race/ethnicity.`,
     `- Only each student's first name appears near their avatar — no last names, ages, or other personal data.`,
+    '- Name should be legible and readable and only appear once in the image.',
     `- Do NOT include any real-world school logo, trademark, or copyrighted imagery.`,
     `- Aspect ratio: landscape (16:9) — wider than tall.`,
     `- Avoid text gibberish; keep rendered text limited to the team name and school name.`,

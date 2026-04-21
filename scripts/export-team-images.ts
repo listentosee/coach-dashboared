@@ -1,13 +1,14 @@
 /**
- * Export all team images from Supabase Storage, organized by coach directory.
+ * Export all team images from Supabase Storage, organized by school / coach.
  *
  * Usage:
  *   pnpm tsx scripts/export-team-images.ts
  *
  * Output:
  *   team-images-export/
- *     Coach-Name/
- *       Team-Name.png
+ *     School-Name/
+ *       Coach-Name/
+ *         Team-Name.png
  */
 
 import 'dotenv/config';
@@ -45,6 +46,11 @@ function coachDirName(row: { coach_name: string | null; coach_email: string | nu
   return `unknown-${row.coach_id.slice(0, 8)}`;
 }
 
+function schoolDirName(schoolName: string | null): string {
+  if (schoolName && schoolName.trim()) return sanitizeName(schoolName);
+  return 'unknown-school';
+}
+
 async function main() {
   // Query teams with images, joined with coach profiles
   const { data: teams, error } = await supabase
@@ -54,7 +60,7 @@ async function main() {
       name,
       image_url,
       coach_id,
-      profiles!teams_coach_id_fkey ( full_name, first_name, last_name, email )
+      profiles!teams_coach_id_fkey ( full_name, first_name, last_name, email, school_name )
     `)
     .not('image_url', 'is', null);
 
@@ -77,15 +83,24 @@ async function main() {
   let skipped = 0;
 
   for (const team of teams) {
-    const profile = team.profiles as unknown as { full_name: string | null; first_name: string | null; last_name: string | null; email: string | null } | null;
+    const profile = team.profiles as unknown as {
+      full_name: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      email: string | null;
+      school_name: string | null;
+    } | null;
     const coachName = profile?.full_name
       ?? (profile?.first_name && profile?.last_name ? `${profile.first_name} ${profile.last_name}` : null);
     const coachEmail = profile?.email ?? null;
-    const dirName = coachDirName({ coach_name: coachName, coach_email: coachEmail, coach_id: team.coach_id });
+    const schoolName = profile?.school_name ?? null;
+
+    const schoolDir = schoolDirName(schoolName);
+    const coachDir = coachDirName({ coach_name: coachName, coach_email: coachEmail, coach_id: team.coach_id });
     const ext = getExtension(team.image_url!);
     const fileName = `${sanitizeName(team.name)}${ext}`;
-    const coachDir = path.join(OUTPUT_DIR, dirName);
-    const filePath = path.join(coachDir, fileName);
+    const fullDir = path.join(OUTPUT_DIR, schoolDir, coachDir);
+    const filePath = path.join(fullDir, fileName);
 
     // Download from storage
     const { data: blob, error: dlError } = await supabase.storage
@@ -93,17 +108,19 @@ async function main() {
       .download(team.image_url!);
 
     if (dlError || !blob) {
-      console.log(`  [SKIP] "${team.name}" (coach: ${coachName ?? coachEmail ?? 'unknown'}) — ${dlError?.message ?? 'empty response'}`);
+      console.log(
+        `  [SKIP] "${team.name}" (school: ${schoolName ?? 'unknown'}, coach: ${coachName ?? coachEmail ?? 'unknown'}) — ${dlError?.message ?? 'empty response'}`,
+      );
       skipped++;
       continue;
     }
 
     // Write to disk
-    fs.mkdirSync(coachDir, { recursive: true });
+    fs.mkdirSync(fullDir, { recursive: true });
     const buffer = Buffer.from(await blob.arrayBuffer());
     fs.writeFileSync(filePath, buffer);
 
-    console.log(`  [OK] ${dirName}/${fileName} (${(buffer.length / 1024).toFixed(1)} KB)`);
+    console.log(`  [OK] ${schoolDir}/${coachDir}/${fileName} (${(buffer.length / 1024).toFixed(1)} KB)`);
     exported++;
   }
 

@@ -94,9 +94,8 @@ export function buildPrompt(input: BuildPromptInput): BuiltPrompt {
   const palette = pick(PALETTE_PRESETS, seed, 1);
   const layout = pick(LAYOUT_PRESETS, seed, 2);
 
-  const memberLines = input.members.length > 0
-    ? input.members.map((m, i) => `  ${i + 1}. ${describeMember(m)}`).join('\n')
-    : '  (no member info available — use diverse student avatars)';
+  const memberCount = input.members.length;
+  const memberLines = input.members.map((m, i) => `  ${i + 1}. ${describeMember(m)}`).join('\n');
 
   const parts = [
     `Generate a team photo-style illustration for a high school / middle school / college cybersecurity competition team.`,
@@ -104,7 +103,7 @@ export function buildPrompt(input: BuildPromptInput): BuiltPrompt {
     `TEAM NAME: "${input.teamName}"`,
     `SCHOOL: "${input.schoolName}"`,
     ``,
-    `TEAM MEMBERS (use as avatars, labeled with first name only, no other personal info):`,
+    `TEAM MEMBERS — exactly ${memberCount} avatar${memberCount === 1 ? '' : 's'}, labeled with first name only, no other personal info:`,
     memberLines,
     ``,
     `STYLE: ${style}.`,
@@ -114,13 +113,15 @@ export function buildPrompt(input: BuildPromptInput): BuiltPrompt {
     `REQUIREMENTS:`,
     `- Render the team name "${input.teamName}" prominently as stylized text in the image.`,
     `- Render the school name "${input.schoolName}" as secondary text (smaller, clean).`,
+    `- Render EXACTLY ${memberCount} avatar${memberCount === 1 ? '' : 's'} — one per listed team member. Do NOT add extra people, background figures, bystanders, or crowd.`,
     `- Each avatar should look like a student of the described age/grade, gender, and race/ethnicity.`,
     `- Only each student's first name appears near their avatar — no last names, ages, or other personal data.`,
+    `- Do NOT invent names. Use ONLY the first names listed above.`,
     '- Name should be legible and readable and only appear once in the image.',
     '- Name font size should be half the size of the header font size.',
     `- Do NOT include any real-world school logo, trademark, or copyrighted imagery.`,
     `- Aspect ratio: landscape (16:9) — wider than tall.`,
-    `- Avoid text gibberish; keep rendered text limited to the team name and school name.`,
+    `- Avoid text gibberish; keep rendered text limited to the team name, school name, and the listed first names.`,
   ];
 
   if (input.regenInstructions && input.regenInstructions.trim()) {

@@ -117,6 +117,7 @@ export function buildPrompt(input: BuildPromptInput): BuiltPrompt {
     `- Each avatar should look like a student of the described age/grade, gender, and race/ethnicity.`,
     `- Only each student's first name appears near their avatar — no last names, ages, or other personal data.`,
     '- Name should be legible and readable and only appear once in the image.',
+    '- Name font size should be half the size of the header font size.',
     `- Do NOT include any real-world school logo, trademark, or copyrighted imagery.`,
     `- Aspect ratio: landscape (16:9) — wider than tall.`,
     `- Avoid text gibberish; keep rendered text limited to the team name and school name.`,

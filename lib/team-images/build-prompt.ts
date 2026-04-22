@@ -73,6 +73,10 @@ function describeMember(m: TeamMemberInfo): string {
   // Race/ethnicity - include to encourage representative avatars
   if (m.race && m.race.toLowerCase() !== 'prefer not to say') parts.push(m.race);
   if (m.ethnicity && m.ethnicity.toLowerCase() !== 'prefer not to say') parts.push(m.ethnicity);
+  // Experience level (drives posture/confidence cues, not age)
+  if (m.level_of_technology && m.level_of_technology.toLowerCase() !== 'prefer not to say') {
+    parts.push(`experience: ${m.level_of_technology}`);
+  }
   return `"${m.first_name}" (${parts.join(', ') || 'student'})`;
 }
 
@@ -114,7 +118,8 @@ export function buildPrompt(input: BuildPromptInput): BuiltPrompt {
     `- Render the team name "${input.teamName}" prominently as stylized text in the image.`,
     `- Render the school name "${input.schoolName}" as secondary text (smaller, clean).`,
     `- Render EXACTLY ${memberCount} avatar${memberCount === 1 ? '' : 's'} — one per listed team member. Do NOT add extra people, background figures, bystanders, or crowd.`,
-    `- Each avatar should look like a student of the described age/grade, gender, and race/ethnicity.`,
+    `- Each avatar MUST match the real student: grade (age cue), gender, race/ethnicity, and experience level as listed. Do not homogenize the group — render the specific demographics given.`,
+    `- Experience level should influence posture and confidence, not apparent age: beginners look curious/learning, intermediates engaged, advanced students confident/focused.`,
     `- Only each student's first name appears near their avatar — no last names, ages, or other personal data.`,
     `- Do NOT invent names. Use ONLY the first names listed above.`,
     '- Name should be legible and readable and only appear once in the image.',

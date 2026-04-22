@@ -61,18 +61,31 @@ export async function GET(req: NextRequest) {
       const coach = t.profiles as { full_name: string | null; school_name: string | null } | null;
       const latest = latestByTeam.get(t.id) ?? null;
 
+      // Detect coach-uploaded images. Our accept route writes to the exact
+      // path `<coach_id>/<team_id>.<ext>`. Anything else came from the coach.
+      const imageUrl: string | null = t.image_url ?? null;
+      const aiAcceptedPathPrefix = `${t.coach_id}/${t.id}.`;
+      const isAiAcceptedImage =
+        !!imageUrl && imageUrl.startsWith(aiAcceptedPathPrefix);
+      const isCoachUploadedImage = !!imageUrl && !isAiAcceptedImage;
+
       // Derive status
       let status: 'pending' | 'generated' | 'complete' | 'failed' | 'missing';
       if (latest?.status === 'pending') status = 'pending';
-      else if (latest?.status === 'accepted' && t.image_url) status = 'generated';
-      else if (t.image_url) status = 'complete';
+      else if (latest?.status === 'accepted' && imageUrl) status = 'generated';
+      else if (imageUrl) status = 'complete';
       else if (latest?.status === 'failed') status = 'failed';
       else status = 'missing';
+
+      // Guard: if the team now has a coach-uploaded image while a candidate
+      // is still pending, the admin must NOT accept — that would overwrite
+      // the coach's work. Surface this to the UI.
+      const coachUploadedWhilePending = status === 'pending' && isCoachUploadedImage;
 
       // Pick which image to display: pending candidate preview OR current team image
       let imagePath: string | null = null;
       if (status === 'pending' && latest?.candidate_path) imagePath = latest.candidate_path;
-      else if (t.image_url) imagePath = t.image_url;
+      else if (imageUrl) imagePath = imageUrl;
 
       let signedUrl: string | null = null;
       if (imagePath) {
@@ -80,6 +93,16 @@ export async function GET(req: NextRequest) {
           .from('team-images')
           .createSignedUrl(imagePath, 60 * 60 * 8);
         signedUrl = signed?.signedUrl ?? null;
+      }
+
+      // If a coach upload exists alongside a pending candidate, also sign the
+      // coach image so the UI can show a thumbnail warning.
+      let coachImageSignedUrl: string | null = null;
+      if (coachUploadedWhilePending && imageUrl) {
+        const { data: signed } = await service.storage
+          .from('team-images')
+          .createSignedUrl(imageUrl, 60 * 60 * 8);
+        coachImageSignedUrl = signed?.signedUrl ?? null;
       }
 
       return {
@@ -90,6 +113,8 @@ export async function GET(req: NextRequest) {
         status,
         image_path: imagePath,
         signed_url: signedUrl,
+        coach_uploaded_while_pending: coachUploadedWhilePending,
+        coach_image_signed_url: coachImageSignedUrl,
         candidate: latest
           ? {
               id: latest.id,

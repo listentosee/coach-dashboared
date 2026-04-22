@@ -36,6 +36,8 @@ interface TeamRow {
   status: TeamStatus;
   image_path: string | null;
   signed_url: string | null;
+  coach_uploaded_while_pending?: boolean;
+  coach_image_signed_url?: string | null;
   candidate: CandidateInfo | null;
 }
 
@@ -378,10 +380,10 @@ interface TeamCardProps {
 }
 
 function TeamCard({ team, onAccept, onRegen, onReject }: TeamCardProps) {
-  const canAccept = team.status === 'pending' && !!team.signed_url;
+  const coachUploadedWhilePending = !!team.coach_uploaded_while_pending;
+  // Accept is blocked if a coach-uploaded image exists — we must not overwrite it.
+  const canAccept = team.status === 'pending' && !!team.signed_url && !coachUploadedWhilePending;
   const canReject = team.status === 'pending' && !!team.candidate;
-  // Regen is allowed on pending items AND on teams that already have an image
-  // (complete/generated) — the latter creates a new pending candidate for review.
   const canRegen =
     (team.status === 'pending' && !!team.candidate) ||
     team.status === 'complete' ||
@@ -400,6 +402,27 @@ function TeamCard({ team, onAccept, onRegen, onReject }: TeamCardProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
+        {coachUploadedWhilePending && (
+          <div className="rounded border border-amber-500/50 bg-amber-500/10 p-3 text-xs text-amber-200 space-y-2">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <div>
+                <strong>Coach uploaded an image.</strong> Accepting is disabled —
+                rejecting is recommended so the coach&apos;s upload stays in place.
+              </div>
+            </div>
+            {team.coach_image_signed_url && (
+              <div className="aspect-video bg-slate-900 rounded overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={team.coach_image_signed_url}
+                  alt={`${team.team_name} (coach upload)`}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+          </div>
+        )}
         <div className="aspect-video bg-slate-800 rounded overflow-hidden flex items-center justify-center">
           {team.status === 'failed' ? (
             <div className="p-4 text-center text-red-400 text-sm">
@@ -463,6 +486,17 @@ function TeamCard({ team, onAccept, onRegen, onReject }: TeamCardProps) {
                 <X className="h-4 w-4 mr-1" /> Reject
               </Button>
             )}
+          </div>
+        )}
+        {coachUploadedWhilePending && canReject && !showEmptyPlaceholderActions && (
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={onReject}
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+            >
+              <X className="h-4 w-4 mr-1" /> Reject (keep coach upload)
+            </Button>
           </div>
         )}
         {showStandaloneRegen && (

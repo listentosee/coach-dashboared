@@ -23,7 +23,7 @@ export async function POST(
 
   const { data: candidate, error: cErr } = await service
     .from('team_image_candidates')
-    .select('id, team_id, candidate_path, status, teams:team_id(coach_id)')
+    .select('id, team_id, candidate_path, status, teams:team_id(coach_id, image_url)')
     .eq('id', candidateId)
     .single();
 
@@ -38,8 +38,24 @@ export async function POST(
   }
 
   const coachId = (candidate.teams as any)?.coach_id as string | undefined;
+  const existingImageUrl = ((candidate.teams as any)?.image_url ?? null) as string | null;
   if (!coachId) {
     return NextResponse.json({ error: 'Team has no coach' }, { status: 400 });
+  }
+
+  // Guard: refuse to overwrite a coach-uploaded image. Our accept route writes
+  // to the exact path `<coach_id>/<team_id>.<ext>`; any other path implies the
+  // coach uploaded (or re-uploaded) directly. Admin must reject the candidate
+  // to resolve this case — this tool is strictly for backfill.
+  const aiAcceptedPathPrefix = `${coachId}/${candidate.team_id}.`;
+  if (existingImageUrl && !existingImageUrl.startsWith(aiAcceptedPathPrefix)) {
+    return NextResponse.json(
+      {
+        error:
+          'Team already has a coach-uploaded image. Reject this candidate to avoid overwriting the coach\'s upload.',
+      },
+      { status: 409 },
+    );
   }
 
   const ext = candidate.candidate_path.match(/\.[a-zA-Z0-9]+$/)?.[0] ?? '.png';

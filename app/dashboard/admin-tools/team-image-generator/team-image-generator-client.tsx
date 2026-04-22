@@ -153,7 +153,10 @@ export function TeamImageGeneratorClient() {
 
   const openRegen = (t: TeamRow) => {
     setRegenTarget(t);
-    setRegenInstructions('');
+    // Seed the dialog with the last instructions used for this team so the
+    // admin can tweak rather than retype. Falls back to empty when the team
+    // has no prior regen history (e.g. fresh placeholder or complete/uploaded).
+    setRegenInstructions(t.candidate?.regen_instructions ?? '');
   };
 
   const submitRegen = async () => {
@@ -341,7 +344,9 @@ export function TeamImageGeneratorClient() {
             </DialogTitle>
             <DialogDescription>
               {regenTarget?.candidate?.prompt_used
-                ? 'Enter instructions for the regeneration. These will be added to the prompt.'
+                ? regenTarget?.candidate?.regen_instructions
+                  ? 'Previous instructions are loaded below — tweak them and regenerate, or clear and start fresh.'
+                  : 'Enter instructions for the regeneration. These will be added to the prompt.'
                 : 'Optionally enter styling instructions. Leave blank to use the default randomized style.'}
             </DialogDescription>
           </DialogHeader>

@@ -124,6 +124,7 @@ export function buildPrompt(input: BuildPromptInput): BuiltPrompt {
     `- Do NOT invent names. Use ONLY the first names listed above.`,
     '- Name should be legible and readable and only appear once in the image.',
     '- Name font size should be half the size of the header font size.',
+    `- All rendered text MUST have strong contrast against its background. Never place light text on a light background or dark text on a dark background. If the background in that region is light, the text must be dark (or have a dark outline/shadow); if dark, the text must be light.`,
     `- Do NOT include any real-world school logo, trademark, or copyrighted imagery.`,
     `- Aspect ratio: landscape (16:9) — wider than tall.`,
     `- Avoid text gibberish; keep rendered text limited to the team name, school name, and the listed first names.`,

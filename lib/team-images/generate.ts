@@ -52,11 +52,15 @@ export async function generateForTeam(
   const schoolName = profile?.school_name ?? 'Cybersecurity Academy';
 
   // 2. Load members
+  // Only include competitors who are active on the game platform. Anyone
+  // missing from the platform is excluded from the rendered team so Gemini
+  // can't hallucinate avatars. If the team has zero eligible members, we
+  // refuse to generate — this tool is a backfill aid, not a fabrication tool.
   const { data: memberRows, error: membersErr } = await supabase
     .from('team_members')
     .select(`
       competitor_id,
-      competitors:competitors ( first_name, grade, gender, race, ethnicity, level_of_technology )
+      competitors:competitors ( first_name, grade, gender, race, ethnicity, level_of_technology, game_platform_id, is_active )
     `)
     .eq('team_id', teamId);
 
@@ -64,7 +68,16 @@ export async function generateForTeam(
 
   const members: TeamMemberInfo[] = (memberRows ?? [])
     .map((r: any) => r.competitors)
-    .filter((c: any): c is TeamMemberInfo => !!c && !!c.first_name);
+    .filter(
+      (c: any): c is TeamMemberInfo =>
+        !!c && !!c.first_name && !!c.game_platform_id && c.is_active !== false,
+    );
+
+  if (members.length === 0) {
+    throw new Error(
+      'No eligible team members: this team has no competitors active on the game platform. Add competitors to the team and onboard them to the game platform before generating an image.',
+    );
+  }
 
   // 3. Build prompt
   const built = buildPrompt({

@@ -11,10 +11,23 @@
 const DEFAULT_MODEL = 'gemini-2.5-flash-image';
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
+export interface ReferenceImage {
+  /** MIME type, e.g. "image/png" or "image/jpeg" */
+  mimeType: string;
+  /** Base64-encoded image bytes (no data URL prefix) */
+  data: string;
+}
+
 export interface GenerateImageOptions {
   prompt: string;
   model?: string;
   timeoutMs?: number;
+  /**
+   * Optional reference images (logos, style refs). Passed as inline_data parts
+   * alongside the prompt so Gemini can use them as visual references. Do NOT
+   * use this for student photos — FERPA concerns apply; use descriptive text.
+   */
+  references?: ReferenceImage[];
 }
 
 export interface GenerateImageResult {
@@ -56,8 +69,15 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
 
   const url = `${API_BASE}/${encodeURIComponent(model)}:generateContent?key=${apiKey}`;
 
+  const requestParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
+    { text: options.prompt },
+  ];
+  for (const ref of options.references ?? []) {
+    requestParts.push({ inlineData: { mimeType: ref.mimeType, data: ref.data } });
+  }
+
   const body = {
-    contents: [{ role: 'user', parts: [{ text: options.prompt }] }],
+    contents: [{ role: 'user', parts: requestParts }],
     generationConfig: {
       responseModalities: ['IMAGE'],
       imageConfig: { aspectRatio: '16:9' },

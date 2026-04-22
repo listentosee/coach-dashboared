@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase';
 import { generateForTeam } from '@/lib/team-images/generate';
+import { parseReferenceLogoDataUrl } from '@/lib/team-images/reference-logo';
 
 /**
  * POST /api/admin/team-images/generate-for-team
@@ -19,6 +20,7 @@ import { generateForTeam } from '@/lib/team-images/generate';
 const bodySchema = z.object({
   teamId: z.string().uuid(),
   instructions: z.string().max(2000).optional().default(''),
+  referenceLogoDataUrl: z.string().optional(),
 });
 
 export const maxDuration = 60;
@@ -59,10 +61,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const referenceLogo = parseReferenceLogoDataUrl(parsed.data.referenceLogoDataUrl);
+
     const result = await generateForTeam(
       {
         teamId: parsed.data.teamId,
         regenInstructions: parsed.data.instructions || undefined,
+        referenceLogo,
       },
       service,
     );

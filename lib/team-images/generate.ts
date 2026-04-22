@@ -8,7 +8,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { generateImage } from '@/lib/integrations/gemini/image';
+import { generateImage, type ReferenceImage } from '@/lib/integrations/gemini/image';
 import { buildPrompt, type TeamMemberInfo } from '@/lib/team-images/build-prompt';
 
 const CANDIDATES_FOLDER = '_candidates';
@@ -18,6 +18,8 @@ export interface GenerateForTeamInput {
   regenInstructions?: string;
   /** When set: the existing candidate that this regen should replace. */
   supersedesCandidateId?: string;
+  /** Optional reference logo passed to Gemini as an inline_data part. Not persisted. */
+  referenceLogo?: ReferenceImage;
 }
 
 export interface GenerateForTeamResult {
@@ -32,7 +34,7 @@ export async function generateForTeam(
   input: GenerateForTeamInput,
   supabase: SupabaseClient<any, any, any>,
 ): Promise<GenerateForTeamResult> {
-  const { teamId, regenInstructions, supersedesCandidateId } = input;
+  const { teamId, regenInstructions, supersedesCandidateId, referenceLogo } = input;
 
   // 1. Load team + coach
   const { data: team, error: teamErr } = await supabase
@@ -85,6 +87,7 @@ export async function generateForTeam(
     schoolName,
     members,
     regenInstructions: regenInstructions ?? null,
+    hasReferenceLogo: !!referenceLogo,
   });
 
   // 4. Choose candidate row: reuse empty placeholder, supersede real prior, or create new
@@ -156,7 +159,10 @@ export async function generateForTeam(
 
   // 5. Call Gemini + upload
   try {
-    const result = await generateImage({ prompt: built.prompt });
+    const result = await generateImage({
+      prompt: built.prompt,
+      references: referenceLogo ? [referenceLogo] : undefined,
+    });
     const ext = result.mimeType.includes('jpeg') ? '.jpg' : '.png';
     const candidatePath = `${CANDIDATES_FOLDER}/${candidateId}${ext}`;
 

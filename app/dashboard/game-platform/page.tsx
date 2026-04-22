@@ -62,10 +62,13 @@ interface TeamSummary {
   membersOffPlatform: TeamMemberPending[];
   avgScore: number;
   lastSync: string | null;
-  /** True when every rostered member has years_competing === 0 (and all are known) */
+  /** True when every active (non-pending) member has years_competing === 0 (and all known) */
   allFirstTimers?: boolean;
+  /** True when the team has zero rostered members */
+  isEmpty?: boolean;
   rookieMembers?: number;
   membersWithExperienceKnown?: number;
+  activeMembers?: number;
 }
 
 interface DashboardData {
@@ -948,11 +951,22 @@ export default function GamePlatformDashboard() {
             </div>
             {(() => {
               const rookieCount = teams.filter((t) => t?.allFirstTimers).length;
-              return rookieCount > 0 ? (
-                <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
-                  <span className="font-semibold">{rookieCount}</span> {rookieCount === 1 ? 'team is' : 'teams are'} all first-time competitors
+              const emptyCount = teams.filter((t) => t?.isEmpty).length;
+              if (rookieCount === 0 && emptyCount === 0) return null;
+              return (
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {rookieCount > 0 ? (
+                    <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-emerald-200">
+                      <span className="font-semibold">{rookieCount}</span> {rookieCount === 1 ? 'team is' : 'teams are'} all first-time competitors
+                    </div>
+                  ) : null}
+                  {emptyCount > 0 ? (
+                    <div className="rounded-md border border-slate-500/40 bg-slate-500/10 px-3 py-2 text-slate-200">
+                      <span className="font-semibold">{emptyCount}</span> {emptyCount === 1 ? 'team has' : 'teams have'} no members
+                    </div>
+                  ) : null}
                 </div>
-              ) : null;
+              );
             })()}
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -961,14 +975,24 @@ export default function GamePlatformDashboard() {
                 <CardHeader>
                   <CardTitle className="text-meta-light flex items-start justify-between gap-2">
                     <span className="line-clamp-2">{team ? team.name : '—'}</span>
-                    {team?.allFirstTimers ? (
-                      <span
-                        className="shrink-0 rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-200"
-                        title="Every rostered competitor is in their first season"
-                      >
-                        All First-Timers
-                      </span>
-                    ) : null}
+                    <div className="shrink-0 flex flex-col items-end gap-1">
+                      {team?.isEmpty ? (
+                        <span
+                          className="rounded-full border border-slate-400/50 bg-slate-500/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-200"
+                          title="This team has no rostered members"
+                        >
+                          Empty
+                        </span>
+                      ) : null}
+                      {team?.allFirstTimers ? (
+                        <span
+                          className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-200"
+                          title="Every non-pending competitor on this team is in their first season"
+                        >
+                          All First-Timers
+                        </span>
+                      ) : null}
+                    </div>
                   </CardTitle>
                   <CardDescription>
                     Last sync {team ? relativeFromNow(team.lastSync) : '—'}

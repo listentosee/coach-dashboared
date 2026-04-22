@@ -62,6 +62,10 @@ interface TeamSummary {
   membersOffPlatform: TeamMemberPending[];
   avgScore: number;
   lastSync: string | null;
+  /** True when every rostered member has years_competing === 0 (and all are known) */
+  allFirstTimers?: boolean;
+  rookieMembers?: number;
+  membersWithExperienceKnown?: number;
 }
 
 interface DashboardData {
@@ -942,12 +946,30 @@ export default function GamePlatformDashboard() {
               <h2 className="text-xl font-semibold text-meta-light">Teams Snapshot</h2>
               <p className="text-sm text-meta-muted">Compare collective scores and recent activity.</p>
             </div>
+            {(() => {
+              const rookieCount = teams.filter((t) => t?.allFirstTimers).length;
+              return rookieCount > 0 ? (
+                <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+                  <span className="font-semibold">{rookieCount}</span> {rookieCount === 1 ? 'team is' : 'teams are'} all first-time competitors
+                </div>
+              ) : null;
+            })()}
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {(loading ? Array.from<TeamSummary>({ length: 3 }) : teams).map((team, idx) => (
               <Card key={team?.teamId ?? idx} className="border-meta-border bg-meta-card/90 hover:border-meta-accent/60 transition">
                 <CardHeader>
-                  <CardTitle className="text-meta-light">{team ? team.name : '—'}</CardTitle>
+                  <CardTitle className="text-meta-light flex items-start justify-between gap-2">
+                    <span className="line-clamp-2">{team ? team.name : '—'}</span>
+                    {team?.allFirstTimers ? (
+                      <span
+                        className="shrink-0 rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-200"
+                        title="Every rostered competitor is in their first season"
+                      >
+                        All First-Timers
+                      </span>
+                    ) : null}
+                  </CardTitle>
                   <CardDescription>
                     Last sync {team ? relativeFromNow(team.lastSync) : '—'}
                   </CardDescription>

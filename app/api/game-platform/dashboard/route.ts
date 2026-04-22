@@ -75,6 +75,7 @@ export async function GET(request: NextRequest) {
         last_name,
         coach_id,
         status,
+        years_competing,
         game_platform_id,
         game_platform_synced_at,
         game_platform_sync_error,
@@ -324,6 +325,8 @@ export async function GET(request: NextRequest) {
           affiliation: team.affiliation ?? competitor.coach?.school_name ?? null,
           totalMembers: 0,
           syncedMembers: 0,
+          rookieMembers: 0,
+          membersWithExperienceKnown: 0,
           membersOnPlatform: [] as Array<{
             competitorId: string;
             name: string;
@@ -340,6 +343,11 @@ export async function GET(request: NextRequest) {
         };
 
         roster.totalMembers += 1;
+        const yc = (competitor as { years_competing?: number | null }).years_competing;
+        if (typeof yc === 'number') {
+          roster.membersWithExperienceKnown += 1;
+          if (yc === 0) roster.rookieMembers += 1;
+        }
         if (syncedUserId) {
           roster.syncedMembers += 1;
           roster.membersOnPlatform.push({
@@ -509,6 +517,14 @@ export async function GET(request: NextRequest) {
       memberCount: team.syncedMembers,
       pendingMembers: Math.max(team.totalMembers - team.syncedMembers, 0),
       avgScore: team.syncedMembers ? Math.round(team.totalPoints / team.syncedMembers) : 0,
+      // A team is "all first-timers" when every rostered member has
+      // years_competing recorded AND every one of them is 0. Teams with any
+      // unknown years_competing are NOT flagged — avoids false positives on
+      // incomplete rosters.
+      allFirstTimers:
+        team.totalMembers > 0 &&
+        team.membersWithExperienceKnown === team.totalMembers &&
+        team.rookieMembers === team.totalMembers,
     })).sort((a, b) => b.totalPoints - a.totalPoints);
 
     const unsyncedCompetitors = (competitors || [])

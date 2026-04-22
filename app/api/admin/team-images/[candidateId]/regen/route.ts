@@ -5,9 +5,12 @@ import { z } from 'zod';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase';
 import { generateForTeam } from '@/lib/team-images/generate';
+import { parseReferenceLogoDataUrl } from '@/lib/team-images/reference-logo';
 
 const bodySchema = z.object({
   instructions: z.string().max(2000).optional().default(''),
+  /** Optional reference logo as a data URL. Not persisted — used for this one call only. */
+  referenceLogoDataUrl: z.string().optional(),
 });
 
 // Gemini image generation can take 15–45 seconds. Allow up to 60s.
@@ -52,12 +55,15 @@ export async function POST(
       return NextResponse.json({ error: `Candidate already ${candidate.status}` }, { status: 409 });
     }
 
+    const referenceLogo = parseReferenceLogoDataUrl(parsed.data.referenceLogoDataUrl);
+
     // Inline generation — blocks until Gemini returns and the file is uploaded.
     const result = await generateForTeam(
       {
         teamId: candidate.team_id,
         regenInstructions: parsed.data.instructions || undefined,
         supersedesCandidateId: candidate.id,
+        referenceLogo,
       },
       service,
     );

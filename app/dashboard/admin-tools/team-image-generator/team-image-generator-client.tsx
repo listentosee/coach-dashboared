@@ -60,6 +60,8 @@ export function TeamImageGeneratorClient() {
   const [regenTarget, setRegenTarget] = useState<TeamRow | null>(null);
   const [regenInstructions, setRegenInstructions] = useState('');
   const [regenSubmitting, setRegenSubmitting] = useState(false);
+  const [referenceLogoDataUrl, setReferenceLogoDataUrl] = useState<string | null>(null);
+  const [referenceLogoName, setReferenceLogoName] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -157,6 +159,31 @@ export function TeamImageGeneratorClient() {
     // admin can tweak rather than retype. Falls back to empty when the team
     // has no prior regen history (e.g. fresh placeholder or complete/uploaded).
     setRegenInstructions(t.candidate?.regen_instructions ?? '');
+    // Logo refs are transient — reset per open.
+    setReferenceLogoDataUrl(null);
+    setReferenceLogoName(null);
+  };
+
+  const handleLogoFile = (file: File | null) => {
+    if (!file) {
+      setReferenceLogoDataUrl(null);
+      setReferenceLogoName(null);
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Logo file too large — max 2 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') {
+        setReferenceLogoDataUrl(result);
+        setReferenceLogoName(file.name);
+      }
+    };
+    reader.onerror = () => toast.error('Failed to read logo file.');
+    reader.readAsDataURL(file);
   };
 
   const submitRegen = async () => {
@@ -172,16 +199,18 @@ export function TeamImageGeneratorClient() {
     }
     setRegenSubmitting(true);
     try {
+      const commonBody: Record<string, unknown> = { instructions: regenInstructions };
+      if (referenceLogoDataUrl) commonBody.referenceLogoDataUrl = referenceLogoDataUrl;
       const res = hasPendingCandidate
         ? await fetch(`/api/admin/team-images/${regenTarget.candidate!.id}/regen`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ instructions: regenInstructions }),
+            body: JSON.stringify(commonBody),
           })
         : await fetch('/api/admin/team-images/generate-for-team', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ teamId: regenTarget.team_id, instructions: regenInstructions }),
+            body: JSON.stringify({ ...commonBody, teamId: regenTarget.team_id }),
           });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -190,6 +219,8 @@ export function TeamImageGeneratorClient() {
       toast.success(`New image generated for ${regenTarget.team_name} — review the pending candidate.`);
       setRegenTarget(null);
       setRegenInstructions('');
+      setReferenceLogoDataUrl(null);
+      setReferenceLogoName(null);
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Regen failed');
@@ -356,6 +387,43 @@ export function TeamImageGeneratorClient() {
             placeholder="e.g. Make it more vibrant, emphasize teamwork, less dark..."
             rows={5}
           />
+          <div className="space-y-1">
+            <label className="text-xs text-meta-muted uppercase tracking-wide">
+              Reference logo (optional)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                onChange={(e) => handleLogoFile(e.target.files?.[0] ?? null)}
+                className="block w-full text-sm text-meta-light file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:bg-slate-700 file:text-meta-light hover:file:bg-slate-600"
+              />
+              {referenceLogoDataUrl && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleLogoFile(null)}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+            {referenceLogoDataUrl && (
+              <div className="flex items-center gap-3 mt-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={referenceLogoDataUrl}
+                  alt="Reference logo preview"
+                  className="h-16 w-16 object-contain bg-slate-900 rounded border border-meta-border"
+                />
+                <div className="text-xs text-meta-muted">
+                  <div className="font-mono">{referenceLogoName}</div>
+                  <div className="italic">Sent to Gemini once — not saved.</div>
+                </div>
+              </div>
+            )}
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRegenTarget(null)} disabled={regenSubmitting}>
               Cancel

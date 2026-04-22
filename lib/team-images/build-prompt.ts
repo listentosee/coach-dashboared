@@ -22,6 +22,12 @@ export interface BuildPromptInput {
   regenInstructions?: string | null;
   /** Arbitrary string used to seed the style randomizer — team name by default */
   seed?: string;
+  /**
+   * True when a reference logo image is being sent alongside the prompt. When
+   * set, the "no real-world logo" rule is replaced with an instruction to
+   * incorporate the provided reference.
+   */
+  hasReferenceLogo?: boolean;
 }
 
 const STYLE_PRESETS = [
@@ -125,7 +131,13 @@ export function buildPrompt(input: BuildPromptInput): BuiltPrompt {
     '- Name should be legible and readable and only appear once in the image.',
     '- Name font size should be half the size of the header font size.',
     `- All rendered text MUST have strong contrast against its background. Never place light text on a light background or dark text on a dark background. If the background in that region is light, the text must be dark (or have a dark outline/shadow); if dark, the text must be light.`,
-    `- Do NOT include any real-world school logo, trademark, or copyrighted imagery.`,
+    ...(input.hasReferenceLogo
+      ? [
+          `- A reference logo image is attached as an additional input. INCORPORATE IT into the design as a logo element — corner mark, banner flag, shoulder patch, or integrated background accent (use your judgment for placement). Preserve the logo's colors and shape faithfully; do not restyle it beyond minor recoloring needed for legibility. This attached logo OVERRIDES the "no real-world logo" rule.`,
+        ]
+      : [
+          `- Do NOT include any real-world school logo, trademark, or copyrighted imagery.`,
+        ]),
     `- Aspect ratio: landscape (16:9) — wider than tall.`,
     `- Avoid text gibberish; keep rendered text limited to the team name, school name, and the listed first names.`,
   ];

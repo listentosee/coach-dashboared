@@ -3,12 +3,12 @@ import {
   COMPETITOR_FILLOUT_FORM_ID,
   getCertificateClaimByToken,
 } from '@/lib/certificates/public';
+import { SurveyFrame } from './survey-frame';
 
 export const dynamic = 'force-dynamic';
 
 type ClaimPageProps = {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ survey?: string }>;
 };
 
 function PageShell({
@@ -33,9 +33,8 @@ function PageShell({
   );
 }
 
-export default async function CertificateClaimPage({ params, searchParams }: ClaimPageProps) {
+export default async function CertificateClaimPage({ params }: ClaimPageProps) {
   const { token } = await params;
-  const query = await searchParams;
   const certificate = await getCertificateClaimByToken(token);
 
   if (!certificate) {
@@ -84,32 +83,13 @@ export default async function CertificateClaimPage({ params, searchParams }: Cla
       title="Complete Survey To Unlock Certificate"
       description={`Your certificate for ${certificate.certificate_year} is waiting. Complete the short survey below to unlock the download.`}
     >
-      {query.survey === 'complete' ? (
-        <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-100">
-          Survey submitted. If your certificate is not unlocked yet, wait a few seconds and refresh this page.
-        </div>
-      ) : null}
-
       <div className="mb-4 rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
         <div className="font-medium text-white">{competitorName}</div>
         <div>Certificate year: {certificate.certificate_year}</div>
       </div>
 
       {COMPETITOR_FILLOUT_FORM_ID ? (
-        <>
-          <iframe
-            title="Competition certificate survey"
-            src={filloutUrl}
-            className="w-full rounded-xl border border-white/10 bg-white"
-            style={{ minHeight: '720px' }}
-          />
-          <div className="mt-3 text-xs text-slate-400">
-            If the embedded form does not load, open it directly:{' '}
-            <a className="underline" href={filloutUrl}>
-              competitor survey
-            </a>
-          </div>
-        </>
+        <SurveyFrame filloutUrl={filloutUrl} token={token} />
       ) : (
         <div className="rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100">
           Competitor survey form is not configured yet.

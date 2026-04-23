@@ -16,6 +16,10 @@ function inferTypeFromFormId(formId: string | null): 'coach' | 'competitor' | nu
   return null;
 }
 
+function formIdForType(type: 'coach' | 'competitor'): string {
+  return type === 'coach' ? COACH_FORM_ID : COMPETITOR_FORM_ID;
+}
+
 const FILLOUT_API_BASE = process.env.FILLOUT_API_BASE || 'https://api.fillout.com/v1/api';
 
 /**
@@ -240,14 +244,13 @@ async function handleSubmission(
     notes.push(`type inferred from form_id=${formId}`);
   }
 
-  // Enrich with the full submission via Fillout's REST API. The webhook body
-  // is often empty (configurable mode), so this is how we get the actual Q&A.
-  // Fails gracefully — enrichment is best-effort; cert unlock doesn't depend on it.
+  // Enrich with the full submission via Fillout's REST API. Fillout's
+  // configurable webhook doesn't forward form_id as a URL param, so we
+  // derive it from the resolved audience type.
+  const effectiveFormId = formId || formIdForType(type);
   let enrichedSubmission: FilloutSubmission | null = null;
-  if (formId) {
-    enrichedSubmission = await fetchFilloutSubmission(formId, submissionId);
-    if (enrichedSubmission) notes.push('submission enriched from Fillout API');
-  }
+  enrichedSubmission = await fetchFilloutSubmission(effectiveFormId, submissionId);
+  if (enrichedSubmission) notes.push('submission enriched from Fillout API');
   const effectiveSubmission: FilloutSubmission = enrichedSubmission ?? submission;
 
   // Resolve per-audience id (may be absent — we'll still store the row).

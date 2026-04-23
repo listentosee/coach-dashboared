@@ -93,7 +93,9 @@ export async function POST(req: NextRequest) {
       results,
     });
   } catch (error) {
-    console.error('Certificate generation failed', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error('[certificates/generate] 500', { message, stack });
+    return NextResponse.json({ error: message, stack: process.env.NODE_ENV === 'production' ? undefined : stack }, { status: 500 });
   }
 }

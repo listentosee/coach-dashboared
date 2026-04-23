@@ -55,80 +55,90 @@ export async function GET(req: NextRequest) {
     if (!latestByTeam.has(c.team_id)) latestByTeam.set(c.team_id, c);
   }
 
-  // 3. Build rows
-  const rows = await Promise.all(
-    (teams ?? []).map(async (t: any) => {
-      const coach = t.profiles as { full_name: string | null; school_name: string | null } | null;
-      const latest = latestByTeam.get(t.id) ?? null;
+  // 3. First pass: derive status + figure out which paths need signed URLs
+  type TeamDerived = {
+    t: any;
+    coach: { full_name: string | null; school_name: string | null } | null;
+    latest: (typeof allCandidates)[number] | null;
+    imageUrl: string | null;
+    status: 'pending' | 'generated' | 'complete' | 'failed' | 'missing';
+    coachUploadedWhilePending: boolean;
+    imagePath: string | null;
+    coachImagePath: string | null;
+  };
 
-      // Detect coach-uploaded images. Our accept route writes to the exact
-      // path `<coach_id>/<team_id>.<ext>`. Anything else came from the coach.
-      const imageUrl: string | null = t.image_url ?? null;
-      const aiAcceptedPathPrefix = `${t.coach_id}/${t.id}.`;
-      const isAiAcceptedImage =
-        !!imageUrl && imageUrl.startsWith(aiAcceptedPathPrefix);
-      const isCoachUploadedImage = !!imageUrl && !isAiAcceptedImage;
+  const derived: TeamDerived[] = (teams ?? []).map((t: any) => {
+    const coach = t.profiles as { full_name: string | null; school_name: string | null } | null;
+    const latest = latestByTeam.get(t.id) ?? null;
 
-      // Derive status
-      let status: 'pending' | 'generated' | 'complete' | 'failed' | 'missing';
-      if (latest?.status === 'pending') status = 'pending';
-      else if (latest?.status === 'accepted' && imageUrl) status = 'generated';
-      else if (imageUrl) status = 'complete';
-      else if (latest?.status === 'failed') status = 'failed';
-      else status = 'missing';
+    const imageUrl: string | null = t.image_url ?? null;
+    const aiAcceptedPathPrefix = `${t.coach_id}/${t.id}.`;
+    const isAiAcceptedImage = !!imageUrl && imageUrl.startsWith(aiAcceptedPathPrefix);
+    const isCoachUploadedImage = !!imageUrl && !isAiAcceptedImage;
 
-      // Guard: if the team now has a coach-uploaded image while a candidate
-      // is still pending, the admin must NOT accept — that would overwrite
-      // the coach's work. Surface this to the UI.
-      const coachUploadedWhilePending = status === 'pending' && isCoachUploadedImage;
+    let status: TeamDerived['status'];
+    if (latest?.status === 'pending') status = 'pending';
+    else if (latest?.status === 'accepted' && imageUrl) status = 'generated';
+    else if (imageUrl) status = 'complete';
+    else if (latest?.status === 'failed') status = 'failed';
+    else status = 'missing';
 
-      // Pick which image to display: pending candidate preview OR current team image
-      let imagePath: string | null = null;
-      if (status === 'pending' && latest?.candidate_path) imagePath = latest.candidate_path;
-      else if (imageUrl) imagePath = imageUrl;
+    const coachUploadedWhilePending = status === 'pending' && isCoachUploadedImage;
 
-      let signedUrl: string | null = null;
-      if (imagePath) {
-        const { data: signed } = await service.storage
-          .from('team-images')
-          .createSignedUrl(imagePath, 60 * 60 * 8);
-        signedUrl = signed?.signedUrl ?? null;
-      }
+    let imagePath: string | null = null;
+    if (status === 'pending' && latest?.candidate_path) imagePath = latest.candidate_path;
+    else if (imageUrl) imagePath = imageUrl;
 
-      // If a coach upload exists alongside a pending candidate, also sign the
-      // coach image so the UI can show a thumbnail warning.
-      let coachImageSignedUrl: string | null = null;
-      if (coachUploadedWhilePending && imageUrl) {
-        const { data: signed } = await service.storage
-          .from('team-images')
-          .createSignedUrl(imageUrl, 60 * 60 * 8);
-        coachImageSignedUrl = signed?.signedUrl ?? null;
-      }
+    const coachImagePath = coachUploadedWhilePending && imageUrl ? imageUrl : null;
 
-      return {
-        team_id: t.id,
-        team_name: t.name,
-        coach_name: coach?.full_name ?? null,
-        school_name: coach?.school_name ?? null,
-        status,
-        image_path: imagePath,
-        signed_url: signedUrl,
-        coach_uploaded_while_pending: coachUploadedWhilePending,
-        coach_image_signed_url: coachImageSignedUrl,
-        candidate: latest
-          ? {
-              id: latest.id,
-              status: latest.status,
-              prompt_used: latest.prompt_used,
-              regen_instructions: latest.regen_instructions,
-              error_message: latest.error_message,
-              generated_at: latest.generated_at,
-              candidate_path: latest.candidate_path,
-            }
-          : null,
-      };
-    }),
+    return { t, coach, latest, imageUrl, status, coachUploadedWhilePending, imagePath, coachImagePath };
+  });
+
+  // 4. Batch-sign every unique path in ONE call. Signing 50+ URLs with
+  // per-path awaits blows past the serverless timeout.
+  const uniquePaths = Array.from(
+    new Set(
+      derived
+        .flatMap((d) => [d.imagePath, d.coachImagePath])
+        .filter((p): p is string => !!p),
+    ),
   );
+
+  const signedByPath = new Map<string, string>();
+  if (uniquePaths.length > 0) {
+    const { data: signedBatch } = await service.storage
+      .from('team-images')
+      .createSignedUrls(uniquePaths, 60 * 60 * 8);
+    for (const entry of signedBatch ?? []) {
+      if (entry.path && entry.signedUrl) signedByPath.set(entry.path, entry.signedUrl);
+    }
+  }
+
+  // 5. Build final rows
+  const rows = derived.map(({ t, coach, latest, status, coachUploadedWhilePending, imagePath, coachImagePath }) => {
+    return {
+      team_id: t.id,
+      team_name: t.name,
+      coach_name: coach?.full_name ?? null,
+      school_name: coach?.school_name ?? null,
+      status,
+      image_path: imagePath,
+      signed_url: imagePath ? signedByPath.get(imagePath) ?? null : null,
+      coach_uploaded_while_pending: coachUploadedWhilePending,
+      coach_image_signed_url: coachImagePath ? signedByPath.get(coachImagePath) ?? null : null,
+      candidate: latest
+        ? {
+            id: latest.id,
+            status: latest.status,
+            prompt_used: latest.prompt_used,
+            regen_instructions: latest.regen_instructions,
+            error_message: latest.error_message,
+            generated_at: latest.generated_at,
+            candidate_path: latest.candidate_path,
+          }
+        : null,
+    };
+  });
 
   const filtered = filter === 'pending' ? rows.filter((r) => r.status === 'pending') : rows;
 

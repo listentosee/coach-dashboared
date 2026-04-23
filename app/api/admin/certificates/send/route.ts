@@ -77,9 +77,8 @@ export async function POST(req: NextRequest) {
     if (audience === 'coach') {
       let coachQuery = serviceClient
         .from('profiles')
-        .select('id, full_name, email')
-        .eq('role', 'coach')
-        .not('email', 'is', null);
+        .select('id, full_name, email, email_alert_address')
+        .eq('role', 'coach');
 
       if (ids?.length) {
         coachQuery = coachQuery.in('id', ids);
@@ -88,12 +87,23 @@ export async function POST(req: NextRequest) {
       const { data: coaches, error } = await coachQuery;
       if (error) throw error;
 
-      const recipients = (coaches || []).map((coach) => ({
-        id: coach.id,
-        name: coach.full_name,
-        email: coach.email,
-        link: buildCoachFeedbackUrl(coach.id),
-      }));
+      // Prefer the coach's alert email if they've set one — they typically
+      // route it to an address they actually watch. Fall back to the
+      // profile email. Drop coaches with neither.
+      const recipients = (coaches || [])
+        .map((coach) => {
+          const preferred = (coach.email_alert_address ?? '').trim();
+          const fallback = (coach.email ?? '').trim();
+          const email = preferred || fallback;
+          if (!email) return null;
+          return {
+            id: coach.id,
+            name: coach.full_name,
+            email,
+            link: buildCoachFeedbackUrl(coach.id),
+          };
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null);
 
       if (dryRun) {
         return NextResponse.json({ ok: true, dryRun: true, audience, recipients });

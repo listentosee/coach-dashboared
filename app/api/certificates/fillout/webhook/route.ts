@@ -437,32 +437,6 @@ export async function POST(req: NextRequest) {
     if (k && v != null) queryParams[k] = String(v);
   });
 
-  // Persist every raw payload + request headers + URL for diagnosis. Short-
-  // lived debug capture — drop the table after we confirm end-to-end works.
-  const supabaseForDebug = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
-  const contentType = req.headers.get('content-type');
-  const headerNames: string[] = [];
-  req.headers.forEach((_v, k) => headerNames.push(k));
-  await supabaseForDebug
-    .from('fillout_webhook_debug')
-    .insert({
-      content_type: contentType,
-      header_names: headerNames,
-      request_url: req.nextUrl.href,
-      raw_body: raw?.slice(0, 50000) ?? '',
-      parsed_top_keys: (() => {
-        try {
-          const p = JSON.parse(raw);
-          if (p && typeof p === 'object' && !Array.isArray(p)) return Object.keys(p);
-          if (Array.isArray(p)) return [`__array[${p.length}]`];
-          return [`__${typeof p}`];
-        } catch {
-          return ['__not-json'];
-        }
-      })(),
-    })
-    .then(({ error }) => { if (error) logger.warn('Failed to persist webhook debug row', { error: error.message }); });
-
   let payload: unknown;
 
   try {

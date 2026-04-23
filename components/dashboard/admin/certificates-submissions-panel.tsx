@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Download, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/lib/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -41,7 +42,7 @@ export function CertificatesSubmissionsPanel() {
 
   // Two fetches: `load` shows the spinner and is used for initial load +
   // manual refresh. `silentRefresh` swaps data without flicker and is used
-  // by the 10s background poll.
+  // by the realtime INSERT trigger.
   const fetchSubmissions = useCallback(async (): Promise<Submission[] | null> => {
     const res = await fetch(`/api/admin/certificates/submissions?type=${filter}`, { cache: 'no-store' });
     if (!res.ok) {
@@ -83,31 +84,35 @@ export function CertificatesSubmissionsPanel() {
     load();
   }, [load]);
 
-  // Poll every 10s while the tab is visible so admins see submissions land
-  // without refreshing. Pauses when hidden; fires an immediate refresh on
-  // refocus so the first impression after switching back is current.
+  // Supabase Realtime: re-fetch when a new survey_results row lands. We
+  // refetch rather than mutate in-place because the list endpoint joins
+  // respondent info from competitors/profiles that the raw INSERT payload
+  // doesn't carry. Debounced to coalesce bursts.
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-    const start = () => {
-      if (intervalId) return;
-      intervalId = setInterval(silentRefresh, 10_000);
-    };
-    const stop = () => {
-      if (intervalId) { clearInterval(intervalId); intervalId = null; }
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        silentRefresh();
-        start();
-      } else {
-        stop();
-      }
-    };
-    if (document.visibilityState === 'visible') start();
-    document.addEventListener('visibilitychange', onVisibility);
+    const channel = supabase
+      .channel('certificates-submissions-panel')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'survey_results' },
+        () => {
+          if (refreshTimer.current) clearTimeout(refreshTimer.current);
+          refreshTimer.current = setTimeout(() => { void silentRefresh(); }, 300);
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'survey_results' },
+        () => {
+          if (refreshTimer.current) clearTimeout(refreshTimer.current);
+          refreshTimer.current = setTimeout(() => { void silentRefresh(); }, 300);
+        },
+      )
+      .subscribe();
+
     return () => {
-      stop();
-      document.removeEventListener('visibilitychange', onVisibility);
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      supabase.removeChannel(channel);
     };
   }, [silentRefresh]);
 
@@ -142,7 +147,7 @@ export function CertificatesSubmissionsPanel() {
         </CardTitle>
         <CardDescription>
           Review survey responses inline, or export all responses for a given audience as CSV.
-          Auto-refreshes every 10 seconds while the tab is visible.
+          Updates in real time as submissions arrive.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

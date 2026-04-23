@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Download } from 'lucide-react';
+import { Loader2, Download, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,28 +37,79 @@ export function CertificatesSubmissionsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewing, setViewing] = useState<Submission | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const refresh = useCallback(async () => {
+  // Two fetches: `load` shows the spinner and is used for initial load +
+  // manual refresh. `silentRefresh` swaps data without flicker and is used
+  // by the 10s background poll.
+  const fetchSubmissions = useCallback(async (): Promise<Submission[] | null> => {
+    const res = await fetch(`/api/admin/certificates/submissions?type=${filter}`, { cache: 'no-store' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error ?? `Request failed: ${res.status}`);
+    }
+    const data = await res.json();
+    return (data.submissions ?? []) as Submission[];
+  }, [filter]);
+
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/certificates/submissions?type=${filter}`);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? `Request failed: ${res.status}`);
-      }
-      const data = await res.json();
-      setSubmissions(data.submissions ?? []);
+      const rows = await fetchSubmissions();
+      if (rows) setSubmissions(rows);
+      setLastUpdated(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [fetchSubmissions]);
+
+  const silentRefresh = useCallback(async () => {
+    try {
+      const rows = await fetchSubmissions();
+      if (rows) {
+        setSubmissions(rows);
+        setLastUpdated(new Date());
+        setError(null);
+      }
+    } catch {
+      // swallow — polling shouldn't show error toasts. Next tick retries.
+    }
+  }, [fetchSubmissions]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    load();
+  }, [load]);
+
+  // Poll every 10s while the tab is visible so admins see submissions land
+  // without refreshing. Pauses when hidden; fires an immediate refresh on
+  // refocus so the first impression after switching back is current.
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (intervalId) return;
+      intervalId = setInterval(silentRefresh, 10_000);
+    };
+    const stop = () => {
+      if (intervalId) { clearInterval(intervalId); intervalId = null; }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        silentRefresh();
+        start();
+      } else {
+        stop();
+      }
+    };
+    if (document.visibilityState === 'visible') start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [silentRefresh]);
 
   const counts = useMemo(() => {
     const all = submissions.length;
@@ -70,9 +121,28 @@ export function CertificatesSubmissionsPanel() {
   return (
     <Card className="border-meta-border bg-meta-dark/60">
       <CardHeader>
-        <CardTitle className="text-meta-light">Submissions</CardTitle>
+        <CardTitle className="text-meta-light flex items-center justify-between gap-3">
+          <span>Submissions</span>
+          <span className="text-xs font-normal text-meta-muted flex items-center gap-2">
+            {lastUpdated ? (
+              <span title={lastUpdated.toLocaleString()}>
+                Updated {formatRelative(lastUpdated)}
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={load}
+              disabled={loading}
+              className="inline-flex items-center gap-1 rounded border border-meta-border px-2 py-1 hover:bg-white/5 disabled:opacity-50"
+              title="Refresh now"
+            >
+              <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </span>
+        </CardTitle>
         <CardDescription>
           Review survey responses inline, or export all responses for a given audience as CSV.
+          Auto-refreshes every 10 seconds while the tab is visible.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -215,4 +285,14 @@ function formatDate(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();
+}
+
+function formatRelative(date: Date): string {
+  const s = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  return `${h}h ago`;
 }

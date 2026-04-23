@@ -33,8 +33,8 @@ export async function GET(req: NextRequest) {
   const filter = (req.nextUrl.searchParams.get('filter') ?? 'all') as 'pending' | 'all';
   const service = getServiceRoleSupabaseClient();
 
-  // 1. Load all teams + coach
-  const { data: teams, error: teamsErr } = await service
+  // 1. Load all teams + coach (plus populated-team filter below).
+  const { data: teamsRaw, error: teamsErr } = await service
     .from('teams')
     .select(`
       id, name, image_url, coach_id,
@@ -43,6 +43,13 @@ export async function GET(req: NextRequest) {
     .order('name');
 
   if (teamsErr) return NextResponse.json({ error: teamsErr.message }, { status: 500 });
+
+  // Drop empty teams — no point generating an image for a team with no roster.
+  const { data: populatedRows } = await service
+    .from('team_members')
+    .select('team_id');
+  const populatedTeamIds = new Set((populatedRows ?? []).map((r: { team_id: string }) => r.team_id));
+  const teams = (teamsRaw ?? []).filter((t) => populatedTeamIds.has(t.id));
 
   // 2. Load all candidates (newest first), keep only the latest per team
   const { data: allCandidates } = await service

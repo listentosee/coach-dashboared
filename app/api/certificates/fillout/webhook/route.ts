@@ -3,6 +3,37 @@ import { createClient } from '@supabase/supabase-js';
 import { logger } from '@/lib/logging/safe-logger';
 import { AuditLogger } from '@/lib/audit/audit-logger';
 
+// Known Fillout form IDs — same defaults used by the claim page + send route.
+// Used for form-id → audience-type inference when URL parameter forwarding
+// isn't available.
+const COMPETITOR_FORM_ID = process.env.NEXT_PUBLIC_FILLOUT_COMPETITOR_FORM_ID || 'ca1hRrHGijus';
+const COACH_FORM_ID = process.env.NEXT_PUBLIC_FILLOUT_COACH_FORM_ID || 'bJKURVuG1zus';
+
+function inferTypeFromFormId(formId: string | null): 'coach' | 'competitor' | null {
+  if (!formId) return null;
+  if (formId === COMPETITOR_FORM_ID) return 'competitor';
+  if (formId === COACH_FORM_ID) return 'coach';
+  return null;
+}
+
+/**
+ * Secondary extraction of the claim token: if Fillout isn't forwarding URL
+ * parameters, a hidden question field in the form may still carry it. Checks
+ * question names/ids for anything resembling `claim_token` and returns the
+ * first non-empty value. Cheap defense-in-depth — cost is one array scan.
+ */
+function extractClaimTokenFromQuestions(submission: FilloutSubmission): string | null {
+  const questions = Array.isArray(submission.questions) ? submission.questions : [];
+  for (const q of questions as Array<{ id?: string; name?: string; value?: unknown }>) {
+    const key = (q?.name || q?.id || '').toLowerCase();
+    if (key === 'claim_token' || key === 'claimtoken' || key === 'claim-token') {
+      const v = q?.value == null ? '' : String(q.value).trim();
+      if (v) return v;
+    }
+  }
+  return null;
+}
+
 type FilloutUrlParameter = {
   id?: string;
   name?: string;
@@ -126,9 +157,6 @@ async function handleSubmission(
 ): Promise<WebhookHandleResult> {
   const notes: string[] = [];
   const paramMap = readUrlParameterMap(submission, rootPayload);
-  const type = normalizeType(paramMap.get('type') || null);
-  const idParam = (paramMap.get('id') || '').trim() || null;
-  const claimToken = (paramMap.get('claim_token') || '').trim() || null;
   const submissionId = getSubmissionId(submission, rootPayload);
   const formId = getFormId(submission, rootPayload);
   const submittedAt = getSubmittedAt(submission, rootPayload);
@@ -136,32 +164,52 @@ async function handleSubmission(
   if (!submissionId) {
     return {
       stored: false,
-      type,
+      type: null,
       submissionId: null,
       notes: ['Missing submissionId in Fillout payload'],
     };
   }
+
+  // Resolve audience type: URL parameter first, form-id inference as fallback.
+  // This keeps the flow working even if Fillout isn't forwarding URL params.
+  const typeFromParam = normalizeType(paramMap.get('type') || null);
+  const typeFromForm = inferTypeFromFormId(formId);
+  const type = typeFromParam ?? typeFromForm;
 
   if (!type) {
     return {
       stored: false,
       type: null,
       submissionId,
-      notes: ['Missing or invalid type URL parameter'],
+      notes: [
+        `Could not determine audience type. type param=${paramMap.get('type') || '(missing)'}, form_id=${formId || '(missing)'}`,
+      ],
     };
   }
+  if (!typeFromParam && typeFromForm) {
+    notes.push(`type inferred from form_id=${formId}`);
+  }
 
+  // Resolve per-audience id (may be absent — we'll still store the row).
+  const idParam = (paramMap.get('id') || '').trim() || null;
   const competitorId = type === 'competitor' && isUuid(idParam) ? idParam : null;
   const coachProfileId = type === 'coach' && isUuid(idParam) ? idParam : null;
+  if (idParam && type === 'competitor' && !competitorId) notes.push('Competitor id was not a valid UUID');
+  if (idParam && type === 'coach' && !coachProfileId) notes.push('Coach profile id was not a valid UUID');
 
-  if (idParam && type === 'competitor' && !competitorId) {
-    notes.push('Competitor id was not a valid UUID');
-  }
-  if (idParam && type === 'coach' && !coachProfileId) {
-    notes.push('Coach profile id was not a valid UUID');
+  // Resolve claim token: URL param first, question-field fallback.
+  const claimTokenFromParam = (paramMap.get('claim_token') || '').trim() || null;
+  const claimTokenFromQuestion = claimTokenFromParam ? null : extractClaimTokenFromQuestions(submission);
+  const claimToken = claimTokenFromParam ?? claimTokenFromQuestion;
+  if (!claimTokenFromParam && claimTokenFromQuestion) {
+    notes.push('claim_token recovered from question field');
   }
 
+  // For competitor submissions, try to link + unlock the certificate. Any
+  // failure here does NOT prevent storing survey_results below — we keep
+  // the raw response either way so the data isn't lost.
   let competitorCertificateId: string | null = null;
+  let resolvedCompetitorId = competitorId;
 
   if (type === 'competitor' && claimToken) {
     const { data: certificate, error: certificateError } = await supabase
@@ -173,13 +221,12 @@ async function handleSubmission(
     if (certificateError) {
       notes.push(`Certificate lookup failed: ${certificateError.message}`);
     } else if (certificate) {
-      const certificateId = String(certificate.id);
-      competitorCertificateId = certificateId;
-
-      if (!competitorId && certificate.competitor_id) {
-        notes.push('Competitor id came from certificate claim token');
-      } else if (competitorId && certificate.competitor_id && certificate.competitor_id !== competitorId) {
-        notes.push('Competitor id did not match certificate claim token');
+      competitorCertificateId = String(certificate.id);
+      if (!resolvedCompetitorId && certificate.competitor_id) {
+        resolvedCompetitorId = certificate.competitor_id;
+        notes.push('competitor_id recovered from certificate claim_token');
+      } else if (resolvedCompetitorId && certificate.competitor_id && certificate.competitor_id !== resolvedCompetitorId) {
+        notes.push('competitor_id did not match certificate claim_token');
       }
 
       const { error: updateError } = await supabase
@@ -189,22 +236,20 @@ async function handleSubmission(
           fillout_submission_id: submissionId,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', certificateId);
+        .eq('id', competitorCertificateId);
 
-      if (updateError) {
-        notes.push(`Certificate update failed: ${updateError.message}`);
-      }
+      if (updateError) notes.push(`Certificate update failed: ${updateError.message}`);
     } else {
       notes.push('No certificate row matched claim_token');
     }
   } else if (type === 'competitor') {
-    notes.push('Missing claim_token for competitor submission');
+    notes.push('Missing claim_token for competitor submission — survey stored but certificate not unlocked');
   }
 
   const { error: upsertError } = await supabase.from('survey_results').upsert(
     {
       type,
-      competitor_id: type === 'competitor' ? competitorId : null,
+      competitor_id: type === 'competitor' ? resolvedCompetitorId : null,
       coach_profile_id: type === 'coach' ? coachProfileId : null,
       competitor_certificate_id: competitorCertificateId,
       fillout_submission_id: submissionId,

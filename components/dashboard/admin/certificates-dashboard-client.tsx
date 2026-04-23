@@ -37,9 +37,23 @@ export function CertificatesDashboardClient() {
     'Hello {{name}},\n\nPlease share your feedback using this link:\n{{link}}'
   );
 
+  // Optional ID scoping. One UUID per line — empty = "all eligible".
+  // Applied to both dry-run and live actions so you can verify the exact
+  // target set before a real send.
+  const [competitorIds, setCompetitorIds] = useState('');
+  const [coachIds, setCoachIds] = useState('');
+
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<RouteResult>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+
+  function parseIds(raw: string): string[] | undefined {
+    const ids = raw
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return ids.length > 0 ? ids : undefined;
+  }
 
   async function runAction(action: string, fn: () => Promise<Record<string, unknown>>) {
     setLoadingAction(action);
@@ -77,12 +91,23 @@ export function CertificatesDashboardClient() {
               onChange={(event) => setCertificateYear(event.target.value)}
             />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="competitor-ids-generate">Restrict to competitor IDs (optional)</Label>
+            <Textarea
+              id="competitor-ids-generate"
+              placeholder="One UUID per line. Leave blank to target all eligible competitors."
+              value={competitorIds}
+              onChange={(event) => setCompetitorIds(event.target.value)}
+              className="min-h-[72px] font-mono text-xs"
+            />
+          </div>
           <div className="flex flex-wrap gap-3">
             <Button
               onClick={() =>
                 runAction('generate-dry', () =>
                   postJson('/api/admin/certificates/generate', {
                     certificateYear: parseYear(),
+                    competitorIds: parseIds(competitorIds),
                     dryRun: true,
                   })
                 )
@@ -98,6 +123,7 @@ export function CertificatesDashboardClient() {
                 runAction('generate-live', () =>
                   postJson('/api/admin/certificates/generate', {
                     certificateYear: parseYear(),
+                    competitorIds: parseIds(competitorIds),
                   })
                 )
               }
@@ -135,6 +161,10 @@ export function CertificatesDashboardClient() {
               className="min-h-[140px]"
             />
           </div>
+          <div className="text-xs text-meta-muted">
+            Uses the &quot;Restrict to competitor IDs&quot; list above. Leave blank to send to every eligible
+            competitor.
+          </div>
           <div className="flex flex-wrap gap-3">
             <Button
               onClick={() =>
@@ -142,6 +172,7 @@ export function CertificatesDashboardClient() {
                   postJson('/api/admin/certificates/send', {
                     audience: 'competitor',
                     certificateYear: parseYear(),
+                    ids: parseIds(competitorIds),
                     subject: competitorSubject,
                     body: competitorBody,
                     dryRun: true,
@@ -160,6 +191,7 @@ export function CertificatesDashboardClient() {
                   postJson('/api/admin/certificates/send', {
                     audience: 'competitor',
                     certificateYear: parseYear(),
+                    ids: parseIds(competitorIds),
                     subject: competitorSubject,
                     body: competitorBody,
                   })
@@ -199,12 +231,23 @@ export function CertificatesDashboardClient() {
               className="min-h-[140px]"
             />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="coach-ids">Restrict to coach profile IDs (optional)</Label>
+            <Textarea
+              id="coach-ids"
+              placeholder="One UUID per line. Leave blank to target all coaches with an email on file."
+              value={coachIds}
+              onChange={(event) => setCoachIds(event.target.value)}
+              className="min-h-[72px] font-mono text-xs"
+            />
+          </div>
           <div className="flex flex-wrap gap-3">
             <Button
               onClick={() =>
                 runAction('send-coach-dry', () =>
                   postJson('/api/admin/certificates/send', {
                     audience: 'coach',
+                    ids: parseIds(coachIds),
                     subject: coachSubject,
                     body: coachBody,
                     dryRun: true,
@@ -222,6 +265,7 @@ export function CertificatesDashboardClient() {
                 runAction('send-coach-live', () =>
                   postJson('/api/admin/certificates/send', {
                     audience: 'coach',
+                    ids: parseIds(coachIds),
                     subject: coachSubject,
                     body: coachBody,
                   })

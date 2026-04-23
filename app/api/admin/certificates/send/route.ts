@@ -294,7 +294,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, sent: prepared.length, audience });
   } catch (error) {
-    console.error('Certificate send failed', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error('[certificates/send] 500', { message, stack });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

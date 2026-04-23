@@ -330,13 +330,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
   }
 
+  // Log the top-level shape so we can see what Fillout is actually sending
+  // when submissions fail to store. No content — keys only (safe).
+  const topLevelKeys = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? Object.keys(payload as Record<string, unknown>)
+    : Array.isArray(payload) ? [`__array[${payload.length}]`] : [`__${typeof payload}`];
+
   const submissions = coerceSubmissions(payload);
   if (submissions.length === 0) {
+    logger.warn('Fillout webhook: coerceSubmissions returned empty', { topLevelKeys });
     return NextResponse.json({
       ok: true,
       stored: 0,
       ignored: 1,
       notes: ['No Fillout submissions found in payload'],
+      debug: { topLevelKeys },
     });
   }
 
@@ -350,6 +358,19 @@ export async function POST(req: NextRequest) {
   const stored = results.filter((result) => result.stored).length;
   const ignored = results.length - stored;
   const notes = results.flatMap((result) => result.notes);
+
+  // Extra diagnostics when nothing stored — we want to see WHY, not just a count.
+  if (stored === 0) {
+    logger.warn('Fillout webhook stored 0 submissions', {
+      topLevelKeys,
+      submissionCount: submissions.length,
+      firstSubmissionKeys: submissions[0] ? Object.keys(submissions[0] as Record<string, unknown>) : [],
+      firstSubmissionUrlParamNames: Array.isArray((submissions[0] as any)?.urlParameters)
+        ? ((submissions[0] as any).urlParameters as Array<{ name?: string }>).map((p) => p?.name)
+        : [],
+      notes,
+    });
+  }
 
   logger.info('Fillout webhook processed', {
     stored,

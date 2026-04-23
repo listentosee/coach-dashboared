@@ -50,16 +50,7 @@ function getCompetitorFullName(competitor: Pick<EligibleCompetitor, 'first_name'
   return `${competitor.first_name} ${competitor.last_name}`.trim();
 }
 
-export function getCompetitorEmail(competitor: EligibleCompetitor) {
-  return (
-    competitor.game_platform_onboarding_email ||
-    competitor.email_personal ||
-    competitor.email_school ||
-    null
-  );
-}
-
-export async function generateCertificatePdf(competitorName: string, year: number) {
+async function generateCertificatePdf(competitorName: string, year: number) {
   const templatePath = resolveTemplatePath(year);
   let templateBytes: Buffer;
   try {

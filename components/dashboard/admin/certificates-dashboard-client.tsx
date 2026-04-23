@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { CertificatesSubmissionsPanel } from './certificates-submissions-panel';
 
 type RouteResult = Record<string, unknown> | null;
 
@@ -234,6 +235,8 @@ export function CertificatesDashboardClient() {
           </div>
         </CardContent>
       </Card>
+
+      <CertificatesSubmissionsPanel />
 
       <Card className="border-meta-border bg-meta-dark/60">
         <CardHeader>

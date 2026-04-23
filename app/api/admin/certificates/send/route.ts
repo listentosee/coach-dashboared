@@ -16,7 +16,20 @@ const requestBodySchema = z.object({
   dryRun: z.boolean().optional(),
 });
 
-const APP_BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://coach.cyber-guild.org';
+/**
+ * Normalize APP base URL defensively. If NEXT_PUBLIC_APP_URL is set without
+ * a scheme (e.g. "coach.cyber-guild.org") `new URL(...)` throws. Strip any
+ * trailing slash and add https:// if missing so downstream joining works.
+ */
+function normalizeBaseUrl(raw: string | undefined | null): string {
+  const fallback = 'https://coach.cyber-guild.org';
+  let v = (raw ?? '').trim();
+  if (!v) return fallback;
+  if (!/^https?:\/\//i.test(v)) v = `https://${v}`;
+  return v.replace(/\/+$/, '');
+}
+
+const APP_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL);
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || '';
 const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'noreply@coach.cyber-guild.org';
 const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME || 'Coach Dashboard';
@@ -45,7 +58,9 @@ function buildCoachFeedbackUrl(id: string) {
 }
 
 function buildCompetitorClaimUrl(token: string) {
-  return new URL(`/certificate/claim/${token}`, APP_BASE_URL).toString();
+  // Plain string join — APP_BASE_URL has been validated to have a scheme
+  // and no trailing slash, so this can't produce a malformed URL.
+  return `${APP_BASE_URL}/certificate/claim/${encodeURIComponent(token)}`;
 }
 
 export async function POST(req: NextRequest) {

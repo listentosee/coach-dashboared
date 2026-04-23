@@ -31,6 +31,7 @@ interface CandidateInfo {
 interface TeamRow {
   team_id: string;
   team_name: string;
+  active_member_count: number;
   coach_name: string | null;
   school_name: string | null;
   status: TeamStatus;
@@ -470,7 +471,12 @@ function TeamCard({ team, onAccept, onRegen, onReject }: TeamCardProps) {
     <Card className="bg-meta-card border-meta-border overflow-hidden">
       <CardHeader className="pb-3">
         <CardTitle className="text-meta-light text-base flex items-start justify-between gap-2">
-          <span className="line-clamp-2">{team.team_name}</span>
+          <span className="line-clamp-2">
+            {team.team_name}{' '}
+            <span className="text-meta-muted font-normal" title="Active competitors (status not pending, not disabled)">
+              ({team.active_member_count})
+            </span>
+          </span>
           <StatusBadge status={team.status} />
         </CardTitle>
       </CardHeader>

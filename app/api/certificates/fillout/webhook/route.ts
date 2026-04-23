@@ -243,12 +243,65 @@ export async function GET() {
   });
 }
 
+/**
+ * Validates the shared secret Fillout sends as a custom webhook header.
+ *
+ * Fillout's webhook config supports a "Custom Header" — we configure one
+ * there (e.g. name=`x-fillout-webhook-secret`, value=<random-string>) and
+ * match it here against FILLOUT_WEBHOOK_SECRET.
+ *
+ * We accept either a dedicated header or a bearer token in Authorization,
+ * whichever is easier to configure in Fillout. Constant-time comparison
+ * to resist timing attacks.
+ *
+ * Fail-closed: if FILLOUT_WEBHOOK_SECRET is not set we reject all requests.
+ * This tool marks certificates as "survey completed" and unlocks downloads,
+ * so anonymous writes are unacceptable.
+ */
+function verifyWebhookSecret(req: NextRequest): { ok: true } | { ok: false; reason: string; status: number } {
+  const expected = process.env.FILLOUT_WEBHOOK_SECRET;
+  if (!expected) {
+    return { ok: false, reason: 'FILLOUT_WEBHOOK_SECRET is not configured on the server', status: 503 };
+  }
+
+  const headerValue = (
+    req.headers.get('x-fillout-webhook-secret') ||
+    req.headers.get('x-webhook-secret') ||
+    (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '') ||
+    ''
+  ).trim();
+
+  if (!headerValue) {
+    return { ok: false, reason: 'Missing webhook secret header', status: 401 };
+  }
+
+  // Constant-time compare
+  const a = Buffer.from(expected);
+  const b = Buffer.from(headerValue);
+  if (a.length !== b.length) {
+    return { ok: false, reason: 'Webhook secret did not match', status: 401 };
+  }
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a[i] ^ b[i];
+  if (mismatch !== 0) {
+    return { ok: false, reason: 'Webhook secret did not match', status: 401 };
+  }
+
+  return { ok: true };
+}
+
 export async function POST(req: NextRequest) {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !serviceRoleKey) {
     return NextResponse.json({ error: 'Missing Supabase service role configuration' }, { status: 500 });
+  }
+
+  const auth = verifyWebhookSecret(req);
+  if (!auth.ok) {
+    logger.warn('Fillout webhook rejected', { reason: auth.reason, status: auth.status });
+    return NextResponse.json({ error: auth.reason }, { status: auth.status });
   }
 
   const raw = await req.text();

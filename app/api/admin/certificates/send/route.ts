@@ -13,15 +13,33 @@ import { AuditLogger } from '@/lib/audit/audit-logger';
 marked.use({ gfm: true, breaks: true });
 
 /**
- * Accept markdown OR raw HTML in admin-authored email bodies. If the input
- * already looks like HTML (has any tag), pass it through. Otherwise run it
- * through marked so `[label]({{link}})` becomes a proper anchor.
+ * Accept markdown OR raw HTML in admin-authored email bodies.
+ *
+ * Subtlety: marked URL-encodes characters inside href attributes, so
+ * `[Claim]({{link}})` becomes `<a href="%7B%7Blink%7D%7D">Claim</a>`.
+ * SendGrid's substitution pass looks for the LITERAL `{{link}}` token and
+ * won't match the encoded form — the email would ship with a broken link.
+ * After conversion we restore our known substitution tokens to their
+ * literal form so SendGrid can do its thing.
  */
+const SUBSTITUTION_TOKENS = ['{{link}}', '{{name}}'];
+
+function restoreSubstitutionTokens(html: string): string {
+  let out = html;
+  for (const token of SUBSTITUTION_TOKENS) {
+    const encoded = encodeURIComponent(token);
+    // Replace both full and partial encodings — some versions of marked
+    // only encode the braces, others encode the whole thing.
+    out = out.split(encoded).join(token);
+  }
+  return out;
+}
+
 function bodyToHtml(input: string): string {
   const trimmed = input.trim();
   const looksLikeHtml = /<[a-z][\s\S]*>/i.test(trimmed);
   if (looksLikeHtml) return trimmed;
-  return marked.parse(trimmed) as string;
+  return restoreSubstitutionTokens(marked.parse(trimmed) as string);
 }
 
 const requestBodySchema = z.object({

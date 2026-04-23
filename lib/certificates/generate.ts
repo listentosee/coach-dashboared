@@ -8,7 +8,7 @@ import {
 
 /**
  * Certificate PDFs live at `public/certificate/Certificate-<year>.pdf` and
- * contain a text form field named {{competitor}} at the spot where the
+ * contain a text form field named `competitor` at the spot where the
  * student's name should appear. To roll a new season, drop a template at
  * the year-matching path with that same field name — no code change needed.
  *
@@ -17,7 +17,7 @@ import {
  * polyfills, zero coordinate hunting.
  */
 
-const COMPETITOR_FIELD_NAME = '{{competitor}}';
+const COMPETITOR_FIELD_NAME = 'competitor';
 
 function resolveTemplatePath(year: number): string {
   return path.join(process.cwd(), `public/certificate/Certificate-${year}.pdf`);

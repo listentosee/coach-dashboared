@@ -45,10 +45,18 @@ export async function GET(req: NextRequest) {
   if (teamsErr) return NextResponse.json({ error: teamsErr.message }, { status: 500 });
 
   // Drop empty teams — no point generating an image for a team with no roster.
+  // Also count active members per team (is_active=true AND status != 'pending')
+  // so the UI can surface the roster size that actually competes.
   const { data: populatedRows } = await service
     .from('team_members')
-    .select('team_id');
+    .select('team_id, competitors:competitors ( is_active, status )');
   const populatedTeamIds = new Set((populatedRows ?? []).map((r: { team_id: string }) => r.team_id));
+  const activeByTeam = new Map<string, number>();
+  for (const row of (populatedRows ?? []) as Array<{ team_id: string; competitors: { is_active: boolean | null; status: string | null } | null }>) {
+    const c = row.competitors;
+    const isActive = !!c && c.is_active !== false && c.status !== 'pending';
+    if (isActive) activeByTeam.set(row.team_id, (activeByTeam.get(row.team_id) ?? 0) + 1);
+  }
   const teams = (teamsRaw ?? []).filter((t) => populatedTeamIds.has(t.id));
 
   // 2. Load all candidates (newest first), keep only the latest per team
@@ -126,6 +134,7 @@ export async function GET(req: NextRequest) {
     return {
       team_id: t.id,
       team_name: t.name,
+      active_member_count: activeByTeam.get(t.id) ?? 0,
       coach_name: coach?.full_name ?? null,
       school_name: coach?.school_name ?? null,
       status,

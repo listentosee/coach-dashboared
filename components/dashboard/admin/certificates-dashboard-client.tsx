@@ -30,11 +30,11 @@ export function CertificatesDashboardClient() {
   const [certificateYear, setCertificateYear] = useState('2026');
   const [competitorSubject, setCompetitorSubject] = useState('Your Competition Certificate Is Ready');
   const [competitorBody, setCompetitorBody] = useState(
-    'Hello {{name}},\n\nYour certificate is ready. Use this link to claim it:\n{{link}}'
+    'Hi {{name}},\n\nYour competition certificate is ready. [Claim your certificate]({{link}}) to complete a short survey and download your PDF.\n\nThanks,\nCyber-Guild'
   );
   const [coachSubject, setCoachSubject] = useState('Coach Feedback Survey');
   const [coachBody, setCoachBody] = useState(
-    'Hello {{name}},\n\nPlease share your feedback using this link:\n{{link}}'
+    'Hi {{name}},\n\nPlease share your feedback by completing our short [Coach Feedback Survey]({{link}}).\n\nThanks,\nCyber-Guild'
   );
 
   // Optional ID scoping. One UUID per line — empty = "all eligible".
@@ -140,7 +140,9 @@ export function CertificatesDashboardClient() {
         <CardHeader>
           <CardTitle className="text-meta-light">Competitor Certificate Email</CardTitle>
           <CardDescription>
-            Send claim links to competitors. The body supports <code>{'{{name}}'}</code> and <code>{'{{link}}'}</code>.
+            Send claim links to competitors. The body supports <strong>Markdown</strong> (e.g.
+            <code>{'[Claim]({{link}})'}</code>) or raw HTML, plus the tokens
+            <code>{'{{name}}'}</code> and <code>{'{{link}}'}</code>.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -210,7 +212,9 @@ export function CertificatesDashboardClient() {
         <CardHeader>
           <CardTitle className="text-meta-light">Coach Feedback Email</CardTitle>
           <CardDescription>
-            Send the coach feedback Fillout link using the existing coach email addresses.
+            Send the coach feedback Fillout link. Prefers <code>email_alert_address</code> when
+            set; falls back to profile email. The body supports <strong>Markdown</strong> or HTML,
+            plus <code>{'{{name}}'}</code> and <code>{'{{link}}'}</code>.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

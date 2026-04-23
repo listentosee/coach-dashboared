@@ -4,8 +4,25 @@ import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
+import { marked } from 'marked';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { AuditLogger } from '@/lib/audit/audit-logger';
+
+// Same GFM configuration the competitor announcement mailer uses, for UX
+// consistency across admin-authored email bodies.
+marked.use({ gfm: true, breaks: true });
+
+/**
+ * Accept markdown OR raw HTML in admin-authored email bodies. If the input
+ * already looks like HTML (has any tag), pass it through. Otherwise run it
+ * through marked so `[label]({{link}})` becomes a proper anchor.
+ */
+function bodyToHtml(input: string): string {
+  const trimmed = input.trim();
+  const looksLikeHtml = /<[a-z][\s\S]*>/i.test(trimmed);
+  if (looksLikeHtml) return trimmed;
+  return marked.parse(trimmed) as string;
+}
 
 const requestBodySchema = z.object({
   audience: z.enum(['competitor', 'coach']),
@@ -136,11 +153,10 @@ export async function POST(req: NextRequest) {
         },
       }));
 
-      const textBody =
+      const rawBody =
         body ||
-        'Please share your feedback using this link:\n\n{{link}}';
-
-      const htmlBody = textBody.replace('{{link}}', '{{link}}').replace(/\n/g, '<br />');
+        'Hi {{name}},\n\nPlease share your feedback by completing our short [Coach Feedback Survey]({{link}}).\n\nThanks,\nCyber-Guild';
+      const htmlBody = bodyToHtml(rawBody);
 
       const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
         method: 'POST',
@@ -162,14 +178,7 @@ export async function POST(req: NextRequest) {
           })),
           from: { email: SENDGRID_FROM_EMAIL, name: SENDGRID_FROM_NAME },
           subject: subject || 'Coach Feedback Survey',
-          content: [
-            {
-              type: 'text/html',
-              value: htmlBody
-                .replace('{{link}}', '<a href="{{link}}">{{link}}</a>')
-                .replace('{{name}}', '{{name}}'),
-            },
-          ],
+          content: [{ type: 'text/html', value: htmlBody }],
         }),
       });
 
@@ -252,6 +261,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'SENDGRID_API_KEY is not configured' }, { status: 500 });
     }
 
+    const rawBody =
+      body ||
+      'Hi {{name}},\n\nYour competition certificate is ready. [Claim your certificate]({{link}}) to complete a short survey and download your PDF.\n\nThanks,\nCyber-Guild';
+    const htmlBody = bodyToHtml(rawBody);
+
     const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: {
@@ -274,13 +288,7 @@ export async function POST(req: NextRequest) {
         })),
         from: { email: SENDGRID_FROM_EMAIL, name: SENDGRID_FROM_NAME },
         subject: subject || 'Your Competition Certificate Is Ready',
-        content: [
-          {
-            type: 'text/html',
-            value: (body || 'Hello {{name}},<br /><br />Your certificate is ready. Use this link to claim it:<br /><a href="{{link}}">{{link}}</a>')
-              .replace('{{link}}', '<a href="{{link}}">{{link}}</a>'),
-          },
-        ],
+        content: [{ type: 'text/html', value: htmlBody }],
       }),
     });
 

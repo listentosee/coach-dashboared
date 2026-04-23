@@ -1,11 +1,24 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import {
   CERTIFICATE_STORAGE_BUCKET,
   createCertificateServiceClient,
 } from '@/lib/certificates/public';
+
+// pdfjs-dist v5 has a top-level dependency on @napi-rs/canvas that
+// Vercel serverless can't load. Importing it at module top crashed every
+// request to any route that transitively loaded this file — including
+// dry-run certificate generation, which doesn't actually need pdfjs.
+// Lazy-import it only when we need to extract the placeholder rect.
+let pdfjsGetDocument: typeof import('pdfjs-dist/legacy/build/pdf.mjs').getDocument | null = null;
+async function loadPdfjs() {
+  if (!pdfjsGetDocument) {
+    const mod = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    pdfjsGetDocument = mod.getDocument;
+  }
+  return pdfjsGetDocument;
+}
 
 const PLACEHOLDER_TEXT = 'This certificate is proudly presented to: {{competitor}}';
 
@@ -83,6 +96,7 @@ export async function resolveCertificatePlaceholder(year: number): Promise<Place
       );
     }
 
+    const getDocument = await loadPdfjs();
     const pdf = await getDocument({ data: bytes }).promise;
 
     for (let pageIndex = 0; pageIndex < pdf.numPages; pageIndex += 1) {

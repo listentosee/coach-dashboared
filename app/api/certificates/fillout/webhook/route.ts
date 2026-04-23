@@ -153,12 +153,26 @@ function getSubmittedAt(submission: FilloutSubmission, rootPayload: unknown) {
 async function handleSubmission(
   supabase: any,
   submission: FilloutSubmission,
-  rootPayload: unknown
+  rootPayload: unknown,
+  queryParams: Record<string, string> = {},
 ): Promise<WebhookHandleResult> {
   const notes: string[] = [];
   const paramMap = readUrlParameterMap(submission, rootPayload);
-  const submissionId = getSubmissionId(submission, rootPayload);
-  const formId = getFormId(submission, rootPayload);
+
+  // Merge URL query string into the param lookup. Fillout's webhook "URL
+  // Parameters" section is appended as query string on the POST URL, so
+  // this is where `type`, `id`, `claim_token`, `submissionId` actually
+  // arrive when the Body section is empty.
+  for (const [k, v] of Object.entries(queryParams)) {
+    if (v != null && v !== '' && !paramMap.has(k)) paramMap.set(k, v);
+  }
+
+  const submissionIdFromPayload = getSubmissionId(submission, rootPayload);
+  const submissionId =
+    submissionIdFromPayload ||
+    (queryParams.submissionId || queryParams.submission_id || '').trim() ||
+    null;
+  const formId = getFormId(submission, rootPayload) || (queryParams.formId || queryParams.form_id || '').trim() || null;
   const submittedAt = getSubmittedAt(submission, rootPayload);
 
   if (!submissionId) {
@@ -166,7 +180,7 @@ async function handleSubmission(
       stored: false,
       type: null,
       submissionId: null,
-      notes: ['Missing submissionId in Fillout payload'],
+      notes: ['Missing submissionId — neither body nor query string carried it'],
     };
   }
 
@@ -365,8 +379,16 @@ export async function POST(req: NextRequest) {
 
   const raw = await req.text();
 
-  // Persist every raw payload + request headers for diagnosis. Short-lived
-  // debug capture — drop the table after we confirm end-to-end works.
+  // Fillout's webhook config has three sections: Body, URL Parameters, Headers.
+  // URL Parameters are sent as query string on the webhook POST URL, NOT in
+  // the body. Read both so we can pick up whichever the admin configured.
+  const queryParams: Record<string, string> = {};
+  req.nextUrl.searchParams.forEach((v, k) => {
+    if (k && v != null) queryParams[k] = String(v);
+  });
+
+  // Persist every raw payload + request headers + URL for diagnosis. Short-
+  // lived debug capture — drop the table after we confirm end-to-end works.
   const supabaseForDebug = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
   const contentType = req.headers.get('content-type');
   const headerNames: string[] = [];
@@ -376,6 +398,7 @@ export async function POST(req: NextRequest) {
     .insert({
       content_type: contentType,
       header_names: headerNames,
+      request_url: req.nextUrl.href,
       raw_body: raw?.slice(0, 50000) ?? '',
       parsed_top_keys: (() => {
         try {
@@ -408,22 +431,33 @@ export async function POST(req: NextRequest) {
     : Array.isArray(payload) ? [`__array[${payload.length}]`] : [`__${typeof payload}`];
 
   const submissions = coerceSubmissions(payload);
-  if (submissions.length === 0) {
-    logger.warn('Fillout webhook: coerceSubmissions returned empty', { topLevelKeys });
+
+  // Fallback: if the body carried no submission but the URL query string has
+  // the metadata we need (submissionId at minimum), synthesize a one-item
+  // submission so the handler can still process it. This covers Fillout's
+  // configurable-webhook mode when only URL Parameters are mapped.
+  const effectiveSubmissions: FilloutSubmission[] = submissions.length > 0
+    ? submissions
+    : (queryParams.submissionId || queryParams.submission_id)
+      ? [{} as FilloutSubmission]
+      : [];
+
+  if (effectiveSubmissions.length === 0) {
+    logger.warn('Fillout webhook: no submissions in body or query string', { topLevelKeys, queryKeys: Object.keys(queryParams) });
     return NextResponse.json({
       ok: true,
       stored: 0,
       ignored: 1,
-      notes: ['No Fillout submissions found in payload'],
-      debug: { topLevelKeys },
+      notes: ['No Fillout submissions found in payload or query string'],
+      debug: { topLevelKeys, queryKeys: Object.keys(queryParams) },
     });
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
   const results: WebhookHandleResult[] = [];
 
-  for (const submission of submissions) {
-    results.push(await handleSubmission(supabase, submission, payload));
+  for (const submission of effectiveSubmissions) {
+    results.push(await handleSubmission(supabase, submission, payload, queryParams));
   }
 
   const stored = results.filter((result) => result.stored).length;

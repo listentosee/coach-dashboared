@@ -46,7 +46,15 @@ export type AuditAction =
   // Administrative operations
   | 'bulk_status_update'
   | 'admin_access'
-  | 'password_reset';
+  | 'password_reset'
+
+  // Certificate + survey operations
+  | 'certificate_generated'
+  | 'certificate_emailed'
+  | 'coach_survey_emailed'
+  | 'certificate_survey_submitted'
+  | 'coach_survey_submitted'
+  | 'certificate_downloaded';
 
 export interface AuditLogParams {
   user_id?: string | null;

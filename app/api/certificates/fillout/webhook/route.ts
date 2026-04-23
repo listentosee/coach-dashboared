@@ -16,6 +16,42 @@ function inferTypeFromFormId(formId: string | null): 'coach' | 'competitor' | nu
   return null;
 }
 
+const FILLOUT_API_BASE = process.env.FILLOUT_API_BASE || 'https://api.fillout.com/v1/api';
+
+/**
+ * Fetch the full Fillout submission (including questions/answers) via the
+ * Fillout REST API. Webhooks in Fillout's configurable mode often arrive
+ * with an empty body because only URL Parameters are mapped — this lets us
+ * enrich the record with the actual Q&A data.
+ *
+ * Fails gracefully: returns null if the API key isn't set or the fetch
+ * errors, so the certificate-unlock flow isn't blocked by enrichment.
+ */
+async function fetchFilloutSubmission(formId: string, submissionId: string): Promise<FilloutSubmission | null> {
+  const apiKey = process.env.FILLOUT_API_KEY;
+  if (!apiKey) {
+    logger.warn('FILLOUT_API_KEY not set — submission details will not be enriched', { formId, submissionId });
+    return null;
+  }
+  const url = `${FILLOUT_API_BASE}/forms/${encodeURIComponent(formId)}/submissions/${encodeURIComponent(submissionId)}`;
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      logger.warn('Fillout API returned non-OK', { formId, submissionId, status: res.status, body: txt.slice(0, 400) });
+      return null;
+    }
+    const json = (await res.json()) as { submission?: FilloutSubmission };
+    return json?.submission ?? null;
+  } catch (err) {
+    logger.warn('Fillout API fetch failed', { formId, submissionId, error: err instanceof Error ? err.message : String(err) });
+    return null;
+  }
+}
+
 /**
  * Secondary extraction of the claim token: if Fillout isn't forwarding URL
  * parameters, a hidden question field in the form may still carry it. Checks
@@ -204,6 +240,16 @@ async function handleSubmission(
     notes.push(`type inferred from form_id=${formId}`);
   }
 
+  // Enrich with the full submission via Fillout's REST API. The webhook body
+  // is often empty (configurable mode), so this is how we get the actual Q&A.
+  // Fails gracefully — enrichment is best-effort; cert unlock doesn't depend on it.
+  let enrichedSubmission: FilloutSubmission | null = null;
+  if (formId) {
+    enrichedSubmission = await fetchFilloutSubmission(formId, submissionId);
+    if (enrichedSubmission) notes.push('submission enriched from Fillout API');
+  }
+  const effectiveSubmission: FilloutSubmission = enrichedSubmission ?? submission;
+
   // Resolve per-audience id (may be absent — we'll still store the row).
   const idParam = (paramMap.get('id') || '').trim() || null;
   const competitorId = type === 'competitor' && isUuid(idParam) ? idParam : null;
@@ -213,7 +259,7 @@ async function handleSubmission(
 
   // Resolve claim token: URL param first, question-field fallback.
   const claimTokenFromParam = (paramMap.get('claim_token') || '').trim() || null;
-  const claimTokenFromQuestion = claimTokenFromParam ? null : extractClaimTokenFromQuestions(submission);
+  const claimTokenFromQuestion = claimTokenFromParam ? null : extractClaimTokenFromQuestions(effectiveSubmission);
   const claimToken = claimTokenFromParam ?? claimTokenFromQuestion;
   if (!claimTokenFromParam && claimTokenFromQuestion) {
     notes.push('claim_token recovered from question field');
@@ -270,9 +316,10 @@ async function handleSubmission(
       fillout_form_id: formId,
       submitted_at: submittedAt,
       results_jsonb: {
-        submission,
+        submission: effectiveSubmission,
         url_parameters: Object.fromEntries(paramMap.entries()),
         raw_payload: rootPayload,
+        enriched_from_api: enrichedSubmission != null,
       },
     },
     { onConflict: 'fillout_submission_id' }

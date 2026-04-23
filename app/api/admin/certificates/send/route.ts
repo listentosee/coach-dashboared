@@ -34,19 +34,32 @@ const requestBodySchema = z.object({
 });
 
 /**
- * Normalize APP base URL defensively. If NEXT_PUBLIC_APP_URL is set without
- * a scheme (e.g. "coach.cyber-guild.org") `new URL(...)` throws. Strip any
- * trailing slash and add https:// if missing so downstream joining works.
+ * Derive the claim-link base URL from the admin's own request, so the email
+ * always points at the same domain the admin was on when they clicked Send.
+ *
+ * Priority:
+ *   1. Request origin (x-forwarded-proto + x-forwarded-host / host) — respects
+ *      custom domains, preview deploys, localhost dev, all without config.
+ *   2. NEXT_PUBLIC_APP_URL — honored if set; treated as trusted.
+ *   3. Production custom domain — last-resort hardcoded fallback.
  */
-function normalizeBaseUrl(raw: string | undefined | null): string {
-  const fallback = 'https://coach.cyber-guild.org';
-  let v = (raw ?? '').trim();
-  if (!v) return fallback;
-  if (!/^https?:\/\//i.test(v)) v = `https://${v}`;
-  return v.replace(/\/+$/, '');
-}
+function deriveAppBaseUrl(req: NextRequest): string {
+  // NextRequest.nextUrl.origin is already proto+host from the inbound
+  // request — on Vercel this reflects the custom domain (e.g. coach.cyber-
+  // guild.org) or preview URL, as appropriate for the environment.
+  const originFromRequest = req.nextUrl?.origin?.replace(/\/+$/, '') || '';
+  if (originFromRequest && /^https?:\/\//i.test(originFromRequest)) {
+    return originFromRequest;
+  }
 
-const APP_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL);
+  const envRaw = (process.env.NEXT_PUBLIC_APP_URL ?? '').trim();
+  if (envRaw) {
+    const withScheme = /^https?:\/\//i.test(envRaw) ? envRaw : `https://${envRaw}`;
+    return withScheme.replace(/\/+$/, '');
+  }
+
+  return 'https://coach.cyber-guild.org';
+}
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || '';
 const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'noreply@coach.cyber-guild.org';
 const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME || 'Coach Dashboard';
@@ -74,10 +87,8 @@ function buildCoachFeedbackUrl(id: string) {
   return url.toString();
 }
 
-function buildCompetitorClaimUrl(token: string) {
-  // Plain string join — APP_BASE_URL has been validated to have a scheme
-  // and no trailing slash, so this can't produce a malformed URL.
-  return `${APP_BASE_URL}/certificate/claim/${encodeURIComponent(token)}`;
+function buildCompetitorClaimUrl(baseUrl: string, token: string) {
+  return `${baseUrl}/certificate/claim/${encodeURIComponent(token)}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -94,6 +105,8 @@ export async function POST(req: NextRequest) {
     if (!isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+
+    const appBaseUrl = deriveAppBaseUrl(req);
 
     const parsed = requestBodySchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -249,7 +262,7 @@ export async function POST(req: NextRequest) {
         email,
         name: `${competitor?.first_name || ''} ${competitor?.last_name || ''}`.trim() || 'Competitor',
         claimToken,
-        link: buildCompetitorClaimUrl(claimToken),
+        link: buildCompetitorClaimUrl(appBaseUrl, claimToken),
       });
     }
 

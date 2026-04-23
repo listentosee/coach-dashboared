@@ -210,8 +210,9 @@ export async function resolveEligibleCompetitors(options?: {
     .eq('is_active', true)
     .not('game_platform_id', 'is', null);
 
-  if (options?.competitorIds?.length) {
-    query = query.in('id', options.competitorIds);
+  const explicitIds = options?.competitorIds?.length ? options.competitorIds : null;
+  if (explicitIds) {
+    query = query.in('id', explicitIds);
   }
 
   const { data, error } = await query;
@@ -220,6 +221,15 @@ export async function resolveEligibleCompetitors(options?: {
   }
 
   const competitors = (data || []) as unknown as EligibleCompetitor[];
+
+  // When the admin explicitly scopes to specific IDs (e.g. a live end-to-end
+  // test with test competitors), honor them regardless of play activity.
+  // Without explicit IDs, keep the activity filter so bulk runs don't
+  // generate certificates for rostered-but-inactive competitors.
+  if (explicitIds) {
+    return competitors;
+  }
+
   return competitors.filter((competitor) => {
     const stats = Array.isArray(competitor.game_platform_stats)
       ? competitor.game_platform_stats[0]

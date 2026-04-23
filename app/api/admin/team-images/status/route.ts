@@ -22,18 +22,24 @@ export async function GET() {
 
   const service = getServiceRoleSupabaseClient();
 
-  const [{ count: teamsNoImage }, { count: pendingCandidates }, { count: inFlight }] = await Promise.all([
-    service.from('teams').select('id', { count: 'exact', head: true }).is('image_url', null),
-    service.from('team_image_candidates').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-    service
-      .from('job_queue')
-      .select('id', { count: 'exact', head: true })
-      .in('task_type', ['team_image_bulk_generate', 'team_image_generate'])
-      .in('status', ['pending', 'running']),
-  ]);
+  // Teams-without-image excludes empty teams, matching what the UI shows.
+  const [{ data: populatedIds }, { data: imagelessTeams }, { count: pendingCandidates }, { count: inFlight }] =
+    await Promise.all([
+      service.from('team_members').select('team_id'),
+      service.from('teams').select('id').is('image_url', null),
+      service.from('team_image_candidates').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      service
+        .from('job_queue')
+        .select('id', { count: 'exact', head: true })
+        .in('task_type', ['team_image_bulk_generate', 'team_image_generate'])
+        .in('status', ['pending', 'running']),
+    ]);
+
+  const populatedSet = new Set((populatedIds ?? []).map((r: { team_id: string }) => r.team_id));
+  const teamsNoImage = (imagelessTeams ?? []).filter((t: { id: string }) => populatedSet.has(t.id)).length;
 
   return NextResponse.json({
-    teams_without_image: teamsNoImage ?? 0,
+    teams_without_image: teamsNoImage,
     pending_candidates: pendingCandidates ?? 0,
     in_flight_jobs: inFlight ?? 0,
   });

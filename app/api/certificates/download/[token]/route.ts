@@ -6,6 +6,7 @@ import {
   createCertificateServiceClient,
   getCertificateClaimByToken,
 } from '@/lib/certificates/public';
+import { AuditLogger } from '@/lib/audit/audit-logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +61,18 @@ export async function GET(
         updated_at: new Date().toISOString(),
       })
       .eq('id', certificate.id);
+
+    await AuditLogger.logAction(supabase, {
+      user_id: null, // token-based public download — no authenticated user
+      action: 'certificate_downloaded',
+      entity_type: 'competitor_certificate',
+      entity_id: certificate.id,
+      metadata: {
+        competitor_id: certificate.competitor_id,
+        certificate_year: certificate.certificate_year,
+        download_count: downloadCount + 1,
+      },
+    });
 
     return new NextResponse(buffer, {
       status: 200,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { logger } from '@/lib/logging/safe-logger';
+import { AuditLogger } from '@/lib/audit/audit-logger';
 
 type FilloutUrlParameter = {
   id?: string;
@@ -226,6 +227,19 @@ async function handleSubmission(
       notes: [...notes, `Survey result upsert failed: ${upsertError.message}`],
     };
   }
+
+  await AuditLogger.logAction(supabase, {
+    user_id: null, // anonymous webhook — Fillout-originated
+    action: type === 'competitor' ? 'certificate_survey_submitted' : 'coach_survey_submitted',
+    entity_type: type === 'competitor' ? 'competitor_certificate' : 'coach_profile',
+    entity_id: competitorCertificateId ?? (type === 'coach' ? coachProfileId ?? undefined : undefined),
+    metadata: {
+      fillout_submission_id: submissionId,
+      fillout_form_id: formId,
+      competitor_id: competitorId,
+      coach_profile_id: coachProfileId,
+    },
+  });
 
   return {
     stored: true,

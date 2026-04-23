@@ -7,8 +7,17 @@ import {
   createCertificateServiceClient,
 } from '@/lib/certificates/public';
 
-const TEMPLATE_PATH = path.join(process.cwd(), 'public/certificate/Certificate-2026.pdf');
 const PLACEHOLDER_TEXT = 'This certificate is proudly presented to: {{competitor}}';
+
+/**
+ * Template PDFs live at `public/certificate/Certificate-<year>.pdf`. To
+ * roll a new season, drop the new PDF at the year-matching path — no
+ * code change needed. The request body's `certificateYear` (falling back
+ * to the current calendar year) decides which template is used.
+ */
+function resolveTemplatePath(year: number): string {
+  return path.join(process.cwd(), `public/certificate/Certificate-${year}.pdf`);
+}
 
 type PlaceholderRect = {
   pageIndex: number;
@@ -33,7 +42,9 @@ type EligibleCompetitor = {
   }> | null;
 };
 
-let placeholderPromise: Promise<PlaceholderRect> | null = null;
+// Cache the placeholder rect per template year — each year gets its own
+// resolved rect, so callers pay the text-extraction cost once per year.
+const placeholderPromiseByYear = new Map<number, Promise<PlaceholderRect>>();
 
 function getCertificateYear(input?: number | null) {
   return input || new Date().getFullYear();
@@ -56,47 +67,60 @@ export function getCompetitorEmail(competitor: EligibleCompetitor) {
   );
 }
 
-export async function resolveCertificatePlaceholder(): Promise<PlaceholderRect> {
-  if (!placeholderPromise) {
-    placeholderPromise = (async () => {
-      const bytes = new Uint8Array(await readFile(TEMPLATE_PATH));
-      const pdf = await getDocument({ data: bytes }).promise;
+export async function resolveCertificatePlaceholder(year: number): Promise<PlaceholderRect> {
+  const cached = placeholderPromiseByYear.get(year);
+  if (cached) return cached;
 
-      for (let pageIndex = 0; pageIndex < pdf.numPages; pageIndex += 1) {
-        const page = await pdf.getPage(pageIndex + 1);
-        const content = await page.getTextContent();
+  const templatePath = resolveTemplatePath(year);
+  const promise = (async () => {
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(await readFile(templatePath));
+    } catch (err) {
+      throw new Error(
+        `Certificate template for year ${year} not found at ${templatePath}. ` +
+          `Drop a PDF at that path (matching the PLACEHOLDER_TEXT pattern) to enable generation.`,
+      );
+    }
 
-        for (const item of content.items as Array<{
-          str?: string;
-          transform?: number[];
-          width?: number;
-          height?: number;
-        }>) {
-          if (item.str !== PLACEHOLDER_TEXT || !item.transform) {
-            continue;
-          }
+    const pdf = await getDocument({ data: bytes }).promise;
 
-          return {
-            pageIndex,
-            x: item.transform[4] || 0,
-            y: item.transform[5] || 0,
-            width: item.width || 0,
-            height: item.height || 17,
-          };
+    for (let pageIndex = 0; pageIndex < pdf.numPages; pageIndex += 1) {
+      const page = await pdf.getPage(pageIndex + 1);
+      const content = await page.getTextContent();
+
+      for (const item of content.items as Array<{
+        str?: string;
+        transform?: number[];
+        width?: number;
+        height?: number;
+      }>) {
+        if (item.str !== PLACEHOLDER_TEXT || !item.transform) {
+          continue;
         }
+
+        return {
+          pageIndex,
+          x: item.transform[4] || 0,
+          y: item.transform[5] || 0,
+          width: item.width || 0,
+          height: item.height || 17,
+        };
       }
+    }
 
-      throw new Error('Could not locate certificate placeholder text in template PDF');
-    })();
-  }
+    throw new Error(`Could not locate certificate placeholder text in template for year ${year}`);
+  })();
 
-  return placeholderPromise;
+  placeholderPromiseByYear.set(year, promise);
+  return promise;
 }
 
-export async function generateCertificatePdf(competitorName: string) {
+export async function generateCertificatePdf(competitorName: string, year: number) {
+  const templatePath = resolveTemplatePath(year);
   const [templateBytes, placeholder] = await Promise.all([
-    readFile(TEMPLATE_PATH),
-    resolveCertificatePlaceholder(),
+    readFile(templatePath),
+    resolveCertificatePlaceholder(year),
   ]);
 
   const pdfDoc = await PDFDocument.load(templateBytes);
@@ -137,7 +161,7 @@ export async function uploadCertificatePdf(options: {
   const certificateYear = getCertificateYear(options.certificateYear);
   const studentStorageId = getStudentStorageId(competitor);
   const fullName = getCompetitorFullName(competitor);
-  const pdfBytes = await generateCertificatePdf(fullName);
+  const pdfBytes = await generateCertificatePdf(fullName, certificateYear);
   const storagePath = `${certificateYear}/${studentStorageId}.pdf`;
 
   const supabase = createCertificateServiceClient();

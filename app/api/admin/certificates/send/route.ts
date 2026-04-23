@@ -5,6 +5,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
 import { isUserAdmin } from '@/lib/utils/admin-check';
+import { AuditLogger } from '@/lib/audit/audit-logger';
 
 const requestBodySchema = z.object({
   audience: z.enum(['competitor', 'coach']),
@@ -152,6 +153,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'SendGrid send failed', detail }, { status: 502 });
       }
 
+      for (const recipient of recipients) {
+        await AuditLogger.logAction(serviceClient, {
+          user_id: user.id,
+          action: 'coach_survey_emailed',
+          entity_type: 'coach_profile',
+          entity_id: recipient.id,
+          metadata: { email: recipient.email },
+        });
+      }
+
       return NextResponse.json({ ok: true, sent: recipients.length, audience });
     }
 
@@ -257,6 +268,19 @@ export async function POST(req: NextRequest) {
       .from('competitor_certificates')
       .update({ emailed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .in('id', prepared.map((recipient) => recipient.certificateId));
+
+    for (const recipient of prepared) {
+      await AuditLogger.logAction(serviceClient, {
+        user_id: user.id,
+        action: 'certificate_emailed',
+        entity_type: 'competitor_certificate',
+        entity_id: recipient.certificateId,
+        metadata: {
+          competitor_id: recipient.competitorId,
+          email: recipient.email,
+        },
+      });
+    }
 
     return NextResponse.json({ ok: true, sent: prepared.length, audience });
   } catch (error) {

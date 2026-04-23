@@ -8,6 +8,8 @@ import {
   uploadCertificatePdf,
   upsertCertificateRecord,
 } from '@/lib/certificates/generate';
+import { AuditLogger } from '@/lib/audit/audit-logger';
+import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase';
 
 const requestBodySchema = z.object({
   certificateYear: z.number().int().optional(),
@@ -55,6 +57,7 @@ export async function POST(req: NextRequest) {
     }
 
     const results = [];
+    const service = getServiceRoleSupabaseClient();
     for (const competitor of competitors) {
       const uploaded = await uploadCertificatePdf({ competitor, certificateYear });
       const record = await upsertCertificateRecord({
@@ -69,6 +72,18 @@ export async function POST(req: NextRequest) {
         competitorName: uploaded.fullName,
         certificateId: record.id,
         storagePath: uploaded.storagePath,
+      });
+
+      await AuditLogger.logAction(service, {
+        user_id: user.id,
+        action: 'certificate_generated',
+        entity_type: 'competitor_certificate',
+        entity_id: record.id,
+        metadata: {
+          competitor_id: competitor.id,
+          certificate_year: uploaded.certificateYear,
+          storage_path: uploaded.storagePath,
+        },
       });
     }
 

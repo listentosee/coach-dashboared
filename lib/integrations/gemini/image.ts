@@ -4,11 +4,15 @@
  * Uses the Gemini REST API (google-generative-ai v1beta) to generate images
  * from a text prompt. Returns raw PNG bytes.
  *
- * The model is configurable via GEMINI_IMAGE_MODEL env var; defaults to the
- * current "Nano Banana" image model (gemini-2.5-flash-image).
+ * The model is configurable via GEMINI_IMAGE_MODEL env var. Defaults to
+ * "Nano Banana Pro" (gemini-3-pro-image-preview), which uses a reasoning
+ * ("thinking") pass to render text faithfully — the weak point of earlier
+ * Gemini image models. For lower-cost jobs where text fidelity doesn't
+ * matter, set GEMINI_IMAGE_MODEL=gemini-3.1-flash-image-preview (Nano
+ * Banana 2) or gemini-2.5-flash-image (original Nano Banana).
  */
 
-const DEFAULT_MODEL = 'gemini-2.5-flash-image';
+const DEFAULT_MODEL = 'gemini-3-pro-image-preview';
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 export interface ReferenceImage {

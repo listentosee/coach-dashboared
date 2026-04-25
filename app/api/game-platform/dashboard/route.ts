@@ -280,6 +280,9 @@ export async function GET(request: NextRequest) {
             status: string | null;
             challengesCompleted: number;
             monthlyCtf: number;
+            flashCtfEvents: number;
+            flashCtfChallenges: number;
+            flashCtfPoints: number;
             categoryPoints: Record<string, number>;
             categoryCounts: Record<string, number>;
           }>,
@@ -287,6 +290,9 @@ export async function GET(request: NextRequest) {
           lastSync: toIsoOrNull(t.game_platform_synced_at),
           totalChallenges: 0,
           totalPoints: 0,
+          totalFlashCtfEvents: 0,
+          totalFlashCtfChallenges: 0,
+          totalFlashCtfPoints: 0,
         });
       }
     }
@@ -377,6 +383,9 @@ export async function GET(request: NextRequest) {
             status: string | null;
             challengesCompleted: number;
             monthlyCtf: number;
+            flashCtfEvents: number;
+            flashCtfChallenges: number;
+            flashCtfPoints: number;
             categoryPoints: Record<string, number>;
             categoryCounts: Record<string, number>;
           }>,
@@ -384,6 +393,9 @@ export async function GET(request: NextRequest) {
           lastSync: toIsoOrNull(team.game_platform_synced_at),
           totalChallenges: 0,
           totalPoints: 0,
+          totalFlashCtfEvents: 0,
+          totalFlashCtfChallenges: 0,
+          totalFlashCtfPoints: 0,
         };
 
         roster.totalMembers += 1;
@@ -402,13 +414,31 @@ export async function GET(request: NextRequest) {
           }
         }
         if (syncedUserId) {
+          // Per-member Flash CTF aggregates derived from the already-fetched
+          // game_platform_flash_ctf_events rows. One row = one event entry.
+          const memberFlashEvents = flashEventsByCompetitor.get(syncedUserId) || [];
+          let memberFlashCtfEvents = 0;
+          let memberFlashCtfChallenges = 0;
+          let memberFlashCtfPoints = 0;
+          for (const evt of memberFlashEvents) {
+            memberFlashCtfEvents += 1;
+            memberFlashCtfChallenges += Number(evt?.challenges_solved ?? 0) || 0;
+            memberFlashCtfPoints += Number(evt?.points_earned ?? 0) || 0;
+          }
+
           roster.syncedMembers += 1;
+          roster.totalFlashCtfEvents += memberFlashCtfEvents;
+          roster.totalFlashCtfChallenges += memberFlashCtfChallenges;
+          roster.totalFlashCtfPoints += memberFlashCtfPoints;
           roster.membersOnPlatform.push({
             competitorId: competitor.id,
             name: `${competitor.first_name} ${competitor.last_name}`.trim(),
             status: competitor.status ?? null,
             challengesCompleted,
             monthlyCtf,
+            flashCtfEvents: memberFlashCtfEvents,
+            flashCtfChallenges: memberFlashCtfChallenges,
+            flashCtfPoints: memberFlashCtfPoints,
             categoryPoints,
             categoryCounts,
           });
@@ -553,6 +583,9 @@ export async function GET(request: NextRequest) {
         lastSync: toIsoOrNull(competitor.team.game_platform_synced_at),
         totalChallenges: 0,
         totalPoints: 0,
+        totalFlashCtfEvents: 0,
+        totalFlashCtfChallenges: 0,
+        totalFlashCtfPoints: 0,
       };
 
       roster.totalChallenges += entry.challenges;

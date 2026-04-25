@@ -3,6 +3,7 @@ import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
 import { DemographicCharts, DemographicChartConfig } from '@/components/dashboard/admin/demographic-charts'
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase'
 import { CoachSummaryTable, CoachSummaryRow } from '@/components/dashboard/admin/coach-summary-table'
+import { TeamSummaryTable, TeamSummaryRow } from '@/components/dashboard/admin/team-summary-table'
 import { SchoolDistributionMap } from '@/components/dashboard/admin/school-distribution-map'
 import { AnalyticsSharePanel } from '@/components/dashboard/admin/analytics-share-panel'
 
@@ -222,7 +223,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   // Coach list for selector
   const { data: coaches } = await supabase
     .from('profiles')
-    .select('id, full_name, email')
+    .select('id, full_name, email, school_name')
     .eq('role', 'coach')
     .order('full_name')
 
@@ -303,10 +304,10 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
     { data: allGameProfiles },
     { data: allTeams },
   ] = await Promise.all([
-    serviceSupabase.from('competitors').select('id, coach_id, status'),
+    serviceSupabase.from('competitors').select('id, coach_id, status, years_competing, game_platform_id'),
     serviceSupabase.from('team_members').select('competitor_id, team_id'),
     serviceSupabase.from('game_platform_profiles').select('competitor_id, status').in('status', ['approved', 'user_created']),
-    serviceSupabase.from('teams').select('id, coach_id, image_url'),
+    serviceSupabase.from('teams').select('id, name, division, coach_id, image_url'),
   ])
 
   // Build lookup sets
@@ -600,6 +601,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   let platformChallengeSolves: Array<{
     synced_user_id: string
     challenge_category: string | null
+    challenge_points: number | null
     solved_at: string | null
   }> = []
   let platformFlashEvents: Array<{
@@ -613,7 +615,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
       fetchAllRowsByIds<typeof platformChallengeSolves[number]>({
         client: serviceSupabase as ServiceSupabaseLike,
         table: 'game_platform_challenge_solves',
-        columns: 'synced_user_id, challenge_category, solved_at',
+        columns: 'synced_user_id, challenge_category, challenge_points, solved_at',
         idColumn: 'synced_user_id',
         ids: syncedUserIds,
       }),
@@ -764,6 +766,86 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
     return total === 0 ? 0 : Math.round(((n || 0) / total) * 100)
   }
 
+  // Team summary rows (grouped by division via tabs in the client component)
+  const coachInfoMap = new Map<string, { name: string; school: string }>()
+  for (const c of (coaches || []) as Array<any>) {
+    coachInfoMap.set(c.id, {
+      name: c.full_name || c.email || '—',
+      school: c.school_name || '—',
+    })
+  }
+
+  const teamIdByCompetitorId = new Map<string, string>()
+  for (const tm of (allTeamMembers || []) as Array<any>) {
+    if (tm.team_id && tm.competitor_id) {
+      teamIdByCompetitorId.set(tm.competitor_id, tm.team_id)
+    }
+  }
+
+  const competitorsByTeamId = new Map<string, Array<{
+    id: string
+    status: string | null
+    years_competing: number | null
+    game_platform_id: string | null
+  }>>()
+  for (const comp of (allCompetitors || []) as Array<any>) {
+    const tid = teamIdByCompetitorId.get(comp.id)
+    if (!tid) continue
+    const list = competitorsByTeamId.get(tid) ?? []
+    list.push({
+      id: comp.id,
+      status: comp.status ?? null,
+      years_competing: typeof comp.years_competing === 'number' ? comp.years_competing : null,
+      game_platform_id: comp.game_platform_id ?? null,
+    })
+    competitorsByTeamId.set(tid, list)
+  }
+
+  const pointsBySyncedUserId = new Map<string, number>()
+  for (const solve of platformChallengeSolves) {
+    const points = typeof solve.challenge_points === 'number' ? solve.challenge_points : 0
+    pointsBySyncedUserId.set(
+      solve.synced_user_id,
+      (pointsBySyncedUserId.get(solve.synced_user_id) ?? 0) + points,
+    )
+  }
+
+  const teamSummaryData: TeamSummaryRow[] = []
+  for (const team of (allTeams || []) as Array<any>) {
+    if (coachId && team.coach_id !== coachId) continue
+    const members = competitorsByTeamId.get(team.id) ?? []
+    let activeStudents = 0
+    let firstTimers = 0
+    let firstTimersWithExperienceKnown = 0
+    let teamPoints = 0
+    for (const m of members) {
+      const isPending = m.status === 'pending'
+      if (!isPending) {
+        activeStudents += 1
+        if (typeof m.years_competing === 'number') {
+          firstTimersWithExperienceKnown += 1
+          if (m.years_competing === 0) firstTimers += 1
+        }
+      }
+      const syncedId = m.game_platform_id || syncedUserIdByCompetitorId.get(m.id) || null
+      if (syncedId) {
+        teamPoints += pointsBySyncedUserId.get(syncedId) ?? 0
+      }
+    }
+    const coach = coachInfoMap.get(team.coach_id) ?? { name: '—', school: '—' }
+    teamSummaryData.push({
+      team_id: team.id,
+      team_name: team.name || '(unnamed team)',
+      division: team.division ?? null,
+      coach_name: coach.name,
+      school_name: coach.school,
+      active_students: activeStudents,
+      first_timers: firstTimers,
+      first_timers_with_experience_known: firstTimersWithExperienceKnown,
+      total_challenge_points: teamPoints,
+    })
+  }
+
   return (
     <div className="relative p-6">
       {/* Futuristic background layers */}
@@ -821,6 +903,17 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
             </p>
           </div>
           <CoachSummaryTable data={coachSummaryData} />
+        </div>
+
+        <div className="rounded border border-meta-border bg-meta-card p-5">
+          <div className="mb-4">
+            <div className="text-sm text-meta-muted">Teams</div>
+            <div className="text-meta-light text-lg font-semibold">Team Summary</div>
+            <p className="text-sm text-meta-muted mt-1">
+              Switch between divisions to compare teams by first-timer ratio, roster size, and total challenge points.
+            </p>
+          </div>
+          <TeamSummaryTable data={teamSummaryData} />
         </div>
 
         <div className="rounded border border-meta-border bg-meta-card p-5">

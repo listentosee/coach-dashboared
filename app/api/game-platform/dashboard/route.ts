@@ -417,28 +417,28 @@ export async function GET(request: NextRequest) {
           // Per-member Flash CTF aggregates derived from the already-fetched
           // game_platform_flash_ctf_events rows. One row = one event entry.
           const memberFlashEvents = flashEventsByCompetitor.get(syncedUserId) || [];
-          let flashCtfEvents = 0;
-          let flashCtfChallenges = 0;
-          let flashCtfPoints = 0;
+          let memberFlashCtfEvents = 0;
+          let memberFlashCtfChallenges = 0;
+          let memberFlashCtfPoints = 0;
           for (const evt of memberFlashEvents) {
-            flashCtfEvents += 1;
-            flashCtfChallenges += Number(evt?.challenges_solved ?? 0) || 0;
-            flashCtfPoints += Number(evt?.points_earned ?? 0) || 0;
+            memberFlashCtfEvents += 1;
+            memberFlashCtfChallenges += Number(evt?.challenges_solved ?? 0) || 0;
+            memberFlashCtfPoints += Number(evt?.points_earned ?? 0) || 0;
           }
 
           roster.syncedMembers += 1;
-          roster.totalFlashCtfEvents += flashCtfEvents;
-          roster.totalFlashCtfChallenges += flashCtfChallenges;
-          roster.totalFlashCtfPoints += flashCtfPoints;
+          roster.totalFlashCtfEvents += memberFlashCtfEvents;
+          roster.totalFlashCtfChallenges += memberFlashCtfChallenges;
+          roster.totalFlashCtfPoints += memberFlashCtfPoints;
           roster.membersOnPlatform.push({
             competitorId: competitor.id,
             name: `${competitor.first_name} ${competitor.last_name}`.trim(),
             status: competitor.status ?? null,
             challengesCompleted,
             monthlyCtf,
-            flashCtfEvents,
-            flashCtfChallenges,
-            flashCtfPoints,
+            flashCtfEvents: memberFlashCtfEvents,
+            flashCtfChallenges: memberFlashCtfChallenges,
+            flashCtfPoints: memberFlashCtfPoints,
             categoryPoints,
             categoryCounts,
           });

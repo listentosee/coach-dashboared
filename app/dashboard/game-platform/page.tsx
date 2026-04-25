@@ -32,6 +32,9 @@ type TeamMemberSynced = {
   status: string | null;
   challengesCompleted: number;
   monthlyCtf: number;
+  flashCtfEvents: number;
+  flashCtfChallenges: number;
+  flashCtfPoints: number;
   categoryPoints: Record<string, number>;
   categoryCounts: Record<string, number>;
 };
@@ -69,6 +72,12 @@ interface TeamSummary {
   rookieMembers?: number;
   membersWithExperienceKnown?: number;
   activeMembers?: number;
+  /** Sum of Flash CTF event entries across all on-platform members. */
+  totalFlashCtfEvents?: number;
+  /** Sum of Flash CTF challenges solved across all on-platform members. */
+  totalFlashCtfChallenges?: number;
+  /** Sum of Flash CTF points earned across all on-platform members. */
+  totalFlashCtfPoints?: number;
 }
 
 interface DashboardData {
@@ -443,6 +452,38 @@ export default function GamePlatformDashboard() {
     [handleCompetitorChallengeDrilldown]
   );
 
+  const ctfMemberColumns = useMemo<ColumnDef<TeamMemberSynced>[]>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => <span className="text-meta-light">{row.original.name}</span>,
+      },
+      {
+        accessorKey: 'flashCtfEvents',
+        header: '# CTFs',
+        cell: ({ row }) => (
+          <span className="text-meta-light">{formatNumber(row.original.flashCtfEvents ?? 0)}</span>
+        ),
+      },
+      {
+        accessorKey: 'flashCtfChallenges',
+        header: 'Challenges',
+        cell: ({ row }) => (
+          <span className="text-meta-light">{formatNumber(row.original.flashCtfChallenges ?? 0)}</span>
+        ),
+      },
+      {
+        accessorKey: 'flashCtfPoints',
+        header: 'Total Points',
+        cell: ({ row }) => (
+          <span className="text-meta-light">{formatNumber(row.original.flashCtfPoints ?? 0)}</span>
+        ),
+      },
+    ],
+    []
+  );
+
   const awaitingColumns = useMemo<ColumnDef<TeamMemberPending>[]>(
     () => [
       {
@@ -560,6 +601,13 @@ export default function GamePlatformDashboard() {
         onRowClick: handleCompetitorChallengeDrilldown,
       },
       {
+        key: 'ctf',
+        label: 'CTF Competitions',
+        columns: ctfMemberColumns,
+        data: selectedTeam.membersOnPlatform,
+        emptyMessage: 'No Flash CTF participation recorded for this team.',
+      },
+      {
         key: 'awaiting',
         label: 'Awaiting Add',
         columns: awaitingColumns,
@@ -574,7 +622,7 @@ export default function GamePlatformDashboard() {
         emptyMessage: 'No members on file.',
       },
     ];
-  }, [selectedTeam, onPlatformColumns, awaitingColumns, rosterColumns, handleCompetitorChallengeDrilldown]);
+  }, [selectedTeam, onPlatformColumns, ctfMemberColumns, awaitingColumns, rosterColumns, handleCompetitorChallengeDrilldown]);
 
   const alerts = useMemo(() => {
     if (!dashboard) {
@@ -1022,6 +1070,25 @@ export default function GamePlatformDashboard() {
                       {team ? formatNumber(team.memberCount) : '—'}
                       {team && team.totalMembers > team.memberCount
                         ? ` / ${formatNumber(team.totalMembers)}`
+                        : ''}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="group flex w-full items-center justify-between rounded-sm text-left text-meta-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-meta-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-meta-card"
+                    onClick={() => {
+                      if (!team) return;
+                      setSelectedTeam(team);
+                      setTeamInitialDataset('ctf');
+                      setTeamDrilldownOpen(true);
+                    }}
+                    title="Total Flash CTF event entries across all team members. Click for per-member breakdown."
+                  >
+                    <span className="group-hover:text-meta-light">CTF Competitions</span>
+                    <span className="font-semibold text-meta-accent group-hover:underline">
+                      {team ? formatNumber(team.totalFlashCtfEvents ?? 0) : '—'}
+                      {team && (team.totalFlashCtfPoints ?? 0) > 0
+                        ? ` • ${formatNumber(team.totalFlashCtfPoints ?? 0)} pts`
                         : ''}
                     </span>
                   </button>

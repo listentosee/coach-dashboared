@@ -242,7 +242,18 @@ export async function POST(req: NextRequest) {
     }
 
     if (ids?.length) {
+      // Explicit competitor list: send (or re-send) to exactly these. The
+      // admin opted in, so we honor the request even if some have already
+      // been emailed.
       certificateQuery = certificateQuery.in('competitor_id', ids);
+    } else {
+      // Bulk run: resume mode. Skip certs that already have `emailed_at`
+      // stamped so re-clicks after a partial generation only email the
+      // newly-generated PDFs. emailed_at is set further down only after
+      // SendGrid returns 202, so it's a reliable "delivered to provider"
+      // marker — pairs with the resumable filter in
+      // resolveEligibleCompetitors so the recovery flow is symmetric.
+      certificateQuery = certificateQuery.is('emailed_at', null);
     }
 
     const { data: certificates, error } = await certificateQuery;

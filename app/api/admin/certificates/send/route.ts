@@ -81,7 +81,6 @@ function deriveAppBaseUrl(req: NextRequest): string {
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || '';
 const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'noreply@coach.cyber-guild.org';
 const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME || 'Coach Dashboard';
-const COACH_FILLOUT_FORM_ID = process.env.NEXT_PUBLIC_FILLOUT_COACH_FORM_ID || 'bJKURVuG1zus';
 
 function ensureServiceClient() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -98,11 +97,11 @@ function createClaimToken() {
   return crypto.randomBytes(24).toString('hex');
 }
 
-function buildCoachFeedbackUrl(id: string) {
-  const url = new URL(`https://form.fillout.com/t/${COACH_FILLOUT_FORM_ID}`);
-  url.searchParams.set('type', 'coach');
-  url.searchParams.set('id', id);
-  return url.toString();
+function buildCoachFeedbackUrl(baseUrl: string, id: string) {
+  // Route through our app-side wrapper at /coach-survey/[id] so the page
+  // can short-circuit duplicate submissions before embedding the Fillout
+  // iframe. The wrapper builds the Fillout URL itself for the iframe src.
+  return `${baseUrl}/coach-survey/${encodeURIComponent(id)}`;
 }
 
 function buildCompetitorClaimUrl(baseUrl: string, token: string) {
@@ -163,7 +162,7 @@ export async function POST(req: NextRequest) {
             id: coach.id,
             name: coach.full_name,
             email,
-            link: buildCoachFeedbackUrl(coach.id),
+            link: buildCoachFeedbackUrl(appBaseUrl, coach.id),
           };
         })
         .filter((r): r is NonNullable<typeof r> => r !== null);

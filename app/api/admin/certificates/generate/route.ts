@@ -11,6 +11,15 @@ import {
 import { AuditLogger } from '@/lib/audit/audit-logger';
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase';
 
+// Each iteration does a template read + PDF flatten + storage upload + DB
+// upsert + audit log — empirically ~400-500ms per competitor on Vercel. The
+// platform default (60s on Pro) was killing bulk runs around the 200-row
+// mark. 300s is the Vercel Pro Node-serverless ceiling and gives us
+// comfortable headroom for the current eligible-set size (~280) and
+// future growth into the low thousands. Pair with the resumable-skip in
+// resolveEligibleCompetitors so re-clicks only do new work.
+export const maxDuration = 300;
+
 const requestBodySchema = z.object({
   certificateYear: z.number().int().optional(),
   competitorIds: z.array(z.string().uuid()).optional(),
@@ -41,7 +50,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { certificateYear, competitorIds, dryRun } = parsed.data;
-    const competitors = await resolveEligibleCompetitors({ competitorIds });
+    const competitors = await resolveEligibleCompetitors({ competitorIds, certificateYear });
 
     if (dryRun) {
       return NextResponse.json({

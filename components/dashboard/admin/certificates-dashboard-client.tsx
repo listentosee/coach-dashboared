@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,30 @@ import { Textarea } from '@/components/ui/textarea';
 import { CertificatesSubmissionsPanel } from './certificates-submissions-panel';
 
 type RouteResult = Record<string, unknown> | null;
+
+// Templates the user types into the four subject/body boxes are persisted to
+// localStorage so they survive page reloads. We keep the canonical defaults
+// here so a "Reset to default" affordance can put each card back to its
+// shipped wording in one click. Bump the storage key version if the default
+// shape changes incompatibly. The key intentionally lives client-side: this
+// admin tool is single-operator in practice, and persisting per-browser is
+// enough — if you need shared templates across admins / devices, swap this
+// for a DB-backed admin_email_templates table.
+const TEMPLATE_DEFAULTS: {
+  competitorSubject: string;
+  competitorBody: string;
+  coachSubject: string;
+  coachBody: string;
+} = {
+  competitorSubject: 'Your Competition Certificate Is Ready',
+  competitorBody:
+    'Hi {{name}},\n\nYour competition certificate is ready. [Claim your certificate]({{link}}) to complete a short survey and download your PDF.\n\nThanks,\nCyber-Guild',
+  coachSubject: 'Coach Feedback Survey',
+  coachBody:
+    'Hi {{name}},\n\nPlease share your feedback by completing our short [Coach Feedback Survey]({{link}}).\n\nThanks,\nCyber-Guild',
+};
+
+const TEMPLATE_STORAGE_KEY = 'cert-dashboard:email-templates:v1';
 
 async function postJson(url: string, body: Record<string, unknown>) {
   const response = await fetch(url, {
@@ -28,14 +52,10 @@ async function postJson(url: string, body: Record<string, unknown>) {
 
 export function CertificatesDashboardClient() {
   const [certificateYear, setCertificateYear] = useState('2026');
-  const [competitorSubject, setCompetitorSubject] = useState('Your Competition Certificate Is Ready');
-  const [competitorBody, setCompetitorBody] = useState(
-    'Hi {{name}},\n\nYour competition certificate is ready. [Claim your certificate]({{link}}) to complete a short survey and download your PDF.\n\nThanks,\nCyber-Guild'
-  );
-  const [coachSubject, setCoachSubject] = useState('Coach Feedback Survey');
-  const [coachBody, setCoachBody] = useState(
-    'Hi {{name}},\n\nPlease share your feedback by completing our short [Coach Feedback Survey]({{link}}).\n\nThanks,\nCyber-Guild'
-  );
+  const [competitorSubject, setCompetitorSubject] = useState(TEMPLATE_DEFAULTS.competitorSubject);
+  const [competitorBody, setCompetitorBody] = useState(TEMPLATE_DEFAULTS.competitorBody);
+  const [coachSubject, setCoachSubject] = useState(TEMPLATE_DEFAULTS.coachSubject);
+  const [coachBody, setCoachBody] = useState(TEMPLATE_DEFAULTS.coachBody);
 
   // Optional ID scoping. One UUID per line — empty = "all eligible".
   // Applied to both dry-run and live actions so you can verify the exact
@@ -46,6 +66,51 @@ export function CertificatesDashboardClient() {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<RouteResult>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+
+  // `templatesHydrated` gates the save effect so it can't fire with the
+  // hardcoded defaults on first mount and clobber whatever the admin had
+  // previously saved. We can't read localStorage in useState initializers
+  // because this component renders on the server before hydrating on the
+  // client.
+  const [templatesHydrated, setTemplatesHydrated] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(TEMPLATE_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<typeof TEMPLATE_DEFAULTS>;
+        if (typeof parsed.competitorSubject === 'string') setCompetitorSubject(parsed.competitorSubject);
+        if (typeof parsed.competitorBody === 'string') setCompetitorBody(parsed.competitorBody);
+        if (typeof parsed.coachSubject === 'string') setCoachSubject(parsed.coachSubject);
+        if (typeof parsed.coachBody === 'string') setCoachBody(parsed.coachBody);
+      }
+    } catch {
+      // Corrupt JSON or storage disabled — fall back to defaults silently.
+    }
+    setTemplatesHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!templatesHydrated) return;
+    try {
+      window.localStorage.setItem(
+        TEMPLATE_STORAGE_KEY,
+        JSON.stringify({ competitorSubject, competitorBody, coachSubject, coachBody }),
+      );
+    } catch {
+      // Quota exceeded or storage disabled — best effort only.
+    }
+  }, [templatesHydrated, competitorSubject, competitorBody, coachSubject, coachBody]);
+
+  function resetCompetitorTemplate() {
+    setCompetitorSubject(TEMPLATE_DEFAULTS.competitorSubject);
+    setCompetitorBody(TEMPLATE_DEFAULTS.competitorBody);
+  }
+
+  function resetCoachTemplate() {
+    setCoachSubject(TEMPLATE_DEFAULTS.coachSubject);
+    setCoachBody(TEMPLATE_DEFAULTS.coachBody);
+  }
 
   function parseIds(raw: string): string[] | undefined {
     const ids = raw
@@ -204,6 +269,14 @@ export function CertificatesDashboardClient() {
               {loadingAction === 'send-competitor-live' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Send Competitor Emails
             </Button>
+            <Button
+              variant="ghost"
+              onClick={resetCompetitorTemplate}
+              disabled={loadingAction !== null}
+              title="Restore the default subject and body for competitor emails."
+            >
+              Reset to default
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -279,6 +352,14 @@ export function CertificatesDashboardClient() {
             >
               {loadingAction === 'send-coach-live' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Send Coach Emails
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={resetCoachTemplate}
+              disabled={loadingAction !== null}
+              title="Restore the default subject and body for coach emails."
+            >
+              Reset to default
             </Button>
           </div>
         </CardContent>

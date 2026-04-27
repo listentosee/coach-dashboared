@@ -24,6 +24,11 @@ interface Submission {
   fillout_form_id: string | null;
   respondent_name: string;
   respondent_email: string | null;
+  // For competitor rows: the competitor's coach name. Null for coach rows
+  // (the coach is the respondent, no need to repeat them in this column).
+  coach_name: string | null;
+  // For competitor rows: the competitor's coach's school. For coach rows:
+  // the coach's own school.
   school_name: string | null;
   competitor_id: string | null;
   coach_profile_id: string | null;
@@ -211,7 +216,8 @@ export function CertificatesSubmissionsPanel() {
                   <th className="px-3 py-2">Submitted</th>
                   <th className="px-3 py-2">Type</th>
                   <th className="px-3 py-2">Respondent</th>
-                  <th className="px-3 py-2">Context</th>
+                  <th className="px-3 py-2">Coach</th>
+                  <th className="px-3 py-2">School</th>
                   <th className="px-3 py-2 text-right">Answers</th>
                   <th className="px-3 py-2"></th>
                 </tr>
@@ -236,7 +242,10 @@ export function CertificatesSubmissionsPanel() {
                     </td>
                     <td className="px-3 py-2 text-meta-light">{s.respondent_name}</td>
                     <td className="px-3 py-2 text-xs text-meta-muted">
-                      {s.school_name ?? s.respondent_email ?? ''}
+                      {s.type === 'competitor' ? (s.coach_name ?? '—') : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-meta-muted">
+                      {s.school_name ?? '—'}
                     </td>
                     <td className="px-3 py-2 text-right text-meta-light">{s.answers.length}</td>
                     <td className="px-3 py-2 text-right">

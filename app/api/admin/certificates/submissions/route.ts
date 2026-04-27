@@ -34,7 +34,11 @@ export async function GET(req: NextRequest) {
       fillout_form_id,
       submitted_at,
       results_jsonb,
-      competitors:competitor_id ( first_name, last_name ),
+      competitors:competitor_id (
+        first_name,
+        last_name,
+        coach:profiles!competitors_coach_id_fkey ( full_name, school_name )
+      ),
       profiles:coach_profile_id ( full_name, email, school_name )
     `)
     .order('submitted_at', { ascending: false })
@@ -51,6 +55,18 @@ export async function GET(req: NextRequest) {
         ? `${r.competitors?.first_name ?? ''} ${r.competitors?.last_name ?? ''}`.trim() || '(unknown competitor)'
         : r.profiles?.full_name || r.profiles?.email || '(unknown coach)';
 
+    // Supabase typing on chained FK embeds is loose — coerce through `any`.
+    // For competitor rows, surface the *competitor's* coach name + school.
+    // For coach rows we already had the school via the direct embed; coach
+    // name is left null so the UI can render a dash (the coach is the
+    // respondent themselves and would be redundant).
+    const competitorCoach = r.competitors?.coach ?? null;
+    const coachName = r.type === 'competitor' ? competitorCoach?.full_name ?? null : null;
+    const schoolName =
+      r.type === 'competitor'
+        ? competitorCoach?.school_name ?? null
+        : r.profiles?.school_name ?? null;
+
     return {
       id: r.id,
       type: r.type as 'coach' | 'competitor',
@@ -59,7 +75,8 @@ export async function GET(req: NextRequest) {
       fillout_form_id: r.fillout_form_id,
       respondent_name: respondentName,
       respondent_email: r.type === 'coach' ? r.profiles?.email ?? null : null,
-      school_name: r.type === 'coach' ? r.profiles?.school_name ?? null : null,
+      coach_name: coachName,
+      school_name: schoolName,
       competitor_id: r.competitor_id,
       coach_profile_id: r.coach_profile_id,
       answers: parseSubmissionAnswers(r.results_jsonb),

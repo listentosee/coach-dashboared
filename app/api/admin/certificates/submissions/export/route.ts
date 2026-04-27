@@ -37,7 +37,13 @@ export async function GET(req: NextRequest) {
       type,
       submitted_at,
       results_jsonb,
-      competitors:competitor_id ( first_name, last_name, email_personal, email_school ),
+      competitors:competitor_id (
+        first_name,
+        last_name,
+        email_personal,
+        email_school,
+        coach:profiles!competitors_coach_id_fkey ( full_name, school_name )
+      ),
       profiles:coach_profile_id ( full_name, email, school_name )
     `)
     .eq('type', typeParam)
@@ -48,7 +54,11 @@ export async function GET(req: NextRequest) {
   const rows = data ?? [];
   const columns = collectColumns(rows.map((r: any) => r.results_jsonb));
 
-  const header = ['submitted_at', 'respondent', 'email', 'school', ...columns.map((c) => c.label)];
+  // `coach` and `school` are populated for competitor exports (the
+  // respondent's own coach) so analysts can group by coach/school without
+  // re-joining manually. For coach exports `coach` is left blank since
+  // the coach is the respondent and `school` carries their own school.
+  const header = ['submitted_at', 'respondent', 'email', 'coach', 'school', ...columns.map((c) => c.label)];
   const lines = [header.map(escapeCsv).join(',')];
 
   for (const r of rows as any[]) {
@@ -60,9 +70,14 @@ export async function GET(req: NextRequest) {
       typeParam === 'competitor'
         ? r.competitors?.email_personal ?? r.competitors?.email_school ?? ''
         : r.profiles?.email ?? '';
-    const school = typeParam === 'coach' ? r.profiles?.school_name ?? '' : '';
+    const competitorCoach = r.competitors?.coach ?? null;
+    const coach = typeParam === 'competitor' ? competitorCoach?.full_name ?? '' : '';
+    const school =
+      typeParam === 'competitor'
+        ? competitorCoach?.school_name ?? ''
+        : r.profiles?.school_name ?? '';
 
-    const base = [r.submitted_at ?? '', name, email, school];
+    const base = [r.submitted_at ?? '', name, email, coach, school];
     const answers = rowValuesByColumn(r.results_jsonb, columns);
     lines.push([...base, ...answers].map(escapeCsv).join(','));
   }

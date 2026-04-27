@@ -120,6 +120,7 @@ export async function uploadCertificatePdf(options: {
 
 export async function resolveEligibleCompetitors(options?: {
   competitorIds?: string[];
+  certificateYear?: number | null;
 }) {
   const supabase = createCertificateServiceClient();
   let query = supabase
@@ -143,14 +144,15 @@ export async function resolveEligibleCompetitors(options?: {
   const competitors = (data || []) as unknown as EligibleCompetitor[];
 
   // When the admin explicitly scopes to specific IDs (e.g. a live end-to-end
-  // test with test competitors), honor them regardless of play activity.
-  // Without explicit IDs, keep the activity filter so bulk runs don't
-  // generate certificates for rostered-but-inactive competitors.
+  // test with test competitors), honor them regardless of play activity OR
+  // prior generation — re-runs of an explicit set should regenerate.
   if (explicitIds) {
     return competitors;
   }
 
-  return competitors.filter((competitor) => {
+  // Bulk run: keep the activity filter so we don't generate certificates
+  // for rostered-but-inactive competitors.
+  const activeCompetitors = competitors.filter((competitor) => {
     const stats = Array.isArray(competitor.game_platform_stats)
       ? competitor.game_platform_stats[0]
       : null;
@@ -161,6 +163,36 @@ export async function resolveEligibleCompetitors(options?: {
       (stats?.monthly_ctf_challenges || 0) > 0
     );
   });
+
+  // Resumability: if a competitor already has a generated PDF for this
+  // year (storage_path set), skip them. This makes re-runs cheap after a
+  // partial failure (e.g. function timeout) — the next click only does the
+  // remaining work, instead of re-uploading every PDF from scratch.
+  // Rows with NULL storage_path are still picked up so we can repair them.
+  if (!activeCompetitors.length) {
+    return activeCompetitors;
+  }
+
+  const certificateYear = getCertificateYear(options?.certificateYear);
+  const { data: alreadyGenerated, error: existingError } = await supabase
+    .from('competitor_certificates')
+    .select('competitor_id')
+    .eq('certificate_year', certificateYear)
+    .not('storage_path', 'is', null)
+    .in(
+      'competitor_id',
+      activeCompetitors.map((competitor) => competitor.id),
+    );
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  const generatedIds = new Set(
+    (alreadyGenerated || []).map((row: { competitor_id: string }) => row.competitor_id),
+  );
+
+  return activeCompetitors.filter((competitor) => !generatedIds.has(competitor.id));
 }
 
 export async function upsertCertificateRecord(options: {

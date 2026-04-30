@@ -252,6 +252,25 @@ export function CertificatesDashboardClient() {
               Dry Run Competitor Send
             </Button>
             <Button
+              onClick={() =>
+                runAction('resend-competitor-incomplete-dry', () =>
+                  postJson('/api/admin/certificates/send', {
+                    audience: 'competitor',
+                    certificateYear: parseYear(),
+                    ids: parseIds(competitorIds),
+                    subject: competitorSubject,
+                    body: competitorBody,
+                    onlyIncomplete: true,
+                    dryRun: true,
+                  })
+                )
+              }
+              disabled={loadingAction !== null}
+            >
+              {loadingAction === 'resend-competitor-incomplete-dry' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Dry Run Incomplete Resend
+            </Button>
+            <Button
               variant="secondary"
               onClick={() =>
                 runAction('send-competitor-live', () =>
@@ -270,6 +289,26 @@ export function CertificatesDashboardClient() {
               Send Competitor Emails
             </Button>
             <Button
+              variant="secondary"
+              onClick={() =>
+                runAction('resend-competitor-incomplete-live', () =>
+                  postJson('/api/admin/certificates/send', {
+                    audience: 'competitor',
+                    certificateYear: parseYear(),
+                    ids: parseIds(competitorIds),
+                    subject: competitorSubject,
+                    body: competitorBody,
+                    onlyIncomplete: true,
+                  })
+                )
+              }
+              disabled={loadingAction !== null}
+              title="Resend only to competitors whose certificate survey is not complete."
+            >
+              {loadingAction === 'resend-competitor-incomplete-live' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Resend Incomplete Only
+            </Button>
+            <Button
               variant="ghost"
               onClick={resetCompetitorTemplate}
               disabled={loadingAction !== null}
@@ -283,11 +322,12 @@ export function CertificatesDashboardClient() {
 
       <Card className="border-meta-border bg-meta-dark/60">
         <CardHeader>
-          <CardTitle className="text-meta-light">Coach Feedback Email</CardTitle>
+          <CardTitle className="text-meta-light">Coach Feedback Message</CardTitle>
           <CardDescription>
-            Send the coach feedback Fillout link. Prefers <code>email_alert_address</code> when
-            set; falls back to profile email. The body supports <strong>Markdown</strong> or HTML,
-            plus <code>{'{{name}}'}</code> and <code>{'{{link}}'}</code>.
+            Send the coach feedback Fillout link by email or as an in-app message from the currently
+            logged-in admin. Email delivery prefers <code>email_alert_address</code> when set; falls
+            back to profile email. The body supports <strong>Markdown</strong> or HTML for email, and
+            Markdown for in-app messages, plus <code>{'{{name}}'}</code> and <code>{'{{link}}'}</code>.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -324,6 +364,7 @@ export function CertificatesDashboardClient() {
                 runAction('send-coach-dry', () =>
                   postJson('/api/admin/certificates/send', {
                     audience: 'coach',
+                    deliveryMethod: 'email',
                     ids: parseIds(coachIds),
                     subject: coachSubject,
                     body: coachBody,
@@ -337,11 +378,50 @@ export function CertificatesDashboardClient() {
               Dry Run Coach Send
             </Button>
             <Button
+              onClick={() =>
+                runAction('resend-coach-incomplete-dry', () =>
+                  postJson('/api/admin/certificates/send', {
+                    audience: 'coach',
+                    deliveryMethod: 'email',
+                    ids: parseIds(coachIds),
+                    subject: coachSubject,
+                    body: coachBody,
+                    onlyIncomplete: true,
+                    dryRun: true,
+                  })
+                )
+              }
+              disabled={loadingAction !== null}
+            >
+              {loadingAction === 'resend-coach-incomplete-dry' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Dry Run Incomplete Coach Email
+            </Button>
+            <Button
+              onClick={() =>
+                runAction('send-coach-in-app-dry', () =>
+                  postJson('/api/admin/certificates/send', {
+                    audience: 'coach',
+                    deliveryMethod: 'in_app',
+                    ids: parseIds(coachIds),
+                    subject: coachSubject,
+                    body: coachBody,
+                    onlyIncomplete: true,
+                    dryRun: true,
+                  })
+                )
+              }
+              disabled={loadingAction !== null}
+            >
+              {loadingAction === 'send-coach-in-app-dry' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Dry Run Coach In-App
+            </Button>
+            <Button
               variant="secondary"
               onClick={() =>
                 runAction('send-coach-live', () =>
                   postJson('/api/admin/certificates/send', {
                     audience: 'coach',
+                    deliveryMethod: 'email',
                     ids: parseIds(coachIds),
                     subject: coachSubject,
                     body: coachBody,
@@ -352,6 +432,46 @@ export function CertificatesDashboardClient() {
             >
               {loadingAction === 'send-coach-live' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Send Coach Emails
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                runAction('resend-coach-incomplete-live', () =>
+                  postJson('/api/admin/certificates/send', {
+                    audience: 'coach',
+                    deliveryMethod: 'email',
+                    ids: parseIds(coachIds),
+                    subject: coachSubject,
+                    body: coachBody,
+                    onlyIncomplete: true,
+                  })
+                )
+              }
+              disabled={loadingAction !== null}
+              title="Resend only to coaches who do not have a coach survey response recorded."
+            >
+              {loadingAction === 'resend-coach-incomplete-live' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Email Incomplete Only
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                runAction('send-coach-in-app-live', () =>
+                  postJson('/api/admin/certificates/send', {
+                    audience: 'coach',
+                    deliveryMethod: 'in_app',
+                    ids: parseIds(coachIds),
+                    subject: coachSubject,
+                    body: coachBody,
+                    onlyIncomplete: true,
+                  })
+                )
+              }
+              disabled={loadingAction !== null}
+              title="Send an in-app survey message from the currently logged-in admin to coaches who have not completed the survey."
+            >
+              {loadingAction === 'send-coach-in-app-live' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              In-App Incomplete Only
             </Button>
             <Button
               variant="ghost"

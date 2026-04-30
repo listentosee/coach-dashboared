@@ -52,6 +52,7 @@ export type AuditAction =
   | 'certificate_generated'
   | 'certificate_emailed'
   | 'coach_survey_emailed'
+  | 'coach_survey_in_app_message_sent'
   | 'certificate_survey_submitted'
   | 'coach_survey_submitted'
   | 'certificate_downloaded';

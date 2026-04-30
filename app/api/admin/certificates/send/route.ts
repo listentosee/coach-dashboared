@@ -44,6 +44,8 @@ function bodyToHtml(input: string): string {
 
 const requestBodySchema = z.object({
   audience: z.enum(['competitor', 'coach']),
+  deliveryMethod: z.enum(['email', 'in_app']).optional(),
+  onlyIncomplete: z.boolean().optional(),
   ids: z.array(z.string().uuid()).optional(),
   subject: z.string().min(1).optional(),
   body: z.string().min(1).optional(),
@@ -108,6 +110,82 @@ function buildCompetitorClaimUrl(baseUrl: string, token: string) {
   return `${baseUrl}/certificate/claim/${encodeURIComponent(token)}`;
 }
 
+function bodyToMessageText(input: string, substitutions: Record<string, string>) {
+  let out = input.trim();
+  for (const [token, value] of Object.entries(substitutions)) {
+    out = out.split(token).join(value);
+  }
+  return out;
+}
+
+async function sendCoachInAppMessages({
+  supabase,
+  recipients,
+  senderId,
+  subject,
+  body,
+}: {
+  supabase: any;
+  recipients: Array<{ id: string; name: string | null; link: string }>;
+  senderId: string;
+  subject: string;
+  body: string;
+}) {
+  const sent: Array<{ coachProfileId: string; conversationId: string; messageId: string }> = [];
+
+  for (const recipient of recipients) {
+    const { data: conversation, error: conversationError } = await supabase
+      .from('conversations')
+      .insert({
+        type: 'dm',
+        title: subject,
+        created_by: senderId,
+      })
+      .select('id')
+      .single();
+
+    if (conversationError || !conversation?.id) {
+      throw conversationError || new Error('Failed to create coach survey conversation');
+    }
+
+    const { error: memberError } = await supabase
+      .from('conversation_members')
+      .insert([
+        { conversation_id: conversation.id, user_id: senderId, role: 'member' },
+        { conversation_id: conversation.id, user_id: recipient.id, role: 'member' },
+      ]);
+
+    if (memberError) throw memberError;
+
+    const messageBody = bodyToMessageText(body, {
+      '{{link}}': recipient.link,
+      '{{name}}': recipient.name || 'Coach',
+    });
+
+    const { data: message, error: messageError } = await supabase
+      .from('messages')
+      .insert({
+        conversation_id: conversation.id,
+        sender_id: senderId,
+        body: messageBody,
+      })
+      .select('id')
+      .single();
+
+    if (messageError || !message?.id) {
+      throw messageError || new Error('Failed to create coach survey message');
+    }
+
+    sent.push({
+      coachProfileId: recipient.id,
+      conversationId: String(conversation.id),
+      messageId: String(message.id),
+    });
+  }
+
+  return sent;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -134,7 +212,16 @@ export async function POST(req: NextRequest) {
     }
 
     const serviceClient = ensureServiceClient();
-    const { audience, ids, subject, body, certificateYear, dryRun } = parsed.data;
+    const {
+      audience,
+      ids,
+      subject,
+      body,
+      certificateYear,
+      dryRun,
+      onlyIncomplete = false,
+    } = parsed.data;
+    const deliveryMethod = parsed.data.deliveryMethod || 'email';
 
     if (audience === 'coach') {
       let coachQuery = serviceClient
@@ -149,15 +236,32 @@ export async function POST(req: NextRequest) {
       const { data: coaches, error } = await coachQuery;
       if (error) throw error;
 
+      let completedCoachIds = new Set<string>();
+      if (onlyIncomplete && coaches?.length) {
+        const { data: completedRows, error: completedError } = await serviceClient
+          .from('survey_results')
+          .select('coach_profile_id')
+          .eq('type', 'coach')
+          .in('coach_profile_id', coaches.map((coach) => coach.id));
+
+        if (completedError) throw completedError;
+        completedCoachIds = new Set(
+          (completedRows || [])
+            .map((row) => row.coach_profile_id)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        );
+      }
+
       // Prefer the coach's alert email if they've set one — they typically
       // route it to an address they actually watch. Fall back to the
-      // profile email. Drop coaches with neither.
+      // profile email. Drop coaches with neither for email delivery.
       const recipients = (coaches || [])
+        .filter((coach) => !completedCoachIds.has(coach.id))
         .map((coach) => {
           const preferred = (coach.email_alert_address ?? '').trim();
           const fallback = (coach.email ?? '').trim();
           const email = preferred || fallback;
-          if (!email) return null;
+          if (deliveryMethod === 'email' && !email) return null;
           return {
             id: coach.id,
             name: coach.full_name,
@@ -168,24 +272,71 @@ export async function POST(req: NextRequest) {
         .filter((r): r is NonNullable<typeof r> => r !== null);
 
       if (dryRun) {
-        return NextResponse.json({ ok: true, dryRun: true, audience, recipients });
+        return NextResponse.json({
+          ok: true,
+          dryRun: true,
+          audience,
+          deliveryMethod,
+          onlyIncomplete,
+          skippedCompleted: completedCoachIds.size,
+          recipients,
+        });
+      }
+
+      const rawBody =
+        body ||
+        'Hi {{name}},\n\nPlease share your feedback by completing our short [Coach Feedback Survey]({{link}}).\n\nThanks,\nCyber-Guild';
+      const resolvedSubject = subject || 'Coach Feedback Survey';
+
+      if (recipients.length === 0) {
+        return NextResponse.json({
+          ok: true,
+          sent: 0,
+          audience,
+          deliveryMethod,
+          onlyIncomplete,
+          skippedCompleted: completedCoachIds.size,
+        });
+      }
+
+      if (deliveryMethod === 'in_app') {
+        const sentMessages = await sendCoachInAppMessages({
+          supabase,
+          recipients,
+          senderId: user.id,
+          subject: resolvedSubject,
+          body: rawBody,
+        });
+
+        for (const recipient of recipients) {
+          const sentMessage = sentMessages.find((item) => item.coachProfileId === recipient.id);
+          await AuditLogger.logAction(serviceClient, {
+            user_id: user.id,
+            action: 'coach_survey_in_app_message_sent',
+            entity_type: 'coach_profile',
+            entity_id: recipient.id,
+            metadata: {
+              conversation_id: sentMessage?.conversationId,
+              message_id: sentMessage?.messageId,
+              only_incomplete: onlyIncomplete,
+            },
+          });
+        }
+
+        return NextResponse.json({
+          ok: true,
+          sent: sentMessages.length,
+          audience,
+          deliveryMethod,
+          onlyIncomplete,
+          skippedCompleted: completedCoachIds.size,
+        });
       }
 
       if (!SENDGRID_API_KEY) {
         return NextResponse.json({ error: 'SENDGRID_API_KEY is not configured' }, { status: 500 });
       }
 
-      const personalizations = recipients.map((recipient) => ({
-        to: [{ email: recipient.email }],
-        custom_args: {
-          email_type: 'coach_feedback',
-          coach_profile_id: recipient.id,
-        },
-      }));
-
-      const rawBody =
-        body ||
-        'Hi {{name}},\n\nPlease share your feedback by completing our short [Coach Feedback Survey]({{link}}).\n\nThanks,\nCyber-Guild';
       const htmlBody = bodyToHtml(rawBody);
 
       const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
@@ -207,7 +358,7 @@ export async function POST(req: NextRequest) {
             },
           })),
           from: { email: SENDGRID_FROM_EMAIL, name: SENDGRID_FROM_NAME },
-          subject: subject || 'Coach Feedback Survey',
+          subject: resolvedSubject,
           content: [{ type: 'text/html', value: htmlBody }],
         }),
       });
@@ -223,17 +374,24 @@ export async function POST(req: NextRequest) {
           action: 'coach_survey_emailed',
           entity_type: 'coach_profile',
           entity_id: recipient.id,
-          metadata: { email: recipient.email },
+          metadata: { email: recipient.email, only_incomplete: onlyIncomplete },
         });
       }
 
-      return NextResponse.json({ ok: true, sent: recipients.length, audience });
+      return NextResponse.json({
+        ok: true,
+        sent: recipients.length,
+        audience,
+        deliveryMethod,
+        onlyIncomplete,
+        skippedCompleted: completedCoachIds.size,
+      });
     }
 
     let certificateQuery = serviceClient
       .from('competitor_certificates')
       .select(
-        'id, competitor_id, claim_token, certificate_year, storage_path, competitors(id, first_name, last_name, email_personal, email_school, game_platform_onboarding_email)'
+        'id, competitor_id, claim_token, certificate_year, storage_path, survey_completed_at, competitors(id, first_name, last_name, email_personal, email_school, game_platform_onboarding_email)'
       )
       .not('storage_path', 'is', null);
 
@@ -244,8 +402,12 @@ export async function POST(req: NextRequest) {
     if (ids?.length) {
       // Explicit competitor list: send (or re-send) to exactly these. The
       // admin opted in, so we honor the request even if some have already
-      // been emailed.
+      // been emailed. `onlyIncomplete` still filters out completed surveys.
       certificateQuery = certificateQuery.in('competitor_id', ids);
+    } else if (onlyIncomplete) {
+      // Resend mode: ignore emailed_at and target every generated certificate
+      // whose survey is still incomplete.
+      certificateQuery = certificateQuery.is('survey_completed_at', null);
     } else {
       // Bulk run: resume mode. Skip certs that already have `emailed_at`
       // stamped so re-clicks after a partial generation only email the
@@ -254,6 +416,10 @@ export async function POST(req: NextRequest) {
       // marker — pairs with the resumable filter in
       // resolveEligibleCompetitors so the recovery flow is symmetric.
       certificateQuery = certificateQuery.is('emailed_at', null);
+    }
+
+    if (ids?.length && onlyIncomplete) {
+      certificateQuery = certificateQuery.is('survey_completed_at', null);
     }
 
     const { data: certificates, error } = await certificateQuery;
@@ -295,7 +461,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (dryRun) {
-      return NextResponse.json({ ok: true, dryRun: true, audience, recipients: prepared });
+      return NextResponse.json({ ok: true, dryRun: true, audience, deliveryMethod: 'email', onlyIncomplete, recipients: prepared });
+    }
+
+    if (prepared.length === 0) {
+      return NextResponse.json({ ok: true, sent: 0, audience, deliveryMethod: 'email', onlyIncomplete });
     }
 
     if (!SENDGRID_API_KEY) {
@@ -352,11 +522,12 @@ export async function POST(req: NextRequest) {
         metadata: {
           competitor_id: recipient.competitorId,
           email: recipient.email,
+          only_incomplete: onlyIncomplete,
         },
       });
     }
 
-    return NextResponse.json({ ok: true, sent: prepared.length, audience });
+    return NextResponse.json({ ok: true, sent: prepared.length, audience, deliveryMethod: 'email', onlyIncomplete });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const stack = error instanceof Error ? error.stack : undefined;

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { config } from '@/lib/config';
 
 interface MondayColumn {
   id: string;
@@ -21,7 +22,7 @@ export class MondayBoardMapper {
   private constructor() {
     this.supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      config.supabase.secretKey
     );
   }
 

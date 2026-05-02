@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { createClient } from '@supabase/supabase-js';
+import { config } from '@/lib/config';
 
 function toIsoOrNull(value?: string | null) {
   if (!value) return null;
@@ -57,7 +58,7 @@ export async function GET(request: NextRequest) {
     // Get time range from query params (7d, 30d, 90d, or custom)
     const range = request.nextUrl.searchParams.get('range') || '30d';
 
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const serviceRoleKey = config.supabase.secretKey;
     const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceClient = (serviceRoleKey && serviceUrl)
       ? createClient(serviceUrl, serviceRoleKey, { auth: { persistSession: false } })
@@ -806,7 +807,7 @@ export async function GET(request: NextRequest) {
     const allSyncedIds = Array.from(syncedIdToCompetitor.keys());
 
     if (allSyncedIds.length > 0) {
-      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      const serviceRoleKey = config.supabase.secretKey;
       const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const flashClient = (serviceRoleKey && serviceUrl)
         ? createClient(serviceUrl, serviceRoleKey, { auth: { persistSession: false } })

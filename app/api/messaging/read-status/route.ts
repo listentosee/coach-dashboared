@@ -3,6 +3,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
 import { isUserAdmin } from '@/lib/utils/admin-check'
+import { config } from '@/lib/config'
 
 function formatDisplayName(profile: any) {
   const fullName = typeof profile?.full_name === 'string' ? profile.full_name.trim() : ''
@@ -51,9 +52,8 @@ export async function GET(req: NextRequest) {
       }
     }
     const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    const readerClient = (isAdmin && serviceUrl && serviceKey)
-      ? createClient(serviceUrl, serviceKey, { auth: { persistSession: false } })
+    const readerClient = (isAdmin && serviceUrl)
+      ? createClient(serviceUrl, config.supabase.secretKey, { auth: { persistSession: false } })
       : supabase
 
     const { data: receipts, error: receiptsError } = await readerClient

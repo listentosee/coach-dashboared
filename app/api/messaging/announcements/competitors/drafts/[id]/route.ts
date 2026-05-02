@@ -3,12 +3,12 @@ import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { createClient } from '@supabase/supabase-js';
 import { isUserAdmin } from '@/lib/utils/admin-check';
+import { config } from '@/lib/config';
 
 function getServiceClient() {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!serviceRoleKey || !serviceUrl) return null;
-  return createClient(serviceUrl, serviceRoleKey, { auth: { persistSession: false } });
+  if (!serviceUrl) return null;
+  return createClient(serviceUrl, config.supabase.secretKey, { auth: { persistSession: false } });
 }
 
 export async function GET(

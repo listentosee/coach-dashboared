@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase/server'
-import { createClient } from '@supabase/supabase-js'
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server'
 import { enqueueJob } from '@/lib/jobs/queue'
-import { config } from '@/lib/config'
 
 // Fetch messages for a conversation (RLS enforced)
 export async function GET(
@@ -139,12 +137,7 @@ export async function POST(
 
     // Enqueue admin alerts for this conversation (exclude sender). Use service-role client because RLS on queue is service-only.
     try {
-      const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      if (!serviceUrl) {
-        throw new Error('Supabase service role env vars are not configured');
-      }
-
-      const serviceClient = createClient(serviceUrl, config.supabase.secretKey, { auth: { persistSession: false } });
+      const serviceClient = getServiceRoleSupabaseClient();
 
       const { data: members } = await serviceClient
         .from('conversation_members')

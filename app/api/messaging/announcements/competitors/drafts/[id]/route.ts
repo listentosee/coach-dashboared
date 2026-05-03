@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { isUserAdmin } from '@/lib/utils/admin-check';
-import { config } from '@/lib/config';
 
 function getServiceClient() {
-  const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!serviceUrl) return null;
-  return createClient(serviceUrl, config.supabase.secretKey, { auth: { persistSession: false } });
+  return getServiceRoleSupabaseClient();
 }
 
 export async function GET(

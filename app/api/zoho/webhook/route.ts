@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { config } from '@/lib/config';
+import { getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import crypto from 'crypto';
 import { getZohoAccessToken } from '../_lib/token';
 import { logger } from '@/lib/logging/safe-logger';
@@ -39,7 +38,7 @@ export async function POST(req: NextRequest) {
   const requestId: string | undefined = payload?.requests?.request_id;
   const requestStatus: string | undefined = payload?.requests?.request_status;
 
-  const supabase = createClient(process.env.SUPABASE_URL!, config.supabase.secretKey);
+  const supabase = getServiceRoleSupabaseClient();
 
   if (requestId) {
 

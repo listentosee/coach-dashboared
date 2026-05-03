@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase/server'
-import { createClient } from '@supabase/supabase-js'
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server'
 import { isUserAdmin } from '@/lib/utils/admin-check'
-import { config } from '@/lib/config'
 
 function formatDisplayName(profile: any) {
   const fullName = typeof profile?.full_name === 'string' ? profile.full_name.trim() : ''
@@ -49,10 +47,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
     }
-    const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const readerClient = (isAdmin && serviceUrl)
-      ? createClient(serviceUrl, config.supabase.secretKey, { auth: { persistSession: false } })
-      : supabase
+    const readerClient = isAdmin ? getServiceRoleSupabaseClient() : supabase
 
     const { data: receipts, error: receiptsError } = await readerClient
       .from('message_read_receipts')

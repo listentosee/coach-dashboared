@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase/server'
-import { createClient } from '@supabase/supabase-js'
-import { config } from '@/lib/config'
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server'
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,10 +7,7 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await authed.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const service = createClient(
-      process.env.SUPABASE_URL!,
-      config.supabase.secretKey
-    )
+    const service = getServiceRoleSupabaseClient()
     // Merge existing app_metadata and clear the flag
     const { data: existing, error: getErr } = await service.auth.admin.getUserById(user.id)
     if (getErr) return NextResponse.json({ error: getErr.message }, { status: 400 })

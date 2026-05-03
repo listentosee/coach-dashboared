@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { config } from '@/lib/config';
-import { createServerClient } from '@/lib/supabase/server'
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 import { getZohoAccessToken } from '../_lib/token';
 import { logger } from '@/lib/logging/safe-logger';
@@ -15,7 +13,7 @@ type Body = {
 export async function POST(req: NextRequest) {
   const { competitorId, mode = 'email' } = (await req.json()) as Body;
 
-  const supabase = createClient(process.env.SUPABASE_URL!, config.supabase.secretKey);
+  const supabase = getServiceRoleSupabaseClient();
 
   // Enforce caller authorization (admin coach context or coach ownership)
   const cookieStore = await cookies()

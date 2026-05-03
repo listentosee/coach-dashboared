@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/logging/safe-logger';
 import { AuditLogger } from '@/lib/audit/audit-logger';
-import { config } from '@/lib/config';
 
 // Known Fillout form IDs — same defaults used by the claim page + send route.
 // Used for form-id → audience-type inference when URL parameter forwarding
@@ -415,12 +414,6 @@ function verifyWebhookSecret(req: NextRequest): { ok: true } | { ok: false; reas
 }
 
 export async function POST(req: NextRequest) {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  if (!supabaseUrl) {
-    return NextResponse.json({ error: 'Missing Supabase service role configuration' }, { status: 500 });
-  }
-
   const auth = verifyWebhookSecret(req);
   if (!auth.ok) {
     logger.warn('Fillout webhook rejected', { reason: auth.reason, status: auth.status });
@@ -477,7 +470,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const supabase = createClient(supabaseUrl, config.supabase.secretKey, { auth: { persistSession: false } });
+  const supabase = getServiceRoleSupabaseClient();
   const results: WebhookHandleResult[] = [];
 
   for (const submission of effectiveSubmissions) {

@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 import { marked } from 'marked';
 import { isUserAdmin } from '@/lib/utils/admin-check';
-import { config } from '@/lib/config';
 
 marked.use({ gfm: true, breaks: true });
 
@@ -28,15 +26,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const serviceRoleKey = config.supabase.secretKey;
-    const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!serviceUrl) {
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
-    }
-
-    const serviceClient = createClient(serviceUrl, serviceRoleKey, {
-      auth: { persistSession: false },
-    });
+    const serviceClient = getServiceRoleSupabaseClient();
 
     const { data: drafts, error } = await serviceClient
       .from('competitor_announcement_campaigns')
@@ -83,15 +73,7 @@ export async function POST(req: NextRequest) {
     const { id, subject, body: markdownBody } = parsed.data;
     const bodyHtml = await marked.parse(markdownBody);
 
-    const serviceRoleKey = config.supabase.secretKey;
-    const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!serviceUrl) {
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
-    }
-
-    const serviceClient = createClient(serviceUrl, serviceRoleKey, {
-      auth: { persistSession: false },
-    });
+    const serviceClient = getServiceRoleSupabaseClient();
 
     if (id) {
       const { data: draft, error } = await serviceClient

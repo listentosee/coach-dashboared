@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase/server'
-import { createClient } from '@supabase/supabase-js'
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
-import { config } from '@/lib/config'
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,10 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create service-role client to update auth user
-    const service = createClient(
-      process.env.SUPABASE_URL!,
-      config.supabase.secretKey
-    )
+    const service = getServiceRoleSupabaseClient()
 
     // Generate a strong temporary password (url-safe)
     const tempPassword = crypto.randomBytes(24).toString('base64url')

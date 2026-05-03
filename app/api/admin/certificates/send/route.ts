@@ -1,12 +1,10 @@
 import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { z } from 'zod';
-import { createClient } from '@supabase/supabase-js';
 import { marked } from 'marked';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { AuditLogger } from '@/lib/audit/audit-logger';
-import { config } from '@/lib/config';
 
 // Same GFM configuration the competitor announcement mailer uses, for UX
 // consistency across admin-authored email bodies.
@@ -85,13 +83,7 @@ const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'noreply@coach.cy
 const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME || 'Coach Dashboard';
 
 function ensureServiceClient() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  if (!url) {
-    throw new Error('Missing Supabase service role configuration');
-  }
-
-  return createClient(url, config.supabase.secretKey, { auth: { persistSession: false } });
+  return getServiceRoleSupabaseClient();
 }
 
 function createClaimToken() {

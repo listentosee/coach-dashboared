@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { config } from '@/lib/config';
+import { getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 import { logger } from '@/lib/logging/safe-logger';
@@ -49,10 +48,7 @@ export async function PUT(
   context: { params: Promise<{ token: string }> }
 ) {
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      config.supabase.secretKey
-    );
+    const supabase = getServiceRoleSupabaseClient();
     
     // Parse and validate request body
     const body = await request.json();

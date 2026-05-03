@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { chromium as playwrightChromium } from 'playwright-core';
 import chromium from '@sparticuz/chromium';
-import { createClient } from '@supabase/supabase-js';
-import { config } from '@/lib/config';
+import { getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -35,16 +34,7 @@ export async function GET(
     const { competitorId } = await context.params;
 
     // Get coach and school name from database using service role
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      config.supabase.secretKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    );
+    const supabase = getServiceRoleSupabaseClient();
 
     const { data: competitorData } = await supabase
       .from('competitors')

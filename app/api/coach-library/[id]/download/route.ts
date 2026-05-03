@@ -1,8 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase/server'
-import { createClient } from '@supabase/supabase-js'
-import { config } from '@/lib/config'
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,10 +36,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       return NextResponse.json({ error: 'Document not found' }, { status: 404 })
     }
 
-    const service = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      config.supabase.secretKey
-    )
+    const service = getServiceRoleSupabaseClient()
 
     const { data: fileData, error: downloadError } = await service
       .storage

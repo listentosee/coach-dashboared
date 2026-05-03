@@ -39,9 +39,11 @@ The Vercel cron is configured in `vercel.json`:
 
 **File**: `app/api/jobs/run/route.ts`
 
-**Authentication**: Accepts two methods:
-- Vercel cron: `Authorization: Bearer ${CRON_SECRET}`
-- Manual/external: `x-job-runner-secret: ${JOB_QUEUE_RUNNER_SECRET}`
+**Authentication**: The route accepts a request when **either** of the following is true:
+- `Authorization: Bearer ${CRON_SECRET}` matches the configured Vercel `CRON_SECRET`, or
+- The request `User-Agent` starts with `vercel-cron/1.0` (UA fallback so Vercel Cron continues to work even if `CRON_SECRET` is unset).
+
+There is **no** `x-job-runner-secret` / `JOB_QUEUE_RUNNER_SECRET` header check in `app/api/jobs/run/route.ts` today. For admin-triggered runs from inside the dashboard, see `app/api/admin/jobs/run-worker/route.ts`, which authenticates via the user’s session + admin role rather than a shared secret.
 
 **Request Body** (optional):
 ```json
@@ -142,48 +144,55 @@ Two admin-only endpoints allow manual job triggering:
 
 ### Required on Vercel
 
-1. **`CRON_SECRET`** (Automatically set by Vercel)
-   - Used by Vercel cron jobs for authentication
-   - No manual configuration needed
+1. **`CRON_SECRET`** (set automatically by Vercel when a cron block is added to `vercel.json`)
+   - Used by Vercel cron to authenticate requests to `/api/jobs/run`
+   - No manual configuration needed; the route also accepts the `vercel-cron/1.0` user agent as a fallback
 
-2. **`JOB_QUEUE_RUNNER_SECRET`** (Must be set manually)
-   - Used for manual/external triggers via `x-job-runner-secret` header
-   - Should match the secret stored in Supabase Vault (`job_queue_runner_secret`)
-   - Generate a secure random string (e.g., `openssl rand -base64 32`)
+2. **Modern Supabase keys** (must be set manually)
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+   - `SUPABASE_SECRET_KEY` — read by `getServiceRoleSupabaseClient()` (with `SUPABASE_SERVICE_ROLE_KEY` retained only as a legacy fallback during the 2026-05-02 rotation window)
+
+3. **`JOB_QUEUE_RUNNER_SECRET`** *(optional / legacy)*
+   - Listed in `.env.example` but **not currently consulted by `/api/jobs/run`** (the route authenticates via `CRON_SECRET` or the Vercel Cron user agent only). Was used in earlier designs that called the worker from `pg_cron`; safe to keep set or to leave unset.
 
 ### Setting Environment Variables
 
 1. Go to Vercel Dashboard → Your Project → Settings → Environment Variables
-2. Add `JOB_QUEUE_RUNNER_SECRET` with a secure random value
-3. Ensure it's available for Production, Preview, and Development environments as needed
-4. Also set this value in Supabase Vault if using Supabase pg_cron triggers
+2. Add the modern Supabase key trio above
+3. Ensure each is available for Production, Preview, and Development as needed
 
 ## Job Queue Architecture
 
 ### Job Types
 
+The full task-type list lives in `lib/jobs/types.ts` (`JobTaskType` union); see [`job-queue-playbook.md`](./job-queue-playbook.md) for the canonical table. Two are highlighted here because they have admin-only "trigger now" endpoints:
+
 1. **`game_platform_sync`**
    - Incremental sync of competitor and team data
-   - Typically triggered by Supabase cron every 30 minutes
+   - Driven by a recurring `job_queue` row (currently 15-minute cadence; see `supabase-cron-spec.md` for why this is **not** a `pg_cron` schedule)
    - Can be triggered on-demand via `/api/admin/jobs/trigger-sync`
 
 2. **`game_platform_totals_sweep`**
    - Refreshes totals for flagged competitors
-   - Typically triggered by Supabase cron every hour
+   - Driven by a recurring `job_queue` row (currently 15-minute cadence)
    - Can be triggered on-demand via `/api/admin/jobs/trigger-totals-sweep`
 
 ### Job Lifecycle
+
+The `JobStatus` union (`lib/jobs/types.ts`) is `'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'`.
 
 1. **Enqueued** → Job inserted with `status = 'pending'`, `run_at = now()` (or future time)
 2. **Claimed** → Worker calls `job_queue_claim()` which:
    - Finds jobs with `status = 'pending'` and `run_at <= now()`
    - Locks rows with `FOR UPDATE SKIP LOCKED`
-   - Updates `status = 'processing'`, increments `attempts`
-3. **Processing** → Handler executes business logic
+   - Updates `status = 'running'`, increments `attempts`
+3. **Running** → Handler executes business logic
 4. **Completed** → Either:
-   - **Success**: `status = 'succeeded'`, `completed_at = now()`
-   - **Retry**: `status = 'pending'`, `run_at = now() + retry_delay` (if attempts < max_attempts)
-   - **Failed**: `status = 'failed'`, `completed_at = now()` (if attempts >= max_attempts)
+   - **Success (one-time)**: row is marked `succeeded` then **deleted** by the runner (`lib/jobs/runner.ts`) so the queue stays clean.
+   - **Success (recurring)**: row is flipped back to `'pending'` with a new `run_at = now() + recurrence_interval_minutes`. Recurring jobs are never auto-deleted.
+   - **Retry**: `status = 'pending'`, `run_at = now() + retry_delay` (if `attempts < max_attempts`)
+   - **Failed**: `status = 'failed'` (if `attempts >= max_attempts`)
 
 ### Database Functions
 
@@ -235,16 +244,14 @@ Returns:
 
 Before deploying to Vercel production:
 
-- [ ] Set `JOB_QUEUE_RUNNER_SECRET` environment variable on Vercel
-- [ ] Verify `CRON_SECRET` is automatically configured (Vercel sets this)
-- [ ] Clear `job_queue` table if starting fresh: `DELETE FROM job_queue;`
-- [ ] Ensure Supabase pg_cron jobs are configured (see `supabase-cron-spec.md`)
-- [ ] Verify Supabase Vault contains matching secrets:
-  - `job_queue_runner_secret`
-  - `job_queue_worker_endpoint`
+- [ ] Verify `CRON_SECRET` is configured on Vercel (Vercel sets this automatically when you add the cron block in `vercel.json`)
+- [ ] Confirm modern Supabase keys are present on Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`. Legacy `SUPABASE_SERVICE_ROLE_KEY` was retired in the 2026-05-02 rotation.
+- [ ] Confirm the recurring `job_queue` rows exist for the schedules you expect (see [`supabase-cron-spec.md`](./supabase-cron-spec.md) for the live cadences; pg_cron is **not** used today).
 - [ ] Deploy to Vercel
-- [ ] Test on-demand triggers via Admin Tools UI
+- [ ] Test on-demand triggers via Admin Tools UI (`/dashboard/admin-tools/jobs`)
 - [ ] Monitor first few cron executions in Vercel logs
+
+> Historical: earlier iterations of this system used Supabase Vault secrets `job_queue_runner_secret` / `job_queue_worker_endpoint` to let `pg_cron` call into `/api/jobs/run`. Those are no longer used because production isn’t running `pg_cron` at all — Vercel Cron is the scheduler.
 
 ## Troubleshooting
 
@@ -277,6 +284,12 @@ Before deploying to Vercel production:
 
 ## Related Documentation
 
-- [Supabase Cron Specification](./supabase-cron-spec.md) - Supabase pg_cron setup
-- [Job Queue Playbook](./job-queue-playbook.md) - Operational procedures
+- [Supabase Cron Specification](./supabase-cron-spec.md) - Historical pg_cron design (note: pg_cron is no longer the scheduler)
+- [Job Queue Playbook](./job-queue-playbook.md) - Operational procedures and full task-type table
 - [Game Platform Integration](../integrations/game-platform-integration.md) - API integration details
+
+---
+
+**Last verified:** 2026-05-03 against commit `84d367e8`.
+**Notes:** Corrected the auth model — `/api/jobs/run` only checks `CRON_SECRET` or the `vercel-cron/1.0` user agent (no `x-job-runner-secret`/`JOB_QUEUE_RUNNER_SECRET` enforcement); fixed lifecycle status name (`'running'`, not `'processing'`) and noted one-time-job auto-deletion plus recurring-job re-pending behavior; updated env-var list to the modern Supabase keys; replaced "Supabase cron" references with the actual `job_queue`-row-driven scheduling. Pointed at `lib/jobs/types.ts` and the playbook for the canonical task list (the doc previously listed only 2 of the 13 task types).
+

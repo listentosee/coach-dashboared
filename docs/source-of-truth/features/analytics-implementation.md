@@ -34,7 +34,7 @@ This was inserted as a sub-menu item under the Admin Tool menu in admin context.
   - Competitors
   - Challenge participation
   - Flash CTF participation
-  - Final competition participation and leader board
+  - Final competition participation and leader board — **PARKED**: deferred to a future feature add. Not shipped in the current dashboard; do not treat as a current-state gap.
 
 ### Coach Dashboard
 
@@ -47,4 +47,4 @@ This was inserted as a sub-menu item under the Admin Tool menu in admin context.
 ---
 
 **Last verified:** 2026-05-03 against commit `e5b937b9`.
-**Notes:** Verified analytics page + API route exist; implementation exceeds checklist. Final-competition leaderboard is the one bullet not directly mirrored in the dashboard (coverage moved to separate game-platform views) — left as historical for SME review.
+**Notes:** Verified analytics page + API route exist; implementation exceeds the original checklist. Final-competition leaderboard is **parked** for a future feature add — not a current-state gap.

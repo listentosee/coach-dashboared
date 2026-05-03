@@ -1,5 +1,13 @@
 # Email + SMS Notification Coding Specification
 
+> **Status (2026-05-03): PARTIALLY SHIPPED.** The data-model and Edge Function pieces of this spec are live (see `sms-coach-notification-spec.md` for the canonical current-state description). The rename pieces are **not** done:
+>
+> - The profile column is still **`sms_notifications_enabled`** (this spec proposed renaming to `sms_alerts_enabled` — that rename has not happened).
+> - The job handler is still **`sms_digest_processor`** / `smsDigestProcessor.ts` (this spec proposed renaming to `unread_alert_processor` / `unreadAlertProcessor.ts` — that rename has not happened).
+> - `last_unread_alert_at` / `last_unread_alert_count` exist; refresh path is the **`mark_unread_alert_sent`** RPC (migration `20251109120000`).
+>
+> Treat this doc as the original implementation plan + decisions log; for current behavior consult `sms-coach-notification-spec.md` and `sms-admin-notification-spec.md`.
+
 Assumptions:
 - SendGrid is the existing transactional email provider (API key stored in Supabase
   secrets and Next.js environment variables).
@@ -14,17 +22,17 @@ Assumptions:
 
 | Column | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `email_alerts_enabled` | boolean | `true` | Every coach receives email alerts unless they explicitly switch them off. |
-| `sms_alerts_enabled` | boolean | `false` | Replaces `sms_notifications_enabled`. Toggle lives in `/dashboard/settings`. |
+| `email_alerts_enabled` | boolean | `true` | Every coach receives email alerts unless they explicitly switch them off. **(Shipped.)** |
+| `sms_alerts_enabled` | boolean | `false` | _Proposed_ rename for `sms_notifications_enabled`. **NOT SHIPPED — current code still uses the original `sms_notifications_enabled` column.** |
 | `mobile_number` | text | `null` | Already exists. Require valid value before enabling SMS. |
-| `last_unread_alert_at` | timestamptz | `null` | Updated whenever any channel successfully sends. |
-| `last_unread_alert_count` | integer | `null` | Stores the unread count used for the last alert to power throttling. |
+| `last_unread_alert_at` | timestamptz | `null` | Updated whenever any channel successfully sends. **(Shipped.)** |
+| `last_unread_alert_count` | integer | `null` | Stores the unread count used for the last alert to power throttling. **(Shipped.)** |
 
 Migration steps:
-1. Create a new SQL migration that adds the columns above.
-2. Backfill `email_alerts_enabled = true` for all existing coaches.
+1. Create a new SQL migration that adds the columns above. **(Done in `20251109120000_add_email_alert_preferences.sql` — but only for `email_alerts_enabled`, `email_alert_address`, `last_unread_alert_at`, `last_unread_alert_count`. The `sms_alerts_enabled` rename was not executed.)**
+2. Backfill `email_alerts_enabled = true` for all existing coaches. **(Done.)**
 3. Copy `sms_notifications_enabled` → `sms_alerts_enabled` then drop the old column once
-   code no longer references it.
+   code no longer references it. **(Not done — column still exists under the original name.)**
 
 ### 1.2 `alert_log` table
 
@@ -137,13 +145,15 @@ Minimal changes:
   always matches the email.
 - Keep existing provider abstraction (Twilio/AWS). No new secrets needed.
 
-### 3.3 Rename processor job
+### 3.3 Rename processor job — NOT SHIPPED
 
 File: `lib/jobs/handlers/smsDigestProcessor.ts`
 
-1. Rename file + handler to `unreadAlertProcessor`.
+> **Status:** the rename to `unreadAlertProcessor` was not executed. The handler still lives at `lib/jobs/handlers/smsDigestProcessor.ts`, the job-type identifier is still `sms_digest_processor`, and admin UI surfaces it under that name. The job-flow contract below is broadly accurate (it does call `fetch_unread_alert_candidates` via `/api/internal/notifications/unread`, then `mark_unread_alert_sent`, then writes `alert_log`).
+
+1. Rename file + handler to `unreadAlertProcessor`. **(Not done.)**
 2. Update `lib/jobs/types.ts`, `components/dashboard/admin/*` to refer to the new job
-   name.
+   name. **(Not done.)**
 3. Job flow:
    ```ts
    const candidates = await supabase.rpc('fetch_unread_alert_candidates', { p_window_minutes: payload.windowMinutes ?? 1440 });
@@ -184,6 +194,7 @@ File: `app/dashboard/settings/page.tsx`
 | `SENDGRID_FROM_EMAIL` | Environment | From address for alerts (e.g., `coach-notifications@example.edu`). |
 | `SENDGRID_TEMPLATE_ID` (optional) | Environment | If using a stored template, pass the ID; otherwise omit. |
 | `SMS_PROVIDER` | Supabase secrets | Existing; keep as `twilio` until AWS is ready. |
+| `SUPABASE_SECRET_KEY` | Server env | Phase A typed-config replacement for `SUPABASE_SERVICE_ROLE_KEY`. The legacy var is still honored as a fallback by `lib/config`. |
 
 ## 6. Testing Plan
 
@@ -211,3 +222,8 @@ File: `app/dashboard/settings/page.tsx`
 Following this specification keeps the implementation aligned with the simplified
 notification strategy documented in `README.md` while leveraging the existing SendGrid
 integration for the email-first rollout.
+
+---
+
+**Last verified:** 2026-05-03 against commit `e5b937b9`.
+**Notes:** Spec is partially shipped — data model + Edge Functions + RPC are live (`alert_log`, `fetch_unread_alert_candidates`, `mark_unread_alert_sent`, `send-email-alert`, `send-sms-notification`), but the proposed `sms_alerts_enabled` column rename and the `unreadAlertProcessor` handler rename were NOT executed. Treat `sms-coach-notification-spec.md` and `sms-admin-notification-spec.md` as the canonical current-state docs; this file is the original implementation plan.

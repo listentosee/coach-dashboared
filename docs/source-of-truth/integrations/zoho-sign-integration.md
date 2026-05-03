@@ -1,5 +1,7 @@
 
-# Zoho Sign Integration — Minor vs Adult Templates (Next.js 14 + Supabase)
+# Zoho Sign Integration — Minor vs Adult Templates (Next.js 15 + Supabase)
+
+> **Status (2026-05-03):** Shipped. Routes live at `app/api/zoho/{send,webhook,download,upload-manual,cancel}/route.ts`, with the OAuth helper at `app/api/zoho/_lib/token.ts`. Replaces a previous Adobe Sign integration; the legacy `competitors.adobe_sign_document_id` column still exists on the `competitors` table for historical records. All Zoho routes were migrated to the `getServiceRoleSupabaseClient()` wrapper in PR #99 (`bfe830f6`) — the inline code samples below have been updated to match.
 
 **Goal**: Use **two Zoho Sign templates** (Adult and Minor) that contain your attached release forms. At send time, your code picks the correct template by age:
 
@@ -71,9 +73,11 @@ ZOHO_WEBHOOK_SECRET=...        # same secret configured in Zoho Sign webhook
 
 # App & Supabase
 APP_URL=https://your-app.vercel.app
-SUPABASE_URL=...
-SUPABASE_SERVICE_ROLE_KEY=...
+NEXT_PUBLIC_SUPABASE_URL=...
+SUPABASE_SECRET_KEY=...        # modern key (preferred); SUPABASE_SERVICE_ROLE_KEY still read as fallback
 ```
+
+> The Supabase wrapper at `lib/supabase/server.ts` reads `SUPABASE_SECRET_KEY` first, then falls back to `SUPABASE_SERVICE_ROLE_KEY`, then `SERVICE_ROLE_KEY`. New deployments should set `SUPABASE_SECRET_KEY`; existing prod deploys may still use the legacy name during rotation.
 
 ---
 
@@ -138,10 +142,10 @@ export async function getZohoAccessToken() {
 
 ### 5.2 Send route — choose template by age, prefill, and send
 
-`app/api/zoho/send/route.ts`
+`app/api/zoho/send/route.ts` (illustrative — see file in tree for full as-built)
 ```ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { getZohoAccessToken } from '../_lib/token';
 
 type Body = {
@@ -151,7 +155,7 @@ type Body = {
 
 export async function POST(req: NextRequest) {
   const { competitorId, mode = 'email' } = (await req.json()) as Body;
-  const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  const supabase = getServiceRoleSupabaseClient();
 
   // Pull competitor data (adjust field names if needed)
   const { data: c, error } = await supabase
@@ -262,10 +266,10 @@ export async function POST(req: NextRequest) {
 
 ### 5.3 Webhook — verify HMAC, update status, store signed PDF, stamp competitor
 
-`app/api/zoho/webhook/route.ts`
+`app/api/zoho/webhook/route.ts` (illustrative — see file in tree for full as-built)
 ```ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import crypto from 'crypto';
 import { getZohoAccessToken } from '../_lib/token';
 
@@ -284,7 +288,7 @@ export async function POST(req: NextRequest) {
   const requestId: string | undefined = payload?.requests?.request_id;
   const requestStatus: string | undefined = payload?.requests?.request_status;
 
-  const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  const supabase = getServiceRoleSupabaseClient();
 
   if (requestId) {
     const normalized =
@@ -431,3 +435,8 @@ The releases page shows a single red **"Parent Email Invalid"** badge when `pare
 ## 11) Cleanup — status description helper
 
 In `lib/utils/competitor-status.ts`, align `getStatusDescription()` with your computed statuses (`pending | profile | in_the_game_not_compliant | complete`, with legacy `compliance` treated as `profile`) so UI badges read correctly.
+
+---
+
+**Last verified:** 2026-05-03 against commit `5b49f3ef`.
+**Notes:** Verified all five Zoho routes exist (`send`, `webhook`, `download`, `upload-manual`, `cancel`) and all use `getServiceRoleSupabaseClient()` from `@/lib/supabase/server` (migrated in PR #99 / `bfe830f6`). Verified `agreements` table schema, the Zoho env-var set, and the parent-email validation layers (Abstract API + SendGrid probe + pre-send block). Updated the Next.js version in the title (15, not 14) and the Supabase env-var block to reflect the modern `SUPABASE_SECRET_KEY` priority. Inline code samples re-pointed to the wrapper helper. The two-template (Adult/Minor) design and webhook HMAC-verification flow remain accurate.

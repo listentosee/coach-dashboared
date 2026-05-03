@@ -20,7 +20,7 @@
 | B | Task 6 Batch A: `app/api/admin/**` (34) | ✅ 34 / 34 |
 | B | Task 6 Batch B: `app/api/messaging/**` (29) | ✅ 29 / 29 |
 | B | Task 6 Batch C: `app/api/{competitors,teams}/**` (19) | ✅ 19 / 19 |
-| B | Task 6 Batch D: other route handlers (19) | 18 / 19 (callback pending manual) |
+| B | Task 6 Batch D: other route handlers (19) | ✅ 19 / 19 |
 | B | Task 6 Batch E: Server Components (11) | 0 / 11 |
 | B | Task 6 Batch F: client component (1) | 0 / 1 |
 | C | Task 7: Uninstall `@supabase/auth-helpers-nextjs` | ☐ |
@@ -29,7 +29,7 @@
 
 **Consumer file totals:** 113 in Task 6 (115 total − `middleware.ts` in Task 5 − `lib/supabase/client.ts` in Task 4).
 
-**Done counter:** 100 / 113
+**Done counter:** 101 / 113
 
 ---
 
@@ -213,7 +213,7 @@ Each file: replace `import ... from '@supabase/auth-helpers-nextjs'` with import
 - [x] `app/api/zoho/cancel/route.ts`
 - [x] `app/api/zoho/send/route.ts`
 - [x] `app/api/zoho/upload-manual/route.ts`
-- [ ] `app/auth/callback/route.ts` ⚠️ **separate commit, manual review**
+- [x] `app/auth/callback/route.ts` ✅ separate commit — manual review
 
 ### Batch E — Server Component pages (11 files, `createServerComponentClient` → `createServerClient()`)
 
@@ -297,3 +297,4 @@ _(none yet)_
 | 2026-05-03 | Batch B (messaging, 29 files) | 50 | tsc 199 errors (down from 237) | zero variations — fully canonical pattern; 9 files had multiple-handler swaps |
 | 2026-05-03 | Batch C (competitors+teams, 19 files) | 31 | tsc 180 errors (down from 199) | one variation: `competitors/[id]/update/route.ts` had `createRouteHandlerClient({ cookies })` raw form (no closure) — handled identically; 13 files retain cookieStore for `admin_coach_id` reads |
 | 2026-05-03 | Batch D-auto (mixed, 18 files) | 13 | tsc 164 errors (down from 180) | 7 files retain cookieStore for admin_coach_id; auth/callback excluded for manual migration |
+| 2026-05-03 | Batch D-manual (auth/callback) | 12 | `pnpm build` ✅; tsc 164 errors (stable) | manual swap of OAuth/email-link callback handler — exchangeCodeForSession + setSession both write cookies via wrapper's setAll, redirect response inherits via Next.js cookie store merging |

@@ -1,5 +1,4 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createServerClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
@@ -10,12 +9,12 @@ export async function GET(request: NextRequest) {
   const next = requestUrl.searchParams.get('next') ?? '/dashboard';
 
   if (code) {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createServerClient();
     await supabase.auth.exchangeCodeForSession(code);
   } else if (accessToken && refreshToken) {
     // Some Supabase email link flows redirect with tokens instead of a code.
     // In that case, set the session directly.
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createServerClient();
     await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
   }
 

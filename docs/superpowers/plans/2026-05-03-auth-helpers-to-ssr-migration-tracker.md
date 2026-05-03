@@ -15,7 +15,7 @@
 | 0 | Inventory | ✅ Complete |
 | A | Task 2: Install `@supabase/ssr` | ✅ |
 | A | Task 3: `lib/supabase/server.ts` wrapper + tests | ✅ |
-| A | Task 4: `lib/supabase/browser.ts` wrapper + tests + `client.ts` bridge re-export | ☐ |
+| A | Task 4: `lib/supabase/browser.ts` wrapper + tests + `client.ts` bridge re-export | ✅ |
 | A | Task 5: `lib/supabase/middleware.ts` + migrate `middleware.ts` | ☐ |
 | B | Task 6 Batch A: `app/api/admin/**` (34) | 0 / 34 |
 | B | Task 6 Batch B: `app/api/messaging/**` (29) | 0 / 29 |
@@ -38,8 +38,10 @@
 After EACH batch, append to the verification log at the bottom:
 
 ```bash
-grep -rln "@supabase/auth-helpers-nextjs" app/ lib/ --include="*.ts" --include="*.tsx" 2>/dev/null | wc -l
-npm run build 2>&1 | tail -5
+# Precise grep (catches static + dynamic imports, ignores docstring mentions)
+grep -rlE "(from\s+['\"]@supabase/auth-helpers-nextjs['\"]|import\s*\(\s*['\"]@supabase/auth-helpers-nextjs['\"])" \
+  app/ lib/ middleware.ts --include="*.ts" --include="*.tsx" 2>/dev/null | wc -l
+pnpm build 2>&1 | tail -5
 ```
 
 The grep count should monotonically decrease toward zero. If a NEW file appears (count increases or unexpected entry), add it to **§ Newly discovered files** below — don't silently absorb it into a batch.
@@ -70,11 +72,16 @@ The grep count should monotonically decrease toward zero. If a NEW file appears 
 
 ### Task 4 — `lib/supabase/browser.ts` + bridge re-export
 
-- [ ] Write `lib/supabase/browser.test.ts` (failing test first)
-- [ ] Create `lib/supabase/browser.ts` with `createBrowserClient()`
-- [ ] Replace `lib/supabase/client.ts` with re-export bridge from `./browser`
-- [ ] `npx vitest run lib/supabase/browser.test.ts` — all pass
-- [ ] Commit: `feat(supabase): browser-side wrapper + bridge re-export from old client.ts`
+- [x] Wrote `lib/supabase/browser.test.ts` (TDD red phase — 2 failing tests)
+- [x] Created `lib/supabase/browser.ts` with `createBrowserClient()` (`'use client'`)
+- [x] Replaced `lib/supabase/client.ts` with singleton bridge: `export const supabase = createBrowserClient()`
+- [x] `pnpm exec vitest run lib/supabase/{browser,server}.test.ts` — 7/7 pass; 10/10 across config + supabase
+- [x] Commit
+
+**Notes:**
+- Bridge is a true singleton (matches old behavior — auth-helpers also exported singleton). 20 existing consumers of `import { supabase } from '@/lib/supabase/client'` keep working without per-callsite migration.
+- **Verification grep refined.** The original loose grep `grep -rln @supabase/auth-helpers-nextjs` matched docstring mentions in the new wrapper files, falsely inflating the count. Use the precise pattern going forward: `grep -rlE "(from\s+['\"]@supabase/auth-helpers-nextjs['\"]|import\s*\(\s*['\"]@supabase/auth-helpers-nextjs['\"])" app/ lib/ middleware.ts --include="*.ts" --include="*.tsx"`. This catches both static `from '...'` and dynamic `import('...')`.
+- Post-Task-4 precise count: **114** (113 static + 1 dynamic via `app/dashboard/teams/page.tsx`).
 
 ### Task 5 — `lib/supabase/middleware.ts` + root `middleware.ts`
 
@@ -281,3 +288,4 @@ _(none yet)_
 | 2026-05-03 | inventory | 115 | — | baseline |
 | 2026-05-03 | Task 2 (install ssr) | 115 | typecheck only — 268 errors (baseline ~263, no ssr-attributable) | peer-dep warning vs supabase-js@2.49.4 noted; pre-existing pattern |
 | 2026-05-03 | Task 3 (server wrapper) | 115 | 8/8 vitest pass (config + server.test) | async-cookie pattern adopted for Next 15.5 |
+| 2026-05-03 | Task 4 (browser + bridge) | 114 (precise) | 10/10 vitest pass | switched to precise grep; original loose grep had false positives from docstring mentions |

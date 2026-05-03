@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { marked } from 'marked';
 import { isUserAdmin } from '@/lib/utils/admin-check';
+import { config } from '@/lib/config';
 
 marked.use({ gfm: true, breaks: true });
 
@@ -29,9 +30,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const serviceRoleKey = config.supabase.secretKey;
     const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!serviceRoleKey || !serviceUrl) {
+    if (!serviceUrl) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 
@@ -85,9 +86,9 @@ export async function POST(req: NextRequest) {
     const { id, subject, body: markdownBody } = parsed.data;
     const bodyHtml = await marked.parse(markdownBody);
 
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const serviceRoleKey = config.supabase.secretKey;
     const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!serviceRoleKey || !serviceUrl) {
+    if (!serviceUrl) {
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
 

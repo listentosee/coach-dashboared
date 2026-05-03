@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { config } from '@/lib/config';
 import { logger } from '@/lib/logging/safe-logger';
 
 export async function GET(
@@ -9,7 +10,7 @@ export async function GET(
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      config.supabase.secretKey
     );
     
     // Fetch competitor profile by token

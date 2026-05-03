@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { createClient } from '@supabase/supabase-js';
+import { config } from '@/lib/config';
 
 interface NiceFrameworkElement {
   element_identifier: string;
@@ -36,8 +37,7 @@ export async function POST() {
 
   // Use service role client for admin operations (bypasses RLS)
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+  const supabaseAdmin = createClient(supabaseUrl, config.supabase.secretKey);
 
   try {
     // Fetch NIST NICE Framework data

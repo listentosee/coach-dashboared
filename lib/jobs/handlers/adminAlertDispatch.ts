@@ -1,4 +1,5 @@
 import type { JobHandler, JobPayloadMap } from '../types';
+import { config } from '@/lib/config';
 
 export const handleAdminAlertDispatch: JobHandler<'admin_alert_dispatch'> = async (job, { logger, supabase }) => {
   const payload: JobPayloadMap['admin_alert_dispatch'] = job.payload ?? {};
@@ -12,8 +13,8 @@ export const handleAdminAlertDispatch: JobHandler<'admin_alert_dispatch'> = asyn
     const windowMinutes = payload.windowMinutes ?? 60;
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!supabaseUrl || !serviceRoleKey) {
+    const serviceRoleKey = config.supabase.secretKey;
+    if (!supabaseUrl) {
       throw new Error('Missing Supabase configuration for admin alert dispatch');
     }
 

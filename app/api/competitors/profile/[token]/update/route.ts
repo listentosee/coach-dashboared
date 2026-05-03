@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { config } from '@/lib/config';
 import { z } from 'zod';
 import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 import { logger } from '@/lib/logging/safe-logger';
@@ -50,7 +51,7 @@ export async function PUT(
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      config.supabase.secretKey
     );
     
     // Parse and validate request body

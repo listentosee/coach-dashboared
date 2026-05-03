@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
+import { config } from '@/lib/config';
 
 const PayloadSchema = z.object({
   emails: z.array(z.string().min(1)).min(1),
@@ -11,15 +12,14 @@ const PayloadSchema = z.object({
 });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !serviceRoleKey) {
-  throw new Error('SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_URL is not configured.');
+if (!supabaseUrl) {
+  throw new Error('NEXT_PUBLIC_SUPABASE_URL is not configured.');
 }
 
 const supabaseAdmin = createClient(
   supabaseUrl,
-  serviceRoleKey,
+  config.supabase.secretKey,
   {
     auth: {
       persistSession: false,
@@ -28,8 +28,8 @@ const supabaseAdmin = createClient(
     },
     global: {
       headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
+        apikey: config.supabase.secretKey,
+        Authorization: `Bearer ${config.supabase.secretKey}`,
       },
     },
   },

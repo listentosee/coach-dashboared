@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { config } from '@/lib/config';
 
 const INTERNAL_AUTOMATION_SECRET = process.env.INTERNAL_AUTOMATION_SECRET || process.env.INTERNAL_SYNC_SECRET;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = config.supabase.secretKey;
 const SUPABASE_FUNCTION_BASE = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : null;
 const VALID_ALERT_ROLES = new Set(['coach', 'admin']);
 

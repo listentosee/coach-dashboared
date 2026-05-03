@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@supabase/supabase-js';
+import { config } from '@/lib/config';
 import { GamePlatformClient, CreateUserPayload, CreateTeamPayload } from './client';
 import { calculateCompetitorStatus } from '@/lib/utils/competitor-status';
 import {
@@ -116,7 +117,7 @@ export interface SyncAllCompetitorStatsSummary {
 
 const FEATURE_ENABLED = process.env.GAME_PLATFORM_INTEGRATION_ENABLED === 'true';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = config.supabase.secretKey;
 const GAME_PLATFORM_BASE_URL =
   process.env.META_CTF_BASE_URL ?? process.env.GAME_PLATFORM_API_BASE_URL ?? '';
 const ALLOWED_SYNC_STATUSES: GamePlatformSyncStatus[] = ['pending', 'user_created', 'approved', 'denied', 'error'];

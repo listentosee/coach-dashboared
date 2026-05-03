@@ -22,6 +22,7 @@ yarn-error.log*
 
 # env files
 .env*
+!.env.example
 
 # Supabase
 /supabase/.branches/
@@ -57,6 +58,7 @@ docs/Admin\ Setup.md
 test-results/
 playwright-report/
 playwright/.cache/
+playwright/.auth/
 *.spec.ts-snapshots/
 coverage/
 .nyc_output/
@@ -76,8 +78,6 @@ scripts/check-sync-results.sql
 /docs/mock-environment/
 /tests/
 vitest.config.ts
-lib/**/*.test.ts
-lib/**/*.spec.ts
 
 # temporary test documentation
 SECURITY_TESTING.md

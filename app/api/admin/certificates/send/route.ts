@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 import { marked } from 'marked';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { AuditLogger } from '@/lib/audit/audit-logger';
+import { config } from '@/lib/config';
 
 // Same GFM configuration the competitor announcement mailer uses, for UX
 // consistency across admin-authored email bodies.
@@ -86,13 +87,12 @@ const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME || 'Coach Dashboard';
 
 function ensureServiceClient() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!url || !key) {
+  if (!url) {
     throw new Error('Missing Supabase service role configuration');
   }
 
-  return createClient(url, key, { auth: { persistSession: false } });
+  return createClient(url, config.supabase.secretKey, { auth: { persistSession: false } });
 }
 
 function createClaimToken() {

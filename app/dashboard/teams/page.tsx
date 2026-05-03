@@ -91,9 +91,6 @@ function TeamImage({ teamId, teamName, hasImage, imageKey }: { teamId: string; t
 
     const fetchImageUrl = async () => {
       try {
-        const { createClientComponentClient } = await import('@supabase/auth-helpers-nextjs');
-        const supabase = createClientComponentClient();
-        
         // Get the team's image path from the database
         const { data: teamData, error: teamError } = await supabase
           .from('teams')

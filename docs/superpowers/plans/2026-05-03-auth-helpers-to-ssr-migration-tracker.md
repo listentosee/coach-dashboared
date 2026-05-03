@@ -22,14 +22,14 @@
 | B | Task 6 Batch C: `app/api/{competitors,teams}/**` (19) | ✅ 19 / 19 |
 | B | Task 6 Batch D: other route handlers (19) | ✅ 19 / 19 |
 | B | Task 6 Batch E: Server Components (11) | ✅ 11 / 11 |
-| B | Task 6 Batch F: client component (1) | 0 / 1 |
+| B | Task 6 Batch F: client components (1 + 1 discovered) | ✅ 2 / 2 |
 | C | Task 7: Uninstall `@supabase/auth-helpers-nextjs` | ☐ |
 | C | Task 8: PR + merge + production deploy | ☐ |
 | C | Task 9: Re-disable legacy Supabase keys + doc updates | ☐ |
 
 **Consumer file totals:** 113 in Task 6 (115 total − `middleware.ts` in Task 5 − `lib/supabase/client.ts` in Task 4).
 
-**Done counter:** 112 / 113
+**Done counter:** ✅ 114 / 114 (113 planned + 1 newly discovered)
 
 ---
 
@@ -231,7 +231,8 @@ Each file: replace `import ... from '@supabase/auth-helpers-nextjs'` with import
 
 ### Batch F — Client component (1 file, `createClientComponentClient` → `createBrowserClient()`)
 
-- [ ] `app/dashboard/teams/page.tsx`
+- [x] `app/dashboard/teams/page.tsx`
+- [x] `components/game-platform/report-card/challenges-table.tsx` 🆕 newly discovered
 
 > Note: `lib/supabase/client.ts` is also a `createClientComponentClient` consumer but is replaced as part of Task 4 (becomes the re-export bridge).
 
@@ -299,3 +300,4 @@ _(none yet)_
 | 2026-05-03 | Batch D-auto (mixed, 18 files) | 13 | tsc 164 errors (down from 180) | 7 files retain cookieStore for admin_coach_id; auth/callback excluded for manual migration |
 | 2026-05-03 | Batch D-manual (auth/callback) | 12 | `pnpm build` ✅; tsc 164 errors (stable) | manual swap of OAuth/email-link callback handler — exchangeCodeForSession + setSession both write cookies via wrapper's setAll, redirect response inherits via Next.js cookie store merging |
 | 2026-05-03 | Batch E (server components, 11 files) | 2 | tsc 155 errors (down from 164) | createServerComponentClient → createServerClient (same wrapper); 2 files had `cookies as any` cast removed cleanly |
+| 2026-05-03 | Batch F (client components, 2 files) | 0 ✅ | `pnpm build` ✅; tsc 155 errors (unchanged from Batch E) | `app/dashboard/teams/page.tsx` had stale dynamic import — replaced with the singleton already imported at top of file; `challenges-table.tsx` switched to singleton from `@/lib/supabase/client` |

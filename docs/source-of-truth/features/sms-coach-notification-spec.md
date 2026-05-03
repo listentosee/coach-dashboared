@@ -28,9 +28,10 @@
   - Toggle writes to `profiles` via client Supabase calls.
 
 ## Deployment/Config
-- Requires service-role env: `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`.
+- Requires service-role env: `SUPABASE_SECRET_KEY` (preferred, Phase A — legacy `SUPABASE_SERVICE_ROLE_KEY` still honored as fallback via `lib/config`), plus `NEXT_PUBLIC_SUPABASE_URL`.
 - Edge functions deploy separately (`send-email-alert`, `send-sms-notification`).
-- If deployment protection is enabled on Vercel, include bypass header (`x-vercel-protection-bypass`) in automation calls.
+- If deployment protection is enabled on Vercel, include bypass header (`x-vercel-protection-bypass`) in automation calls. The job handler (`smsDigestProcessor.ts`) automatically attaches this header from `INTERNAL_JOBS_BYPASS_TOKEN` / `VERCEL_AUTOMATION_BYPASS_SECRET` / `VERCEL_AUTOMATION_BYPASS_TOKEN` if set.
+- Internal route auth: `INTERNAL_AUTOMATION_SECRET` (or legacy `INTERNAL_SYNC_SECRET`) shared between job handler and `/api/internal/notifications/unread`.
 
 ## Behavior Summary
 - Coaches receive unread-count alerts (email by default; SMS optional).
@@ -61,3 +62,8 @@ fetch_unread_alert_candidates
           ↓
       job success
 ```
+
+---
+
+**Last verified:** 2026-05-03 against commit `e5b937b9`.
+**Notes:** Verified profiles columns, `alert_log` table + RLS, RPC signature for `fetch_unread_alert_candidates` (matches migration `20251119140000_update_fetch_unread_alert_candidates.sql`), `/api/internal/notifications/unread` route, and `sms_digest_processor` handler in `lib/jobs/handlers/smsDigestProcessor.ts`. Refreshed env-var guidance for the Phase A `SUPABASE_SECRET_KEY` rotation and added detail on automation secret + Vercel bypass header.

@@ -95,7 +95,40 @@ Top offenders by read count:
 - [x] Phase 0 inventory captured (this file)
 - [x] Scott approved Phase A scope: full PAT-CFG-01 (2026-05-02)
 - [x] Spawn-task filed for Playwright leak cleanup
-- [ ] Phase A code migration shipped
-- [ ] Phase B operational rotation completed
-- [ ] Phase C cleanup completed
-- [ ] Phase F runbook log entry updated
+- [x] Phase A code migration shipped — PR #94 merged at `d3cda0ec` (2026-05-02)
+- [x] Phase B partial: keys generated, integration reconnected, modern keys live for server-side (2026-05-03)
+- [ ] Phase C cleanup — **DEFERRED** until `@supabase/auth-helpers-nextjs` → `@supabase/ssr` migration ships
+- [x] Phase F partial: per-repo log entry in LearningNuggets runbook updated (2026-05-03)
+
+---
+
+## Post-rotation status (2026-05-03)
+
+### What completed
+
+- **Phase A** — server-side admin paths fully on modern `SUPABASE_SECRET_KEY` via `config.supabase.secretKey`. 32 consumer files migrated. **High-blast-radius surface IS rotated.**
+- **Phase B (partial)** — new `sb_secret_*` and `sb_publishable_*` keys generated. Native Integration "Connect Project" linked the cmcc-coach-dashboard product to the coach-dashboared Vercel project (the integration was installed but never connected — that was the gating issue). 12 conflicting legacy env vars manually deleted from Vercel before reconnect (Vercel refuses to push over existing names).
+- Production redeployed; modern keys live for server-side traffic.
+
+### What's deferred — and why
+
+Browser-side auth uses `@supabase/auth-helpers-nextjs::createClientComponentClient()` which **hardcodes `process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY`** internally. Disabling the legacy `anon` JWT (Phase C step) breaks all browser login flows. We re-enabled the legacy keys to restore production.
+
+**The legacy keys can only be permanently revoked after migrating the auth helper package.** See: [`docs/superpowers/plans/2026-05-03-auth-helpers-to-ssr-migration.md`](../superpowers/plans/2026-05-03-auth-helpers-to-ssr-migration.md).
+
+### Current security posture
+
+- ✅ Server-side admin paths (32 files): on modern `sb_secret_*` keys
+- ⚠️ Browser-side auth: still on legacy `anon` JWT (re-enabled)
+- ⚠️ Legacy keys exist alongside modern in both Supabase and Vercel — not a current risk (modern is preferred), but full revoke is gated on the auth-helpers migration
+
+### Local `.env` housekeeping
+
+- Deduped 2026-05-03 (3 duplicates removed; LAST occurrence kept per parser convention)
+- Backup at `.env.bak.before-dedupe`
+
+### Vercel env state
+
+- Native Integration's Connect Project re-synced both modern and legacy var names; POSTGRES_* re-injected
+- Most secrets now Sensitive-flagged (won't show values via `vercel env pull` — security improvement)
+- Validation pattern shifted from "pull and probe" to "redeploy and hit live endpoints"

@@ -14,7 +14,7 @@
 |---|---|---|
 | 0 | Inventory | ✅ Complete |
 | A | Task 2: Install `@supabase/ssr` | ✅ |
-| A | Task 3: `lib/supabase/server.ts` wrapper + tests | ☐ |
+| A | Task 3: `lib/supabase/server.ts` wrapper + tests | ✅ |
 | A | Task 4: `lib/supabase/browser.ts` wrapper + tests + `client.ts` bridge re-export | ☐ |
 | A | Task 5: `lib/supabase/middleware.ts` + migrate `middleware.ts` | ☐ |
 | B | Task 6 Batch A: `app/api/admin/**` (34) | 0 / 34 |
@@ -60,10 +60,13 @@ The grep count should monotonically decrease toward zero. If a NEW file appears 
 
 ### Task 3 — `lib/supabase/server.ts`
 
-- [ ] Write `lib/supabase/server.test.ts` (failing test first)
-- [ ] Implement `lib/supabase/server.ts` with `createServerClient()` + `createServiceRoleClient()`
-- [ ] `npx vitest run lib/supabase/server.test.ts` — all pass
-- [ ] Commit: `feat(supabase): server-side wrapper using @supabase/ssr`
+- [x] Wrote `lib/supabase/server.test.ts` (TDD red phase — 5 failing tests)
+- [x] Implemented `lib/supabase/server.ts` — `createServerClient()` + `createServiceRoleClient()`
+- [x] `pnpm exec vitest run lib/supabase/server.test.ts` — 5/5 pass
+- [x] Commit
+
+**Notes:**
+- Plan's literal code used sync `cookies()` from `next/headers`, but Next 15.5 made `cookies()` async. Adapted to async-cookie callbacks (`getAll`/`setAll` await `cookies()` internally) so `createServerClient()` itself stays sync — consumer call shape unchanged.
 
 ### Task 4 — `lib/supabase/browser.ts` + bridge re-export
 
@@ -277,3 +280,4 @@ _(none yet)_
 |---|---|---:|---|---|
 | 2026-05-03 | inventory | 115 | — | baseline |
 | 2026-05-03 | Task 2 (install ssr) | 115 | typecheck only — 268 errors (baseline ~263, no ssr-attributable) | peer-dep warning vs supabase-js@2.49.4 noted; pre-existing pattern |
+| 2026-05-03 | Task 3 (server wrapper) | 115 | 8/8 vitest pass (config + server.test) | async-cookie pattern adopted for Next 15.5 |

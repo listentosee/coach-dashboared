@@ -176,7 +176,7 @@ The underlying AWS infrastructure provides:
 
 **Step 4: Screenshot for Audit**
 
-Take screenshots and save in: `docs/security/screenshots/`
+Take screenshots and save in: `docs/source-of-truth/security-and-compliance/legal/diagrams/`
 - `supabase-project-settings.png` - Project settings page
 - `supabase-database-settings.png` - Database settings page
 - `supabase-security-docs.png` - Security documentation page

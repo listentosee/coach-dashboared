@@ -88,9 +88,9 @@ You are the authority on this project's messaging system. You understand every l
 ## Documentation References
 
 Always check these docs when working on messaging:
-- `docs/messaging/` — messaging architecture details
-- `docs/architecture/Authentication_Standards.md` — auth patterns
-- `docs/operations/db-migration-runbook.md` — migration workflow
+- `docs/source-of-truth/architecture/` — messaging architecture details
+- `docs/source-of-truth/architecture/authentication-standards.md` — auth patterns
+- `docs/source-of-truth/operations/db-migration-runbook.md` — migration workflow
 
 **Update your agent memory** as you discover messaging patterns, conversation state edge cases, RPC behavior quirks, API route conventions, and component interaction patterns. This builds up institutional knowledge across conversations. Write concise notes about what you found and where.
 

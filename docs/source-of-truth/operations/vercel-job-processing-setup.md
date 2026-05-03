@@ -238,7 +238,7 @@ Before deploying to Vercel production:
 - [ ] Set `JOB_QUEUE_RUNNER_SECRET` environment variable on Vercel
 - [ ] Verify `CRON_SECRET` is automatically configured (Vercel sets this)
 - [ ] Clear `job_queue` table if starting fresh: `DELETE FROM job_queue;`
-- [ ] Ensure Supabase pg_cron jobs are configured (see `supabase_cron-spec.md`)
+- [ ] Ensure Supabase pg_cron jobs are configured (see `supabase-cron-spec.md`)
 - [ ] Verify Supabase Vault contains matching secrets:
   - `job_queue_runner_secret`
   - `job_queue_worker_endpoint`
@@ -277,6 +277,6 @@ Before deploying to Vercel production:
 
 ## Related Documentation
 
-- [Supabase Cron Specification](./supabase_cron-spec.md) - Supabase pg_cron setup
-- [Job Queue Playbook](../job-queue-playbook.md) - Operational procedures
-- [Game Platform Integration](../game-platform/game-platform-integration.md) - API integration details
+- [Supabase Cron Specification](./supabase-cron-spec.md) - Supabase pg_cron setup
+- [Job Queue Playbook](./job-queue-playbook.md) - Operational procedures
+- [Game Platform Integration](../integrations/game-platform-integration.md) - API integration details

@@ -1,5 +1,10 @@
 # FERPA Compliance Audit Documentation
 
+> The current FERPA audit and compliance documentation has moved to
+> [`docs/source-of-truth/security-and-compliance/`](../source-of-truth/security-and-compliance/).
+> The files below are historical remediation plans and sprint summaries kept
+> for reference.
+
 **Last Updated:** 2025-10-09
 
 ---
@@ -9,16 +14,11 @@
 ```
 docs/audit/
 ├── README.md (this file)
-├── FERPA-COMPLIANCE-AUDIT-2025.md          # Original audit findings
 ├── FERPA-CRITICAL-ISSUES-REMEDIATION-PLAN.md  # Master remediation plan
 ├── FERPA-ISSUES-2-AND-3-COMPLETE-SUMMARY.md   # Issues #2 & #3 completion
 ├── REVISED-ISSUE-1-INFRASTRUCTURE-ENCRYPTION.md  # Issue #1 revised approach
 ├── SPRINT-1-REVISED-SIMPLE-GUIDE.md        # Quick start guide (2 hours)
 ├── QUICK-START-GUIDE.md                    # General quick start
-├── MetaCTF_API_Compliance_Certification.md # MetaCTF integration audit
-├── legal/                                  # Legal & security documentation
-│   ├── database-encryption.md             # Database encryption details
-│   └── storage-encryption.md              # Storage encryption details
 └── remediation log/                        # Implementation logs
     ├── FERPA-ISSUE-2-IMPLEMENTATION-SUMMARY.md
     ├── FERPA-ISSUE-3-IMPLEMENTATION-SUMMARY.md
@@ -26,6 +26,10 @@ docs/audit/
     ├── console-logging-audit.md
     └── console-calls-by-file.md
 ```
+
+The current FERPA audit, MetaCTF compliance certification, and legal/encryption
+documentation now live in
+[`docs/source-of-truth/security-and-compliance/`](../source-of-truth/security-and-compliance/).
 
 ---
 
@@ -38,14 +42,14 @@ docs/audit/
 - Zero risk approach
 
 ### For Auditors
-**Show them:** [FERPA-COMPLIANCE-AUDIT-2025.md](FERPA-COMPLIANCE-AUDIT-2025.md)
+**Show them:** [ferpa-compliance-audit-2025.md](../source-of-truth/security-and-compliance/ferpa-compliance-audit-2025.md)
 - Original audit findings (Oct 5, 2025)
 - 5 critical issues identified
 
 **Then show:** Progress summaries
 - [FERPA-ISSUES-2-AND-3-COMPLETE-SUMMARY.md](FERPA-ISSUES-2-AND-3-COMPLETE-SUMMARY.md) - Issues #2 & #3 ✅
 - [REVISED-ISSUE-1-INFRASTRUCTURE-ENCRYPTION.md](REVISED-ISSUE-1-INFRASTRUCTURE-ENCRYPTION.md) - Issue #1 ✅
-- Legal/security docs in `legal/` folder
+- Legal/security docs in [`source-of-truth/security-and-compliance/legal/`](../source-of-truth/security-and-compliance/legal/)
 
 ### For Implementation
 **Master plan:** [FERPA-CRITICAL-ISSUES-REMEDIATION-PLAN.md](FERPA-CRITICAL-ISSUES-REMEDIATION-PLAN.md)
@@ -66,7 +70,7 @@ docs/audit/
 
 **Issue #1: PII Encryption** - ✅ 100% Complete
 - **Approach:** Infrastructure-level encryption (Supabase/AWS AES-256)
-- **Documentation:** `legal/database-encryption.md` + `legal/storage-encryption.md`
+- **Documentation:** [`source-of-truth/security-and-compliance/legal/database-encryption.md`](../source-of-truth/security-and-compliance/legal/database-encryption.md) + [`source-of-truth/security-and-compliance/legal/storage-encryption.md`](../source-of-truth/security-and-compliance/legal/storage-encryption.md)
 - **Time:** 2 hours (documentation only)
 - **Summary:** [REVISED-ISSUE-1-INFRASTRUCTURE-ENCRYPTION.md](REVISED-ISSUE-1-INFRASTRUCTURE-ENCRYPTION.md)
 
@@ -116,7 +120,7 @@ docs/audit/
 
 ### Primary Documents
 
-**FERPA-COMPLIANCE-AUDIT-2025.md**
+**[source-of-truth/security-and-compliance/ferpa-compliance-audit-2025.md](../source-of-truth/security-and-compliance/ferpa-compliance-audit-2025.md)**
 - Original audit report
 - Identifies 5 critical issues
 - Created: 2025-10-05
@@ -140,16 +144,19 @@ docs/audit/
 - Verification steps
 - Use: To actually complete Issue #1
 
-### Legal & Security Docs (`legal/` folder)
+### Legal & Security Docs (moved)
 
-**database-encryption.md**
+The encryption documentation has moved to
+[`source-of-truth/security-and-compliance/legal/`](../source-of-truth/security-and-compliance/legal/):
+
+**[database-encryption.md](../source-of-truth/security-and-compliance/legal/database-encryption.md)**
 - Complete documentation of database encryption
 - Supabase/AWS AES-256 details
 - Compliance statements
 - Verification procedures
 - Use: Show to auditors for Issue #1
 
-**storage-encryption.md**
+**[storage-encryption.md](../source-of-truth/security-and-compliance/legal/storage-encryption.md)**
 - Storage bucket encryption documentation
 - Covers `signatures`, `messages`, `temp` buckets
 - Retention policies
@@ -227,9 +234,9 @@ Removed superseded documents:
 - `PHASED-IMPLEMENTATION-QUICK-START.md` - Outdated approach
 - `SPRINT-1-EXECUTION-GUIDE.md` - Complex migration approach (not needed)
 
-Moved to `legal/`:
-- `database-encryption.md` (from `docs/security/`)
-- `storage-encryption.md` (from `docs/security/`)
+Moved to [`source-of-truth/security-and-compliance/legal/`](../source-of-truth/security-and-compliance/legal/):
+- `database-encryption.md` (from `docs/security/` → `docs/audit/legal/` → SOT)
+- `storage-encryption.md` (from `docs/security/` → `docs/audit/legal/` → SOT)
 
 ---
 

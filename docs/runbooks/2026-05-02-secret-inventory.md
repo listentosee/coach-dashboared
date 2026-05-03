@@ -50,7 +50,7 @@ Other secrets out of scope for this rotation but flagged for follow-up:
 
 **False positives (won't block rotation):**
 - `docs/operations/Solving Supabase Local Development RLS Violations.md` — local-dev (port 54321) default JWTs, publicly known.
-- `docs/operations/github-workflow-guide.md` — same pattern, plus `sb_secret_*` example values from local-dev.
+- `docs/source-of-truth/operations/github-workflow-guide.md` — same pattern, plus `sb_secret_*` example values from local-dev.
 
 ### 0d. Code-readiness check — Phase A REQUIRED, full PAT-CFG-01 migration
 

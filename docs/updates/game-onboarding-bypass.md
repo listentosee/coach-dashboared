@@ -41,6 +41,6 @@
 - [x] Update any e2e workflow tests that assume compliance-only onboarding.
 
 ### Documentation
-- [x] Update `docs/game-platform/game-platform-integration.md` with new onboarding gate and status definitions.
+- [x] Update `docs/source-of-truth/integrations/game-platform-integration.md` with new onboarding gate and status definitions.
 - [x] Update testing checklists and release workflow docs that reference compliance-only onboarding.
 - [x] Add a short note about the backfill/status recompute step.

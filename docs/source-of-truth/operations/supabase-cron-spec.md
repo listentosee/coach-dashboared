@@ -260,7 +260,7 @@ The application currently uses two cron jobs for Game Platform integration:
    - Finds minor (`template_kind = 'minor'`) Zoho agreements in `sent` status older than 4 hours with no verification probe sent
    - Sends a lightweight probe email via SendGrid (through the `send-email-alert` Supabase Edge Function) to the parent email
    - SendGrid delivery events (`bounce`, `dropped`, `blocked`) are received at `/api/sendgrid/events` and mark `competitors.parent_email_is_valid = false`
-   - This is a **fallback** for the primary real-time validation at profile save time (see `docs/zoho/zoho-sign-integration.md` § 6)
+   - This is a **fallback** for the primary real-time validation at profile save time (see [`../integrations/zoho-sign-integration.md`](../integrations/zoho-sign-integration.md) § 6)
    - Handler: `lib/jobs/handlers/releaseParentEmailVerification.ts`
    - Payload options: `{ staleHours?: number, limit?: number, dryRun?: boolean }`
    - Default: `staleHours = 4`, `limit = 50`

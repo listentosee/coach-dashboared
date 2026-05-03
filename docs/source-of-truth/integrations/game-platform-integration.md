@@ -98,7 +98,7 @@ Background Sync (cron/job) -> Next.js route or Edge Function -> GamePlatformClie
 
 ## 9. Background Jobs & Sync
 
-The application uses a **job queue system** (see `docs/cron-jobs/supabase_cron-spec.md`) where Supabase `pg_cron` enqueues tasks into the `job_queue` table, and a Next.js worker at `/api/jobs/run` processes them. All jobs respect the `job_queue_settings.processing_enabled` flag and can be monitored/retried via Admin Tools.
+The application uses a **job queue system** (see [`../operations/supabase-cron-spec.md`](../operations/supabase-cron-spec.md)) where Supabase `pg_cron` enqueues tasks into the `job_queue` table, and a Next.js worker at `/api/jobs/run` processes them. All jobs respect the `job_queue_settings.processing_enabled` flag and can be monitored/retried via Admin Tools.
 
 ### Job Types
 
@@ -296,7 +296,7 @@ Admins can manually trigger syncs via Admin Tools:
 
 - **Job Queue Configuration**:
 
-  The application uses a job queue system (see `docs/cron-jobs/supabase_cron-spec.md`) where Supabase cron enqueues tasks that are processed by the app worker at `/api/jobs/run`.
+  The application uses a job queue system (see [`../operations/supabase-cron-spec.md`](../operations/supabase-cron-spec.md)) where Supabase cron enqueues tasks that are processed by the app worker at `/api/jobs/run`.
 
   **Migration**: `supabase/migrations/20250930_game_platform_totals_sweep_cron.sql`
   ```sql

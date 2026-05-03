@@ -30,7 +30,7 @@ This document tracks all Data Processing Agreements (DPAs) with third-party vend
 3. Navigate to legal documents section
 4. Request signable PandaDoc version
 5. Complete and sign electronically
-6. File signed copy in `docs/audit/legal/signed-dpas/`
+6. File signed copy in `docs/source-of-truth/security-and-compliance/legal/signed-dpas/`
 
 ### Data Covered
 - **Database:** All student PII in `competitors` table
@@ -224,7 +224,7 @@ This document tracks all Data Processing Agreements (DPAs) with third-party vend
 ### File Organization
 
 ```
-docs/audit/legal/
+docs/source-of-truth/security-and-compliance/legal/
 ├── dpa-tracking.md (this file)
 └── signed-dpas/
     ├── supabase-dpa-signed-YYYY-MM-DD.pdf
@@ -237,7 +237,7 @@ docs/audit/legal/
 ### Create Signed DPAs Folder
 
 ```bash
-mkdir -p docs/audit/legal/signed-dpas
+mkdir -p docs/source-of-truth/security-and-compliance/legal/signed-dpas
 ```
 
 ### Create Inventory File

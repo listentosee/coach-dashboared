@@ -1,6 +1,14 @@
-# NIST NICE Framework Integration - Implementation Plan
+# NIST NICE Framework Integration - Historical Full-Scope Design
 
-**Status:** Design Phase
+> **Status (2026-05-03): HISTORICAL / NOT BUILT.** This document captures an aspirational full-scope NICE Framework design (extra reference tables for tasks and work-role-to-task junctions, a structured `nice_work_roles text[]` column on `game_platform_challenge_solves`, a dedicated `NiceFrameworkService` class with team-coverage analytics RPCs, etc.). **None of these additions exist in the production database or codebase as of commit `5b49f3ef`.**
+>
+> The shipped NICE integration is the lookup-only "LITE" version, documented at [`docs/source-of-truth/integrations/nice-framework-integration-lite.md`](../source-of-truth/integrations/nice-framework-integration-lite.md). That LITE doc is the canonical source of truth for the NICE integration today.
+>
+> This file is preserved as a forward-looking design reference in case the team revisits work-role-driven analytics. Do **not** treat any code/SQL examples below as descriptions of current behavior.
+
+---
+
+**Status:** Design Phase (never implemented)
 **Last Updated:** 2025-10-12
 **Owner:** Platform Team
 

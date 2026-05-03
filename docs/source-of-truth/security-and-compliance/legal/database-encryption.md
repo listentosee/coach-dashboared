@@ -417,9 +417,9 @@ Supabase Dashboard → Database → Backups shows:
 - FERPA: https://www2.ed.gov/policy/gen/guid/fpco/ferpa/index.html
 
 ### Internal Documentation
-- Storage Encryption: `docs/security/storage-encryption.md`
-- FERPA Remediation Plan: `docs/audit/FERPA-CRITICAL-ISSUES-REMEDIATION-PLAN.md`
-- DPA Tracking: `docs/legal/dpa-tracking.md`
+- Storage Encryption: `docs/source-of-truth/security-and-compliance/legal/storage-encryption.md`
+- FERPA Audit: `docs/source-of-truth/security-and-compliance/ferpa-compliance-audit-2025.md`
+- DPA Tracking: `docs/source-of-truth/security-and-compliance/legal/dpa-tracking.md`
 
 ---
 
@@ -474,3 +474,8 @@ const supabase = createClient(url, key, {
 ---
 
 **Compliance Status:** ✅ FERPA Issue #1 (Database Encryption) - 100% Complete
+
+---
+
+**Last verified:** 2026-05-03 against commit `c075303a`.
+**Notes:** Code-level claims confirmed: `pgcrypto` extension is installed in the schema (`data/db_schema_20260208.sql` line 41) but not used for column-level encryption (consistent with this doc's "not recommended" stance). Internal cross-reference paths corrected to point at the new SOT layout. **Platform-side claims (AES-256 at rest in AWS RDS, KMS key management, automatic rotation) are inherited from Supabase's published documentation and were not re-verified during this audit pass — re-verification requires Supabase dashboard inspection and SOC 2 / DPA review by a compliance officer.** "Last Verified" / "Next Review" dates inside the body are historical (2025-10-09); the SOT verification cadence is now tracked in the bucket README.

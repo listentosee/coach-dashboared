@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createServerClient } from '@/lib/supabase/server'
 
 // Minimal directory for messaging only: id + display name (+ role)
 // Access policy:
@@ -8,8 +7,7 @@ import { cookies } from 'next/headers'
 // - Must be invoked from messaging UI (Referer contains /dashboard/messages or /dashboard/messages-v2)
 export async function GET(req: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const supabase = createServerClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

@@ -18,7 +18,7 @@
 | A | Task 4: `lib/supabase/browser.ts` wrapper + tests + `client.ts` bridge re-export | ✅ |
 | A | Task 5: `lib/supabase/middleware.ts` + migrate `middleware.ts` | ✅ |
 | B | Task 6 Batch A: `app/api/admin/**` (34) | ✅ 34 / 34 |
-| B | Task 6 Batch B: `app/api/messaging/**` (29) | 0 / 29 |
+| B | Task 6 Batch B: `app/api/messaging/**` (29) | ✅ 29 / 29 |
 | B | Task 6 Batch C: `app/api/{competitors,teams}/**` (19) | 0 / 19 |
 | B | Task 6 Batch D: other route handlers (19) | 0 / 19 |
 | B | Task 6 Batch E: Server Components (11) | 0 / 11 |
@@ -29,7 +29,7 @@
 
 **Consumer file totals:** 113 in Task 6 (115 total − `middleware.ts` in Task 5 − `lib/supabase/client.ts` in Task 4).
 
-**Done counter:** 34 / 113
+**Done counter:** 63 / 113
 
 ---
 
@@ -139,35 +139,35 @@ Each file: replace `import ... from '@supabase/auth-helpers-nextjs'` with import
 
 ### Batch B — `app/api/messaging/**` (29 files, `createRouteHandlerClient` → `createServerClient()`)
 
-- [ ] `app/api/messaging/announcements/competitors/drafts/[id]/route.ts`
-- [ ] `app/api/messaging/announcements/competitors/drafts/route.ts`
-- [ ] `app/api/messaging/announcements/competitors/send/route.ts`
-- [ ] `app/api/messaging/announcements/send/route.ts`
-- [ ] `app/api/messaging/conversations/[id]/archive/route.ts`
-- [ ] `app/api/messaging/conversations/[id]/members/route.ts`
-- [ ] `app/api/messaging/conversations/[id]/messages/route.ts`
-- [ ] `app/api/messaging/conversations/[id]/mute/route.ts`
-- [ ] `app/api/messaging/conversations/[id]/pin/route.ts`
-- [ ] `app/api/messaging/conversations/[id]/read/route.ts`
-- [ ] `app/api/messaging/conversations/[id]/threads/route.ts`
-- [ ] `app/api/messaging/conversations/dm/route.ts`
-- [ ] `app/api/messaging/conversations/group/route.ts`
-- [ ] `app/api/messaging/conversations/route.ts`
-- [ ] `app/api/messaging/conversations/summary/route.ts`
-- [ ] `app/api/messaging/drafts/[id]/route.ts`
-- [ ] `app/api/messaging/drafts/route.ts`
-- [ ] `app/api/messaging/file/route.ts`
-- [ ] `app/api/messaging/messages/[id]/flag/route.ts`
-- [ ] `app/api/messaging/messages/recent/route.ts`
-- [ ] `app/api/messaging/pinned/route.ts`
-- [ ] `app/api/messaging/read-receipts/route.ts`
-- [ ] `app/api/messaging/read-status/route.ts`
-- [ ] `app/api/messaging/search/route.ts`
-- [ ] `app/api/messaging/threads/[id]/route.ts`
-- [ ] `app/api/messaging/threads/summary/route.ts`
-- [ ] `app/api/messaging/unread/count/route.ts`
-- [ ] `app/api/messaging/upload/route.ts`
-- [ ] `app/api/messaging/users/route.ts`
+- [x] `app/api/messaging/announcements/competitors/drafts/[id]/route.ts`
+- [x] `app/api/messaging/announcements/competitors/drafts/route.ts`
+- [x] `app/api/messaging/announcements/competitors/send/route.ts`
+- [x] `app/api/messaging/announcements/send/route.ts`
+- [x] `app/api/messaging/conversations/[id]/archive/route.ts`
+- [x] `app/api/messaging/conversations/[id]/members/route.ts`
+- [x] `app/api/messaging/conversations/[id]/messages/route.ts`
+- [x] `app/api/messaging/conversations/[id]/mute/route.ts`
+- [x] `app/api/messaging/conversations/[id]/pin/route.ts`
+- [x] `app/api/messaging/conversations/[id]/read/route.ts`
+- [x] `app/api/messaging/conversations/[id]/threads/route.ts`
+- [x] `app/api/messaging/conversations/dm/route.ts`
+- [x] `app/api/messaging/conversations/group/route.ts`
+- [x] `app/api/messaging/conversations/route.ts`
+- [x] `app/api/messaging/conversations/summary/route.ts`
+- [x] `app/api/messaging/drafts/[id]/route.ts`
+- [x] `app/api/messaging/drafts/route.ts`
+- [x] `app/api/messaging/file/route.ts`
+- [x] `app/api/messaging/messages/[id]/flag/route.ts`
+- [x] `app/api/messaging/messages/recent/route.ts`
+- [x] `app/api/messaging/pinned/route.ts`
+- [x] `app/api/messaging/read-receipts/route.ts`
+- [x] `app/api/messaging/read-status/route.ts`
+- [x] `app/api/messaging/search/route.ts`
+- [x] `app/api/messaging/threads/[id]/route.ts`
+- [x] `app/api/messaging/threads/summary/route.ts`
+- [x] `app/api/messaging/unread/count/route.ts`
+- [x] `app/api/messaging/upload/route.ts`
+- [x] `app/api/messaging/users/route.ts`
 
 ### Batch C — `app/api/competitors/**` + `app/api/teams/**` (19 files)
 
@@ -294,3 +294,4 @@ _(none yet)_
 | 2026-05-03 | Task 4 (browser + bridge) | 114 (precise) | 10/10 vitest pass | switched to precise grep; original loose grep had false positives from docstring mentions |
 | 2026-05-03 | Task 5 (middleware) | 113 (precise) | dev smoke: redirects 307 correctly, no errors | new wrapper exposes `{supabase, response(), redirect(url)}`; cookie-preserving redirect helper handles session refresh |
 | 2026-05-03 | Batch A (admin, 34 files) | 79 | `pnpm build` ✅; tsc 237 errors (down from 268 baseline as ReadonlyRequestCookies errors disappeared) | subagent migration; cookies import preserved in `context/route.ts` and `releases/route.ts` for non-Supabase admin_coach_id reads |
+| 2026-05-03 | Batch B (messaging, 29 files) | 50 | tsc 199 errors (down from 237) | zero variations — fully canonical pattern; 9 files had multiple-handler swaps |

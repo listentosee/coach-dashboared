@@ -1,4 +1,14 @@
-# Feature: Assistant Coach Delegation
+# Feature: Assistant Coach Delegation — Historical Design (Not Built)
+
+> **Status (2026-05-03): HISTORICAL / NOT BUILT.** This document captures a parked design for letting head coaches delegate FERPA-scoped data access to assistant coaches via a `coach_delegation` table, an `is_delegated_coach()` SQL function, RLS policy fan-out, a `delegation_coach_id` cookie, and matching UI. **None of these primitives exist in the codebase as of commit `e5b937b9`** — `git grep` for `coach_delegation`, `is_delegated_coach`, `delegation_coach_id`, or `assistant_coach_id` returns this file only.
+>
+> The closest existing primitive is the **admin "acting as a coach"** context switch (`useAdminCoachContext` in `lib/admin/useAdminCoachContext.ts`, `admin_coach_id` cookie set by `app/api/admin/context/route.ts`), which is admin-only and was the template this design proposed cloning. That admin acting-as feature is unrelated to assistant-coach delegation.
+>
+> The `Assist Coach` page at `app/dashboard/admin-tools/assist-coach/page.tsx` is also unrelated — it is the admin temp-password helper backed by `components/dashboard/coach-assist-tool.tsx`, not a delegation surface.
+>
+> Moved out of `docs/source-of-truth/features/` because that bucket is reserved for current-state documentation. This file is preserved as a forward-looking design reference if delegation is ever revived. Do **not** treat any code/SQL examples below as descriptions of current behavior.
+
+---
 
 **Status**: Parked (1/35 coaches requesting)
 **Date**: 2026-02-26
@@ -148,3 +158,8 @@ Ideally, extract a shared `getActingCoachId()` utility in `lib/utils/acting-coac
 - **Testing critical**: Must verify RLS changes don't break existing coach isolation
 - **Rollback plan**: Migration should be reversible (drop table, restore original policies)
 - Recommend implementing on a preview branch with thorough RLS testing before production
+
+---
+
+**Last verified:** 2026-05-03 against commit `e5b937b9`.
+**Notes:** Confirmed zero references to delegation primitives in code (no `coach_delegation` table, no `is_delegated_coach` function, no `delegation_coach_id` cookie). Moved out of SOT to historical archive following the precedent set by `docs/game-platform/historical-nice-full-design.md`.

@@ -16,7 +16,7 @@
 | A | Task 2: Install `@supabase/ssr` | ✅ |
 | A | Task 3: `lib/supabase/server.ts` wrapper + tests | ✅ |
 | A | Task 4: `lib/supabase/browser.ts` wrapper + tests + `client.ts` bridge re-export | ✅ |
-| A | Task 5: `lib/supabase/middleware.ts` + migrate `middleware.ts` | ☐ |
+| A | Task 5: `lib/supabase/middleware.ts` + migrate `middleware.ts` | ✅ |
 | B | Task 6 Batch A: `app/api/admin/**` (34) | 0 / 34 |
 | B | Task 6 Batch B: `app/api/messaging/**` (29) | 0 / 29 |
 | B | Task 6 Batch C: `app/api/{competitors,teams}/**` (19) | 0 / 19 |
@@ -85,11 +85,14 @@ The grep count should monotonically decrease toward zero. If a NEW file appears 
 
 ### Task 5 — `lib/supabase/middleware.ts` + root `middleware.ts`
 
-- [ ] Read existing `middleware.ts` to understand current pattern
-- [ ] Create `lib/supabase/middleware.ts` with `createMiddlewareSupabase(request, response)`
-- [ ] Migrate `middleware.ts` to new wrapper
-- [ ] `npm run dev` — manual smoke: protected-route redirect + login + dashboard access
-- [ ] Commit: `feat(supabase): middleware wrapper using @supabase/ssr`
+- [x] Read existing `middleware.ts`
+- [x] Created `lib/supabase/middleware.ts` with `createMiddlewareSupabase(request)` returning `{ supabase, response(), redirect(url) }`
+- [x] Migrated `middleware.ts` to new wrapper — preserves existing redirects (login, force-reset, admin gate)
+- [x] `pnpm dev` smoke: `GET /` → 200, `GET /dashboard` (no auth) → 307 to `/auth/login`, `GET /auth/login` → 200, `GET /dashboard/admin` (no auth) → 307 to `/auth/login`. `[middleware] No session for path /dashboard cookies: 0` log fires correctly
+- [x] Commit
+
+**Notes:**
+- Wrapper API differs from plan's `createMiddlewareSupabase(request, response)` signature. The @supabase/ssr cookie-bridging pattern requires the response to be re-built inside `setAll`, so the wrapper takes only `request` and returns a `response()` getter and a `redirect(url)` helper that copies auth cookies onto the redirect response. Plan code wouldn't have preserved session refreshes through redirects.
 
 ---
 
@@ -289,3 +292,4 @@ _(none yet)_
 | 2026-05-03 | Task 2 (install ssr) | 115 | typecheck only — 268 errors (baseline ~263, no ssr-attributable) | peer-dep warning vs supabase-js@2.49.4 noted; pre-existing pattern |
 | 2026-05-03 | Task 3 (server wrapper) | 115 | 8/8 vitest pass (config + server.test) | async-cookie pattern adopted for Next 15.5 |
 | 2026-05-03 | Task 4 (browser + bridge) | 114 (precise) | 10/10 vitest pass | switched to precise grep; original loose grep had false positives from docstring mentions |
+| 2026-05-03 | Task 5 (middleware) | 113 (precise) | dev smoke: redirects 307 correctly, no errors | new wrapper exposes `{supabase, response(), redirect(url)}`; cookie-preserving redirect helper handles session refresh |

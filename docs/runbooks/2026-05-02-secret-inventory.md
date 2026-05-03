@@ -17,7 +17,7 @@
 - **Framework:** Next.js App Router
 - **Test framework:** vitest (NOT jest — important for subagent prompts)
 - **TypeScript path alias:** `@/*` → `./*` (root-relative, no `src/` prefix)
-- **Auth helper:** `@supabase/auth-helpers-nextjs` (deprecated package — separate migration concern, OUT OF SCOPE for this rotation)
+- **Auth helper:** ~~`@supabase/auth-helpers-nextjs`~~ → migrated to project-internal wrapper layer (`lib/supabase/{server,browser,middleware}.ts`) backed by `@supabase/ssr`. PR #96 merged 2026-05-03.
 
 ### 0b. Local `.env` env-var inventory (43 vars total)
 
@@ -97,30 +97,28 @@ Top offenders by read count:
 - [x] Spawn-task filed for Playwright leak cleanup
 - [x] Phase A code migration shipped — PR #94 merged at `d3cda0ec` (2026-05-02)
 - [x] Phase B partial: keys generated, integration reconnected, modern keys live for server-side (2026-05-03)
-- [ ] Phase C cleanup — **DEFERRED** until `@supabase/auth-helpers-nextjs` → `@supabase/ssr` migration ships
+- [x] auth-helpers-nextjs → ssr migration shipped — PR #96 merged at `c3e31044` (2026-05-03). 114 consumers (113 inventoried + 1 newly discovered in `components/`) migrated to a thin wrapper at `lib/supabase/{server,browser,middleware}.ts` over `@supabase/ssr`.
+- [x] Phase C cleanup — legacy `anon` and `service_role` JWT keys disabled in Supabase dashboard (2026-05-03). Production verified up: `/` → 200, `/dashboard` → 307 redirect to login (middleware ran cleanly on modern publishable key).
 - [x] Phase F partial: per-repo log entry in LearningNuggets runbook updated (2026-05-03)
 
 ---
 
-## Post-rotation status (2026-05-03)
+## Post-rotation status (2026-05-03 — COMPLETE)
 
 ### What completed
 
-- **Phase A** — server-side admin paths fully on modern `SUPABASE_SECRET_KEY` via `config.supabase.secretKey`. 32 consumer files migrated. **High-blast-radius surface IS rotated.**
-- **Phase B (partial)** — new `sb_secret_*` and `sb_publishable_*` keys generated. Native Integration "Connect Project" linked the cmcc-coach-dashboard product to the coach-dashboared Vercel project (the integration was installed but never connected — that was the gating issue). 12 conflicting legacy env vars manually deleted from Vercel before reconnect (Vercel refuses to push over existing names).
-- Production redeployed; modern keys live for server-side traffic.
-
-### What's deferred — and why
-
-Browser-side auth uses `@supabase/auth-helpers-nextjs::createClientComponentClient()` which **hardcodes `process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY`** internally. Disabling the legacy `anon` JWT (Phase C step) breaks all browser login flows. We re-enabled the legacy keys to restore production.
-
-**The legacy keys can only be permanently revoked after migrating the auth helper package.** See: [`docs/superpowers/plans/2026-05-03-auth-helpers-to-ssr-migration.md`](../superpowers/plans/2026-05-03-auth-helpers-to-ssr-migration.md).
+- **Phase A** — server-side admin paths fully on modern `SUPABASE_SECRET_KEY` via `config.supabase.secretKey`. 32 consumer files migrated.
+- **Phase B** — new `sb_secret_*` and `sb_publishable_*` keys generated. Native Integration "Connect Project" linked the cmcc-coach-dashboard product to the coach-dashboared Vercel project. 12 conflicting legacy env vars manually deleted from Vercel before reconnect.
+- **auth-helpers → ssr migration** — PR #96 merged at `c3e31044`. 114 consumers migrated through a 3-file wrapper layer (`lib/supabase/{server,browser,middleware}.ts`) backed by `@supabase/ssr`. `@supabase/auth-helpers-nextjs` removed from `package.json`.
+- **Phase C** — legacy `anon` and `service_role` JWT API keys **disabled** in Supabase. Browser auth now reads `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` via the wrapper layer. Server-side admin paths read `SUPABASE_SECRET_KEY` via `config.supabase.secretKey`.
 
 ### Current security posture
 
-- ✅ Server-side admin paths (32 files): on modern `sb_secret_*` keys
-- ⚠️ Browser-side auth: still on legacy `anon` JWT (re-enabled)
-- ⚠️ Legacy keys exist alongside modern in both Supabase and Vercel — not a current risk (modern is preferred), but full revoke is gated on the auth-helpers migration
+- ✅ Server-side admin paths: on modern `sb_secret_*` keys (`config.supabase.secretKey`)
+- ✅ Browser-side auth: on modern `sb_publishable_*` keys (via `@/lib/supabase/browser` wrapper)
+- ✅ Middleware: on modern `sb_publishable_*` keys (via `@/lib/supabase/middleware` wrapper)
+- ✅ Legacy `anon` and `service_role` JWT API keys revoked in Supabase
+- ⚠️ Legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` env vars still set in Vercel (and `SUPABASE_JWT_SECRET`) — values are now invalid since the underlying keys are revoked, but the var names remain in Vercel env. Cleanup item: delete these var names in a future Vercel-env tidy pass. Not a current security risk — runtime now reads modern names exclusively.
 
 ### Local `.env` housekeeping
 

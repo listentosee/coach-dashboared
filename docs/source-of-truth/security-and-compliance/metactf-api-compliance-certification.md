@@ -23,7 +23,7 @@
 | `POST /auth/send_password_reset_email` | ✅ **IMPLEMENTED** | `POST /api/game-platform/users/password-reset` | Competitor actions UI | Full compliance with user ID requirement |
 | `GET /scores/get_odl_scores` | ✅ **IMPLEMENTED** | `getScores()` | Background sync operations | Full compliance with optional user filter |
 | `GET /scores/get_flash_ctf_progress` | ✅ **IMPLEMENTED** | `getFlashCtfProgress()` | Background sync operations | Full compliance with user requirement |
-| `GET /` (Index) | ✅ **IMPLEMENTED** | Health check endpoint | Dashboard health checks | Basic status endpoint available |
+| `GET /` (Index) | ⚠️ **NOT IMPLEMENTED IN CLIENT** | n/a | n/a | No dedicated client method as of 2026-05-03; remove or implement |
 
 ---
 
@@ -281,7 +281,7 @@ const result = await response.json();
 The SynEd MetaCTF integration is **fully compliant and actively used** in production. All required endpoints are implemented, tested, and integrated with the application frontend and backend.
 
 **Current Status:**
-- ✅ All 9 MetaCTF API endpoints implemented and connected
+- ✅ All 9 functional MetaCTF API endpoints implemented and connected (the `GET /` index endpoint listed for completeness is not implemented in the client; treat as informational only)
 - ✅ Frontend UI triggers API calls correctly
 - ✅ Backend processes handle authentication and data flow
 - ✅ Error handling and retry logic in place
@@ -300,3 +300,8 @@ The SynEd MetaCTF integration is **fully compliant and actively used** in produc
 *Certified by: SynEd Development Team*
 *Date: October 2025*
 *API Version: v1.0*
+
+---
+
+**Last verified:** 2026-05-03 against commit `c075303a`.
+**Notes:** Re-verified all 9 functional endpoints in `lib/integrations/game-platform/client.ts` — `createUser`, `createTeam`, `deleteTeam`, `assignMemberToTeam`, `getTeamAssignments`, `getScores`, `getFlashCtfProgress`, `sendPasswordReset`, plus `delete_assignment` via team deletion. Bearer-token auth, exponential-backoff retry (3 attempts on 5xx), and `GamePlatformError` structured error handling all confirmed. Corrected the `GET /` index entry: the client has no dedicated method for it. API routes under `app/api/game-platform/{users,teams,sync}/...` mirror the doc's UI integration claims. Compliance attestations (FERPA, SOC 2 inheritance from Supabase, etc.) are claims that should be re-validated by a compliance officer — not re-validated here.

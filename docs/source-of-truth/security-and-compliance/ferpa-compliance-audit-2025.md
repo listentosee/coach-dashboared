@@ -6,6 +6,8 @@
 **Platform:** Next.js 14 / Supabase / PostgreSQL
 **Scope:** Full-stack web application for managing student cybersecurity competitors
 
+> **Verification Note (2026-05-03):** This audit captures the platform as of October 2025. Several findings have been at least partially remediated since (see "Status Updates Since 2025-10-05" near the end of the doc). The platform is now Next.js 15.5; auth was migrated from `@supabase/auth-helpers-nextjs` to `@supabase/ssr` in PR #96 on 2026-05-03; legacy Supabase JWT keys were revoked the same day. PII-redacting `lib/logging/safe-logger.ts` now exists. Section 9's "no security headers" finding still stands. Section 1's "30-day token expiration" claim is incorrect — the trigger sets 7 days. The findings, severity ratings, and recommendations below are otherwise still substantively accurate as a snapshot of the historical posture.
+
 ---
 
 ## EXECUTIVE SUMMARY
@@ -148,7 +150,7 @@ FERPA mandates:
 No hard delete functionality found - creates indefinite data retention risk
 
 ⚠️ **Profile update tokens:**
-- 30-day expiration window (reasonable)
+- 7-day expiration window (set by `set_profile_update_token_with_expiry` trigger; the audit originally said 30 days, which was incorrect)
 - No automatic cleanup of expired tokens from database
 
 #### Risk Level: 🔴 **HIGH**
@@ -224,33 +226,33 @@ const { data, error } = await supabase.auth.signUp({
 ```
 ✅ **Two-step verification** - Requires pre-approval in Monday.com CRM
 
-**Middleware Protection** ([middleware.ts](middleware.ts)):
+**Middleware Protection** ([middleware.ts](middleware.ts)) — current shape (post-PR #96, 2026-05-03):
 ```typescript
 export async function middleware(req: NextRequest) {
-  const { data: { user } } = await supabase.auth.getUser();
+  const ms = createMiddlewareSupabase(req);
+  const { data: { user } } = await ms.supabase.auth.getUser();
 
   if (req.nextUrl.pathname.startsWith('/dashboard')) {
-    if (!user) {
-      return NextResponse.redirect(new URL('/auth/login', req.url));
+    if (!user) return ms.redirect(new URL('/auth/login', req.url));
+
+    // Force-reset gate
+    if ((user as any)?.app_metadata?.must_change_password) {
+      return ms.redirect(new URL('/auth/force-reset', req.url));
     }
 
     // Admin route protection
     if (req.nextUrl.pathname.startsWith('/dashboard/admin')) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
+      const { data: profile } = await ms.supabase
+        .from('profiles').select('role').eq('id', user.id).single();
       if (profile?.role !== 'admin') {
-        return NextResponse.redirect(new URL('/dashboard', req.url));
+        return ms.redirect(new URL('/dashboard', req.url));
       }
     }
   }
-  return res;
+  return ms.response();
 }
 ```
-✅ Role-based access control at route level
+✅ Role-based access control at route level. ✅ Uses `getUser()` (not `getSession()`) — ESLint enforces this in `app/api/**`, `route.ts`, and `middleware.ts`.
 
 **Admin Context Switching** ([lib/admin/useAdminCoachContext.ts](lib/admin/useAdminCoachContext.ts)):
 ```typescript
@@ -262,9 +264,11 @@ setCoachId(json.coach_id || null) // Admin can view data for specific coach
 
 **Session Management** ([lib/supabase/client.ts](lib/supabase/client.ts)):
 ```typescript
-export const supabase = createClientComponentClient()
+// As of 2026-05-03 (post-PR #96), the browser singleton uses @supabase/ssr:
+import { createBrowserClient } from './browser'
+export const supabase = createBrowserClient()
 ```
-⚠️ Uses default Supabase session handling (7-day JWT expiration)
+⚠️ Uses default Supabase session handling (7-day JWT expiration). Note: at audit time (Oct 2025) this used `createClientComponentClient()` from `@supabase/auth-helpers-nextjs`; that package has since been removed in favor of `@supabase/ssr` wrappers.
 
 #### FERPA Requirements
 
@@ -1273,3 +1277,36 @@ However, **critical gaps exist** in three areas:
 **Files Reviewed:** 60+ source files, 5 database migrations, 1 schema dump
 
 **Disclaimer:** This audit is based on code review only. Production deployment security, infrastructure configuration, and runtime behavior were not assessed. Recommend follow-up penetration testing and security review of hosting environment (Supabase configuration, Vercel settings, etc.).
+
+---
+
+## Status Updates Since 2025-10-05
+
+This snapshot reflects the codebase verified on 2026-05-03 (commit `c075303a`).
+
+### Changed since the audit
+- **Authentication migration (PR #96, 2026-05-03):** `@supabase/auth-helpers-nextjs` removed; replaced by thin wrappers over `@supabase/ssr` at `lib/supabase/{server,browser,middleware,client}.ts`. Server-side handlers consistently use `auth.getUser()`; ESLint bans `getSession()` for authorization in `app/api/**`, `route.ts`, and `middleware.ts`.
+- **Supabase key rotation (2026-05-03):** Legacy JWT-based `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_ANON_KEY` revoked. Modern `sb_secret_*` (server) and `sb_publishable_*` (client) keys are live. `getServiceRoleSupabaseClient()` resolves `SUPABASE_SECRET_KEY` → `SUPABASE_SERVICE_ROLE_KEY` → `SERVICE_ROLE_KEY` (latter two are no-op fallbacks post-revoke).
+- **Force-reset flow:** Middleware now redirects to `/auth/force-reset` when `app_metadata.must_change_password` is set (admin-initiated password resets).
+- **FERPA-safe logger exists:** `lib/logging/safe-logger.ts` redacts PII fields (email, names, demographics, phone, address, DOB) and sensitive patterns (email/SSN/phone regex). Partially addresses Section 9 / CRITICAL #2. **Coverage of all log call-sites was not re-audited in this verification pass.**
+- **E-signature provider:** Adobe Sign was replaced by Zoho Sign before this audit, but the legacy `competitors.adobe_sign_document_id` column persists in the schema as historical data.
+- **Token expiration trigger:** `set_profile_update_token_with_expiry` confirmed to set 7 days (the audit originally said 30 days, which was wrong).
+- **Schema reference:** Current schema dump is `data/db_schema_20260208.sql` (was `docs/database/db_schema_dump.sql`).
+
+### Still open as of 2026-05-03
+- ❌ **No security headers** in `next.config.mjs` (CSP, HSTS, X-Frame-Options) — Section 9 finding stands verbatim.
+- ❌ **No DB-level CHECK constraint on `competitors.status`** — see codebase-db-review.md finding #3.
+- ❌ **No hard delete capability** for competitors — Section 10 finding stands.
+- ⚠️ **Activity-log coverage gaps** — Section 8 was not re-audited; assume status unchanged unless verified.
+- ⚠️ **Third-party DPAs** — see `legal/dpa-tracking.md`; Supabase + Zoho + MetaCTF + Monday.com all still in use; Monday.com confirmed (`lib/integrations/monday/`).
+
+### Items requiring SME / legal review (carried forward)
+- Quarterly FERPA audit cadence
+- Hard-delete + retention policy execution
+- Third-party DPA execution (legal counsel sign-off)
+- Penetration testing of authentication + RLS
+
+---
+
+**Last verified:** 2026-05-03 against commit `c075303a`.
+**Notes:** Stale auth-helpers code snippets replaced with current `@supabase/ssr` wrapper pattern; 30-day token expiry corrected to 7 days; status updates section appended documenting PR #96 auth migration, key rotation, and remaining gaps. Body of October 2025 audit retained as historical record.

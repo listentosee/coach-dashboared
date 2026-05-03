@@ -63,6 +63,38 @@ All files stored in Supabase Storage buckets are encrypted at rest using **AES-2
 
 ---
 
+### `team-images` Bucket
+
+**Purpose:** AI-generated and admin-curated team avatars / promotional images
+
+**Encryption Details:**
+- **Algorithm:** AES-256 (infrastructure-level)
+- **Provider:** Supabase Storage
+- **Key Management:** Managed by Supabase
+- **Contains PII:** ⚠️ Limited — team identity images may indirectly identify students
+
+**Retention:** Lifetime of the team
+
+**Access Control:**
+- Service-role uploads/removes via admin team-image acceptance flow (`app/api/admin/team-images/[candidateId]/accept/route.ts`, `lib/team-images/generate.ts`)
+
+---
+
+### `coach-library` Bucket
+
+**Purpose:** Stores admin-managed coach-facing documents (curated PDFs / resources)
+
+**Encryption Details:**
+- **Algorithm:** AES-256 (infrastructure-level)
+- **Provider:** Supabase Storage
+- **Key Management:** Managed by Supabase
+- **Contains PII:** 🟢 Low — typically reference docs, not student data
+
+**Access Control:**
+- Admin-only upload/remove via `app/api/admin/coach-library/...` and `components/dashboard/admin/CoachLibraryManager.tsx`
+
+---
+
 ### `temp` Bucket (if exists)
 
 **Purpose:** Temporary file storage
@@ -74,6 +106,8 @@ All files stored in Supabase Storage buckets are encrypted at rest using **AES-2
 - **Contains PII:** ⚠️ Varies
 
 **Retention:** 30 days auto-delete
+
+> **Verification note (2026-05-03):** No code references to a `temp` bucket were found in this audit pass. If it exists in Supabase Storage, it is unused at the application level. Consider archiving this section if the bucket no longer exists.
 
 ---
 
@@ -332,3 +366,8 @@ supabase storage download signatures/ ./backups/signatures/
 ---
 
 **Compliance Status:** ✅ FERPA Issue #1 (Storage Encryption) - 100% Complete
+
+---
+
+**Last verified:** 2026-05-03 against commit `c075303a`.
+**Notes:** Code-level claims confirmed: `signatures` bucket is uploaded to from `app/api/zoho/webhook/route.ts:101` and `scripts/recover-agreement-pdfs.ts:56`; `messages` bucket is uploaded to via `SUPABASE_MESSAGES_BUCKET` env in `app/api/messaging/upload/route.ts`. Two production buckets were missing from the doc and have been added: **`team-images`** (AI-generated team avatars) and **`coach-library`** (admin-managed coach resources). No `temp` bucket usage was found in the codebase — flagged for confirmation. **Platform-side encryption claims (AES-256 via AWS S3 SSE) are inherited from Supabase's published documentation and were not re-verified during this audit pass — re-verification requires Supabase dashboard inspection by a compliance officer.**

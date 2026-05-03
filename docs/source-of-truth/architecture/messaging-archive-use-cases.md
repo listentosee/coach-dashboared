@@ -1,8 +1,12 @@
-# Message Archive Use Cases - Current vs. Proposed
+# Message Archive Use Cases — Historical "Broken vs Fixed" Comparison
+
+> **Status (2026-05-03):** This document was authored when the messaging archive flow was being redesigned. The "Proposed Implementation (CORRECT)" sections below describe the **current production behavior**: per-user archive/flag state lives in `message_user_state`, no hard deletes, conversation-level archive is *derived* from message state. The "Current Implementation (BROKEN)" sections describe the prior design (hard-deleting messages, global flag column, conversation-level `archived_at` write path) — kept as a regression-prevention reference. Read every "Current Implementation" section as historical context, and every "Proposed Implementation" section as how the system actually behaves today.
+>
+> Implementation lives in: `supabase/migrations/20260206000001_simplify_archive_to_message_level.sql`, `supabase/migrations/20260206000002_add_archive_state_to_summary.sql`, and the `list_conversations_enriched` / `list_conversations_summary` RPCs.
 
 ## Scenario 1: User Archives a Single Message
 
-### Current Implementation (BROKEN)
+### Prior (BROKEN) Implementation — replaced
 
 **Setup:**
 - Conversation: "Team Planning"
@@ -42,7 +46,7 @@
 
 ---
 
-### Proposed Implementation (CORRECT)
+### Current (CORRECT) Implementation
 
 **Same Setup**
 
@@ -80,7 +84,7 @@ WHERE conversation_id = 'Team Planning'
 
 ## Scenario 2: User Archives Entire Conversation
 
-### Current Implementation (BROKEN)
+### Prior (BROKEN) Implementation — replaced
 
 **Setup:**
 - Conversation: "Old Project Discussion"
@@ -112,19 +116,27 @@ WHERE conversation_id = 'Team Planning'
 
 ---
 
-### Proposed Implementation (CORRECT)
+### Current (CORRECT) Implementation
 
 **Same Setup**
 
 **Action:** Alice archives the conversation
 
-**What Happens:**
+**What Happens (current production behavior):**
+
+Conversation-level archive is now *derived* from message-level state — there is no separate `archive_conversation_for_user()` write path. Archiving "the conversation" means archiving every message in it (`message_user_state.archived_at` set per message). The `list_conversations_enriched` and `list_conversations_summary` RPCs compute `all_archived = true` for the user iff every message has `archived_at` set, and a new message landing in the conversation flips that bit back to `false` automatically — no trigger needed.
+
 ```sql
--- archive_conversation_for_user() does:
-UPDATE conversation_members
-SET archived_at = NOW()
-WHERE conversation_id = conv-1 AND user_id = alice_id;
--- NO DELETES - everything stays!
+-- The 'archive whole conversation' UI action expands to a per-message
+-- archive write, e.g.:
+INSERT INTO message_user_state (user_id, message_id, archived_at)
+SELECT alice_id, m.id, NOW()
+FROM messages m
+WHERE m.conversation_id = conv-1
+ON CONFLICT (user_id, message_id) DO UPDATE SET archived_at = EXCLUDED.archived_at;
+
+-- (Note: conversation_members.archived_at still exists in the schema
+--  as a legacy column but is not the active archive write target.)
 ```
 
 **Result:**
@@ -136,10 +148,11 @@ WHERE conversation_id = conv-1 AND user_id = alice_id;
 
 **Query for Alice:**
 ```sql
-SELECT c.* FROM conversations c
-JOIN conversation_members cm ON cm.conversation_id = c.id
-WHERE cm.user_id = alice_id
-  AND cm.archived_at IS NULL  -- Filter out archived
+-- Conversations where 'all messages archived' for Alice are excluded
+-- via the all_archived flag returned by list_conversations_enriched
+-- / list_conversations_summary.
+SELECT * FROM list_conversations_enriched(alice_id)
+WHERE all_archived = false;
 -- "Old Project Discussion" not returned
 ```
 
@@ -147,7 +160,7 @@ WHERE cm.user_id = alice_id
 
 ## Scenario 3: Flag a Message
 
-### Current Implementation (BROKEN)
+### Prior (BROKEN) Implementation — replaced
 
 **Setup:**
 - Conversation with messages msg-1, msg-2, msg-3
@@ -167,7 +180,7 @@ UPDATE messages SET flagged = true WHERE id = msg-2;
 
 ---
 
-### Proposed Implementation (CORRECT)
+### Current (CORRECT) Implementation
 
 **Same Setup**
 
@@ -175,8 +188,11 @@ UPDATE messages SET flagged = true WHERE id = msg-2;
 
 **What Happens:**
 ```sql
-INSERT INTO message_flags (user_id, message_id, flagged_at)
-VALUES (alice_id, msg-2, NOW());
+-- The flag lives on message_user_state alongside archived_at —
+-- there is no separate message_flags table.
+INSERT INTO message_user_state (user_id, message_id, flagged)
+VALUES (alice_id, 'msg-2', true)
+ON CONFLICT (user_id, message_id) DO UPDATE SET flagged = true;
 ```
 
 **Result:**
@@ -218,7 +234,7 @@ VALUES (
 
 ## Scenario 5: Multiple Users Archive Same Message
 
-### Current Implementation
+### Prior Implementation — replaced
 
 **Setup:**
 - Conversation with msg-1, msg-2, msg-3
@@ -234,7 +250,7 @@ VALUES (
 
 ---
 
-### Proposed Implementation
+### Current Implementation
 
 **Same Setup**
 
@@ -250,7 +266,7 @@ VALUES (
 
 ---
 
-## Proposed Data Structure
+## Implemented Data Structure
 
 ```sql
 -- User-specific message state (flags, archives)
@@ -332,14 +348,7 @@ $$;
 ```
 
 ### Archive Conversation
-```sql
-CREATE FUNCTION archive_conversation_for_user(p_conversation_id UUID)
-RETURNS VOID AS $$
-  UPDATE conversation_members
-  SET archived_at = NOW()
-  WHERE conversation_id = p_conversation_id AND user_id = auth.uid();
-$$;
-```
+The conversation-level archive write is now implemented as a bulk per-message archive (see Scenario 2 above). The legacy `conversation_members.archived_at` column is retained but is not written to by the active archive flow.
 
 ## Data Isolation Guarantees
 
@@ -350,12 +359,17 @@ $$;
 5. ✅ **Thread Integrity**: Parent/child relationships always maintained
 6. ✅ **FERPA Compliant**: User actions don't affect other users' data
 
-## Migration Path
+## Migration Path (historical — complete)
 
-1. Stop using current archive functions (disable feature)
-2. Create `message_user_state` table
-3. Migrate existing `messages.flagged` → `message_user_state.flagged` for all users
-4. Update all query functions
-5. Remove `archived_messages` table (broken design)
-6. Drop `messages.flagged` column
-7. Test isolation between users
+1. ✅ Stop using prior archive functions
+2. ✅ Created `message_user_state` table
+3. ✅ Migrated to `message_user_state.flagged`
+4. ✅ Updated all query functions (`list_conversations_enriched`, `list_conversations_summary`)
+5. ⚠️ `archived_messages` table still present in the schema as a legacy carry-over (write path no longer used)
+6. ✅ `messages.flagged` column dropped from the `messages` table; flag state now owned by `message_user_state.flagged`
+7. ✅ Cross-user isolation verified
+
+---
+
+**Last verified:** 2026-05-03 against commit `1c60208a`.
+**Notes:** Reframed the doc from "Current vs Proposed" to "Prior (BROKEN) vs Current (CORRECT)" — the proposed design is now production behavior. Added a status banner at the top, updated headings throughout, fixed Scenario 2 to reflect that conversation-level archive is now derived from message-level state (not a `conversation_members.archived_at` write), corrected the flag SQL to use `message_user_state.flagged` (not a `message_flags` table), retitled "Proposed Data Structure" to "Implemented Data Structure", removed the obsolete `archive_conversation_for_user` function sample, and converted the Migration Path checklist to a completion log. Confirmed via `data/db_schema_20260208.sql` that `messages.flagged` is no longer a column on the `messages` table — `flagged` is owned exclusively by `message_user_state` and surfaced in RPC return tables. Open follow-up: legacy `archived_messages` table and `conversation_members.archived_at` column still exist in the schema with no active write path — worth a separate cleanup PR.

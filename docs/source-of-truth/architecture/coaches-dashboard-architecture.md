@@ -29,12 +29,14 @@
 ```
 
 ### Technology Stack
-- **Frontend**: Next.js 14+ (App Router), React 18+, TypeScript
+- **Frontend**: Next.js 15.5 (App Router), React 18.3, TypeScript (strict)
 - **UI Components**: shadcn/ui, Radix UI primitives
-- **Styling**: Tailwind CSS 3.4+
-- **Backend**: Supabase (PostgreSQL, Auth, Storage, Realtime)
+- **Styling**: Tailwind CSS 3.4
+- **Backend**: Supabase (PostgreSQL, Auth, Storage, Realtime) on `@supabase/ssr`
 - **Hosting**: Vercel (Serverless Functions)
-- **External Services**: Monday.com API, Adobe Sign, Game Platform API
+- **External Services**: Monday.com API, Zoho Sign (digital agreements), MetaCTF Game Platform API, SendGrid
+
+> Note: Earlier revisions of this doc referenced Adobe Sign for digital agreements. The application now uses Zoho Sign (`app/api/zoho/**`); the `competitors.adobe_sign_document_id` column is retained as a legacy carry-over but no Adobe Sign code remains.
 
 ---
 
@@ -290,8 +292,9 @@ CREATE TRIGGER set_profile_update_token BEFORE INSERT ON competitors
 ### Authentication Flow
 
 ```typescript
-// /lib/auth/auth-service.ts
-import { createClient } from '@supabase/supabase-js';
+// /lib/auth/auth-service.ts (illustrative — actual code is split across
+// app/api/auth/* route handlers rather than a single AuthService class)
+import { createServerClient } from '@/lib/supabase/server';
 import { MondayClient } from '@/lib/integrations/monday';
 
 export class AuthService {
@@ -475,7 +478,7 @@ export const API_ROUTES = {
   // External integrations
   INTEGRATIONS: {
     MONDAY: '/api/integrations/monday/verify-coach',
-    ADOBE_SIGN: '/api/integrations/adobe-sign/webhook',
+    ZOHO_SIGN: '/api/zoho/webhook',
   }
 };
 ```
@@ -664,6 +667,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// Toast notifications use Sonner across the codebase:
+//   import { toast } from 'sonner'
+// (The shadcn `useToast`/`@/components/ui/use-toast` pattern was migrated to
+// Sonner; this sample is preserved for historical context only.)
 import { useToast } from '@/components/ui/use-toast';
 import { PlusCircle, Copy } from 'lucide-react';
 
@@ -919,10 +926,10 @@ export function CompetitorForm({ onSuccess }: { onSuccess?: () => void }) {
 - [ ] Build team assignment interface from competitor listing
 
 ### Phase 4: External Integrations (Week 6-7)
-- [ ] Integrate Adobe Sign webhooks for form status
-- [ ] Build Game Platform API integration
-- [ ] Implement competitor sync to Game Platform
-- [ ] Create stats synchronization service
+- [x] Integrate Zoho Sign webhooks for agreement/release status (`app/api/zoho/webhook/route.ts`)
+- [x] Build Game Platform API integration (MetaCTF — `lib/integrations/game-platform/`)
+- [x] Implement competitor sync to Game Platform
+- [x] Create stats synchronization service
 
 ### Phase 5: Admin Dashboard (Week 8)
 - [ ] Build admin authentication and authorization
@@ -985,7 +992,7 @@ export const SECURITY_CONFIG = {
   // CORS settings
   CORS_ORIGINS: [
     process.env.NEXT_PUBLIC_APP_URL,
-    'https://*.adobe.com', // Adobe Sign webhooks
+    'https://*.zohosign.com', // Zoho Sign webhooks
   ],
   
   // CSP headers
@@ -1220,8 +1227,11 @@ NODE_ENV=development
 MONDAY_API_TOKEN=your_monday_api_token
 MONDAY_BOARD_ID=your_coaches_board_id
 
-# Adobe Sign
-ADOBE_SIGN_WEBHOOK_SECRET=your_webhook_secret
+# Zoho Sign (digital agreements / release forms)
+ZOHO_SIGN_WEBHOOK_SECRET=your_webhook_secret
+ZOHO_CLIENT_ID=your_zoho_client_id
+ZOHO_CLIENT_SECRET=your_zoho_client_secret
+ZOHO_REFRESH_TOKEN=your_zoho_refresh_token
 
 # Game Platform
 GAME_PLATFORM_API_URL=https://api.gameplatform.com
@@ -1242,50 +1252,43 @@ SMTP_PASS=your_sendgrid_api_key
 
 ### Package Dependencies
 
+Key runtime versions (see `package.json` for the full list — the source is the only authoritative version reference):
+
 ```json
 {
   "dependencies": {
-    "@hookform/resolvers": "^3.3.4",
-    "@radix-ui/react-avatar": "^1.0.4",
-    "@radix-ui/react-dialog": "^1.0.5",
-    "@radix-ui/react-dropdown-menu": "^2.0.6",
-    "@radix-ui/react-label": "^2.0.2",
-    "@radix-ui/react-select": "^2.0.0",
-    "@radix-ui/react-slot": "^1.0.2",
-    "@radix-ui/react-switch": "^1.0.3",
-    "@radix-ui/react-tabs": "^1.0.4",
-    "@radix-ui/react-toast": "^1.1.5",
-    "@sentry/nextjs": "^7.100.0",
+    "next": "15.5.x",
+    "react": "18.3.x",
+    "react-dom": "18.3.x",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.39.0",
+    "@sentry/nextjs": "^8.26.0",
     "@tanstack/react-query": "^5.17.0",
     "@tanstack/react-table": "^8.11.0",
-    "class-variance-authority": "^0.7.0",
-    "clsx": "^2.1.0",
-    "date-fns": "^3.2.0",
-    "lucide-react": "^0.309.0",
-    "next": "14.1.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
     "react-hook-form": "^7.48.0",
+    "@hookform/resolvers": "^3.3.4",
+    "zod": "^3.22.4",
+    "sonner": "^2.0.7",
+    "lucide-react": "^0.309.0",
     "recharts": "^2.10.0",
+    "marked": "^15.0.0",
+    "react-markdown": "^9.1.0",
+    "openai": "^5.23.1",
     "tailwind-merge": "^2.2.0",
-    "tailwindcss-animate": "^1.0.7",
-    "zod": "^3.22.4"
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
-    "@types/react": "^18.2.48",
-    "@types/react-dom": "^18.2.18",
-    "autoprefixer": "^10.4.17",
-    "eslint": "^8.56.0",
-    "eslint-config-next": "14.1.0",
-    "postcss": "^8.4.33",
+    "eslint-config-next": "15.5.x",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.18",
+    "@playwright/test": "^1.55.0",
+    "msw": "^2.11.3"
   }
 }
 ```
+
+> The `@supabase/auth-helpers-nextjs` package was removed in PR #96 (2026-05-03). All Supabase client construction now goes through the wrapper layer at `lib/supabase/{server,browser,middleware,client}.ts` over `@supabase/ssr`.
 
 ---
 
@@ -1302,3 +1305,8 @@ This architecture document provides a comprehensive blueprint for building the C
 The phased implementation approach ensures steady progress with regular deliverables, while the monitoring and maintenance strategies ensure long-term reliability and performance.
 
 For questions or clarifications during implementation, refer to this document as the source of truth for architectural decisions and implementation patterns.
+
+---
+
+**Last verified:** 2026-05-03 against commit `1c60208a`.
+**Notes:** Updated tech-stack versions (Next 14 → 15.5, React 18.2 → 18.3, Sentry 7 → 8). Switched Adobe Sign references to Zoho Sign across External Services, Phase 4, CORS, env vars, and the API routes table — actual integration lives at `app/api/zoho/**`. Patched the AuthService sample to import `createServerClient` from `@/lib/supabase/server` (not `@supabase/supabase-js`) and noted the `useToast` → Sonner toast migration. Verified `getServiceRoleSupabaseClient`, the wrapper layer, and the middleware sample match `middleware.ts`. Several samples (CompetitorForm, MAINTENANCE_TASKS, /api/health route, component-tree route groups) remain illustrative — they describe design intent, not literal current code.

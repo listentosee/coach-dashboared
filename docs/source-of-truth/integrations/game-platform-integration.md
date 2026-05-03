@@ -619,7 +619,7 @@ Incremental sync cached the full `challenge_solves` array on every run and never
 
 ### 21.3 Fix Applied
 
-**Client & Service Updates** ([lib/integrations/game-platform/client.ts](../../lib/integrations/game-platform/client.ts), [service.ts](../../lib/integrations/game-platform/service.ts)):
+**Client & Service Updates** ([lib/integrations/game-platform/client.ts](../../../lib/integrations/game-platform/client.ts), [service.ts](../../../lib/integrations/game-platform/service.ts)):
 
 1. Ensure `after_time_unix` is always forwarded to the vendor API and respected when normalizing responses.
 2. Filter cached solves by `after_time_unix` before we compare them to determine whether new data exists:
@@ -632,7 +632,7 @@ Incremental sync cached the full `challenge_solves` array on every run and never
    ```
 3. Detect new activity using the filtered array only, so historical rows no longer trigger a `synced` result.
 
-**Sync Service Updates** ([lib/integrations/game-platform/service.ts](../../lib/integrations/game-platform/service.ts)):
+**Sync Service Updates** ([lib/integrations/game-platform/service.ts](../../../lib/integrations/game-platform/service.ts)):
 
 Modified new data detection to only check ODL solves (which are now properly filtered by the API):
 ```typescript
@@ -695,7 +695,7 @@ Since Flash CTF events are global, we only need to check **one user** to detect 
 
 ### 22.3 Implementation
 
-**Sentinel Detection** ([lib/integrations/game-platform/service.ts](../../lib/integrations/game-platform/service.ts#L1231-L1274)):
+**Sentinel Detection** ([lib/integrations/game-platform/service.ts](../../../lib/integrations/game-platform/service.ts#L1231-L1274)):
 
 ```typescript
 // Sentinel user detection for Flash CTF events
@@ -732,7 +732,7 @@ if (competitors && competitors.length > 0) {
 skipFlashCtfSync: !hasNewFlashCtfEvent
 ```
 
-**Conditional API Call** ([lib/integrations/game-platform/service.ts](../../lib/integrations/game-platform/service.ts#L805-L816)):
+**Conditional API Call** ([lib/integrations/game-platform/service.ts](../../../lib/integrations/game-platform/service.ts#L805-L816)):
 
 ```typescript
 let flash: any = null;

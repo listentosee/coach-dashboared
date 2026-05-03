@@ -1,5 +1,9 @@
 # Complete Messaging Architecture - Use Case Walkthrough
 
+> **Schema reconciliation note (2026-05-03):** This walkthrough was authored when the archive model still used `conversation_members.archived_at` to archive an entire conversation. The current implementation derives conversation-level archive state from message-level state — a conversation is "archived" for a user when *all* its messages have `message_user_state.archived_at` set, computed inline by the `list_conversations_enriched` and `list_conversations_summary` RPCs (see `supabase/migrations/20260206000001_simplify_archive_to_message_level.sql`). The `conversation_members.archived_at` column is still present but is no longer used by the active archive flow. A new message in an archived conversation pops the conversation back to the inbox automatically (no trigger needed). Use cases below that show conversation-level archive (Use Case 6: Charlie, Use Case 9.5) describe the *intended* user experience; the underlying mechanism is now message-level.
+
+> **Conversations table shape:** the actual schema uses `conversations.type` constrained to `('dm','group','announcement')` rather than a separate `is_announcement` boolean. Use Case 9.4 below uses `is_announcement` for narrative clarity; the production implementation calls the `create_announcement_and_broadcast(p_title, p_body)` RPC, which inserts with `type = 'announcement'`. Admin-broadcast endpoint is `POST /api/messaging/announcements/send` (the `/create` path in Use Case 9.4 is illustrative).
+
 ## Database Tables
 
 ```sql
@@ -25,7 +29,13 @@ message_user_state (
 conversation_members (
   conversation_id UUID,
   user_id UUID,
-  archived_at TIMESTAMPTZ  -- Has this user archived the ENTIRE conversation?
+  role TEXT,                -- 'member' / 'owner' / etc.
+  joined_at TIMESTAMPTZ,
+  last_read_at TIMESTAMPTZ, -- Per-user read marker (drives unread_count)
+  muted_until TIMESTAMPTZ,
+  archived_at TIMESTAMPTZ   -- LEGACY column; current archive flow derives
+                            -- conversation-archived state from message_user_state
+                            -- instead (see reconciliation note above).
 )
 
 -- Read tracking (already works correctly)
@@ -940,3 +950,8 @@ Original session still active:
 
 **Key Principle:**
 Admin is a first-class messaging user, not a shapeshifter.
+
+---
+
+**Last verified:** 2026-05-03 against commit `1c60208a`.
+**Notes:** Added a top-of-doc reconciliation note covering two schema drifts: (1) archive flow is now message-level only (`message_user_state.archived_at`) — `conversation_members.archived_at` exists but is unused by current code; conversation-level archive state is derived inside `list_conversations_enriched` / `list_conversations_summary`. (2) `conversations` uses a `type` column (`dm | group | announcement`), not an `is_announcement` boolean; admin announcements go through `POST /api/messaging/announcements/send` calling the `create_announcement_and_broadcast` RPC. Use cases below remain useful as conceptual walkthroughs but the SQL examples are illustrative, not literal.

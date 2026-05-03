@@ -1,14 +1,14 @@
-# Supabase Cron & Edge Function Implementation Plan
+# Supabase Cron & Edge Function Implementation Plan — HISTORICAL (Era 2)
 
-> **Status (2026-05-03): historical / partially superseded.** This doc captures the original four-phase plan for running scheduled work via Supabase `pg_cron` + an edge function (`sync`). The system that actually runs in production today does **not** rely on `pg_cron` for application scheduling:
+> **Status (2026-05-03): HISTORICAL — Era 2 design, never fully shipped.** This doc captures the original four-phase plan for running scheduled work via Supabase `pg_cron` + an edge function (`sync`). It is the second of three eras of the job processor and is preserved here as a historical record. **For the current system, see [`docs/source-of-truth/operations/job-processor.md`](../source-of-truth/operations/job-processor.md).**
 >
-> - The `pg_cron` extension is **not installed** in the production project (`ejoplrkrqvddiklwsfoj`); only `pg_net` is.
-> - Recurring work is driven by rows in `public.job_queue` with `is_recurring = true` and `recurrence_interval_minutes` set. After a run finishes, `lib/jobs/runner.ts` flips the row back to `pending` with the next `run_at`. As of 2026-05-03 the live recurring jobs are: `game_platform_sync` (15 min), `game_platform_totals_sweep` (15 min), `game_platform_flash_ctf_sync` (daily / 1440 min), `admin_alert_dispatch` (5 min), `sms_digest_processor` (60 min), `release_parent_email_verification` (60 min).
-> - The actual scheduler is **Vercel Cron** hitting `/api/jobs/run` every 5 minutes (see [`vercel-job-processing-setup.md`](./vercel-job-processing-setup.md) and `vercel.json`).
-> - The legacy `sync` edge function is still deployed but is no longer the primary path; the worker endpoint is the Next.js route.
-> - The cron-management RPCs (`get_cron_jobs`, `toggle_cron_job`, `update_cron_schedule`, `create_cron_job`) and API routes under `app/api/admin/cron-jobs/` still exist as scaffolding, but with `pg_cron` not installed they return empty results. There is **no** `app/dashboard/admin-tools/cron-jobs/` page on disk despite Phase 4’s description of one.
+> What didn't land:
 >
-> Use this document as Phase 1–4 historical context. For day-to-day operations, see `vercel-job-processing-setup.md` (scheduler + worker endpoint) and `job-queue-playbook.md` (admin actions, cleanup).
+> - The `pg_cron` extension was never installed in the production project (`ejoplrkrqvddiklwsfoj`); only `pg_net` is present.
+> - The `sync` edge function was deployed but is no longer the primary execution path.
+> - The cron-management RPCs (`get_cron_jobs`, `toggle_cron_job`, `update_cron_schedule`, `create_cron_job`) and API routes under `app/api/admin/cron-jobs/` exist as scaffolding but return empty results without `pg_cron`. There is **no** `app/dashboard/admin-tools/cron-jobs/` page on disk despite Phase 4's description of one.
+>
+> What replaced it (Era 3 — current): Vercel Cron triggers `/api/jobs/run` every 5 minutes; that endpoint claims pending rows from `public.job_queue` (Supabase Postgres) and runs each handler within the Vercel cron window. Recurring jobs re-pend themselves on a per-row `recurrence_interval_minutes`. See [`docs/source-of-truth/operations/job-processor.md`](../source-of-truth/operations/job-processor.md) for the full architectural spec, [`docs/source-of-truth/operations/job-queue-playbook.md`](../source-of-truth/operations/job-queue-playbook.md) for operational procedures.
 
 ## Phase 1 – Supabase CLI Setup & Verification
 

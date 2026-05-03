@@ -1,6 +1,6 @@
 # Data Processing Agreement (DPA) Tracking
 
-**Last Updated:** 2025-10-09
+**Last Updated:** 2025-10-09 (last verification 2026-05-03)
 **Status:** Ready to Execute
 
 ---
@@ -8,6 +8,12 @@
 ## Overview
 
 This document tracks all Data Processing Agreements (DPAs) with third-party vendors that process student PII. All vendors have publicly available DPAs ready for execution.
+
+> **Verification note (2026-05-03):** The four vendors below (Supabase, Zoho Sign, MetaCTF/Game Platform, Monday.com) are all confirmed in use as of commit `c075303a`. **Two additional active sub-processors are not currently tracked here and should be added before audit close-out:**
+> - **SendGrid** (Twilio): Used by `lib/jobs/handlers/competitorAnnouncementDispatch.ts` and certificate-survey resend workflows. PII shared: competitor names, email addresses, school context. DPA available at <https://www.twilio.com/legal/data-protection-addendum>.
+> - **Sentry** (Functional Software): Error monitoring (`@sentry/nextjs`). PII exposure should be minimal because of the FERPA-safe logger, but error contexts can still leak data unless scrubbed. DPA available at <https://sentry.io/legal/dpa/>.
+>
+> **OpenAI** appears in `package.json` but is currently used only in offline backfill scripts (`scripts/backfill-school-geo.ts`, `scripts/recalculate-school-geo-from-json.ts`) on **non-PII school data**, so it is not a student-PII sub-processor. If OpenAI is ever invoked at runtime against student data, a DPA must be added.
 
 ---
 
@@ -135,12 +141,12 @@ This document tracks all Data Processing Agreements (DPAs) with third-party vend
 
 ---
 
-## ⏳ MetaCTF DPA (or Your Game Platform)
+## ⏳ MetaCTF DPA
 
 ### Vendor Information
-- **Vendor:** [Your game platform vendor name]
+- **Vendor:** MetaCTF (the active game platform vendor as of 2026-05-03; integration in `lib/integrations/game-platform/`)
 - **Service:** Cybersecurity competition platform
-- **Website:** [Platform URL]
+- **Website:** https://metactf.com
 
 ### Data Covered
 - Student names
@@ -166,32 +172,30 @@ This document tracks all Data Processing Agreements (DPAs) with third-party vend
 
 ---
 
-## ⏳ Monday.com DPA (if applicable)
+## ⏳ Monday.com DPA
 
 ### Vendor Information
 - **Vendor:** Monday.com
-- **Service:** Project management / roster tracking (if used)
+- **Service:** CRM — coach verification at registration, school/coach data sync (active integration in `lib/integrations/monday/`)
 - **DPA Page:** https://monday.com/legal/dpa
 
 ### Data Covered
-- Coach contact information
-- Potentially student roster info (if stored there)
+- Coach contact information (name, email, school affiliation)
+- No student PII flows to Monday.com under current integration design
 
 ### Action Required
-1. Verify if Monday.com is actively used for student data
-2. If yes: Request DPA from https://monday.com/legal/dpa
+1. Request DPA from https://monday.com/legal/dpa
+2. Legal review
 3. Execute agreement
 4. File signed copy
 
 ### Action Checklist
-- [ ] Verify Monday.com usage
-- [ ] Determine if student data is stored
-- [ ] If yes: Request DPA
+- [ ] Request DPA
 - [ ] Legal review
 - [ ] Execute agreement
 - [ ] File signed copy
 
-**Priority:** 🟢 Low - Only if actively using for student data
+**Priority:** 🟡 Medium — Coach PII still warrants a DPA even though student data does not flow here.
 
 ---
 
@@ -345,3 +349,8 @@ When you file signed DPAs, create `signed-dpas/README.md`:
 
 **Maintained by:** [Your team]
 **Contact for questions:** [Your email]
+
+---
+
+**Last verified:** 2026-05-03 against commit `c075303a`.
+**Notes:** Confirmed Supabase, Zoho Sign, MetaCTF, and Monday.com all active. Tightened the "Your game platform" placeholder to MetaCTF and the "Monday.com if applicable" hedge to confirm active CRM integration. Added a verification note flagging two missing sub-processors that handle PII at runtime: **SendGrid** (mailer/announcement dispatch) and **Sentry** (error monitoring). OpenAI is excluded — it appears in package.json but is only used in offline non-PII backfill scripts. Vendor list, DPA execution status, and signed-copy filing remain SME / legal-review items.

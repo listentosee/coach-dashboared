@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { config } from '@/lib/config';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 import { logger } from '@/lib/logging/safe-logger';
 import { maybeAutoOnboardCompetitor } from '@/lib/integrations/game-platform/auto-onboard';
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
     // Enforce caller authorization (admin coach context or coach ownership)
     const cookieStore = await cookies()
-    const authed = createRouteHandlerClient({ cookies: () => cookieStore })
+    const authed = createServerClient()
     const { data: { user } } = await authed.auth.getUser()
     if (!user) {
       return NextResponse.json(

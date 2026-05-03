@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@/lib/supabase/server';
 import { getGamePlatformProfile } from '@/lib/integrations/game-platform/repository';
 
 export const dynamic = 'force-dynamic';
@@ -38,8 +37,7 @@ export async function GET(
   { params }: { params: Promise<{ competitorId: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createServerClient();
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();

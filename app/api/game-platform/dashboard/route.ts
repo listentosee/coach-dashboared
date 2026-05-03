@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@/lib/supabase/server';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { createClient } from '@supabase/supabase-js';
 import { config } from '@/lib/config';
@@ -48,7 +48,7 @@ function normalizeChallengeCategoryLabel(raw?: string | null) {
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createServerClient();
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {

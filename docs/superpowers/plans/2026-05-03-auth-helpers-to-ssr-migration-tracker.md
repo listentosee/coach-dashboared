@@ -20,7 +20,7 @@
 | B | Task 6 Batch A: `app/api/admin/**` (34) | ✅ 34 / 34 |
 | B | Task 6 Batch B: `app/api/messaging/**` (29) | ✅ 29 / 29 |
 | B | Task 6 Batch C: `app/api/{competitors,teams}/**` (19) | ✅ 19 / 19 |
-| B | Task 6 Batch D: other route handlers (19) | 0 / 19 |
+| B | Task 6 Batch D: other route handlers (19) | 18 / 19 (callback pending manual) |
 | B | Task 6 Batch E: Server Components (11) | 0 / 11 |
 | B | Task 6 Batch F: client component (1) | 0 / 1 |
 | C | Task 7: Uninstall `@supabase/auth-helpers-nextjs` | ☐ |
@@ -29,7 +29,7 @@
 
 **Consumer file totals:** 113 in Task 6 (115 total − `middleware.ts` in Task 5 − `lib/supabase/client.ts` in Task 4).
 
-**Done counter:** 82 / 113
+**Done counter:** 100 / 113
 
 ---
 
@@ -195,24 +195,24 @@ Each file: replace `import ... from '@supabase/auth-helpers-nextjs'` with import
 
 > ⚠️ **`app/auth/callback/route.ts`** is the session-sensitive auth handshake. Migrate it manually in its OWN commit, not folded into the subagent batch.
 
-- [ ] `app/api/auth/clear-must-change/route.ts`
-- [ ] `app/api/coach-library/[id]/download/route.ts`
-- [ ] `app/api/coach-library/route.ts`
-- [ ] `app/api/coaches/register/route.ts`
-- [ ] `app/api/cybernuggets/sso/route.ts`
-- [ ] `app/api/game-platform/competitors/[id]/route.ts`
-- [ ] `app/api/game-platform/dashboard/route.ts`
-- [ ] `app/api/game-platform/report-card/[competitorId]/route.ts`
-- [ ] `app/api/game-platform/teams/[id]/sync/route.ts`
-- [ ] `app/api/internal/sync/route.ts`
-- [ ] `app/api/metactf/sso/route.ts`
-- [ ] `app/api/releases/paged/route.ts`
-- [ ] `app/api/users/admins/route.ts`
-- [ ] `app/api/users/coaches/route.ts`
-- [ ] `app/api/users/directory/route.ts`
-- [ ] `app/api/zoho/cancel/route.ts`
-- [ ] `app/api/zoho/send/route.ts`
-- [ ] `app/api/zoho/upload-manual/route.ts`
+- [x] `app/api/auth/clear-must-change/route.ts`
+- [x] `app/api/coach-library/[id]/download/route.ts`
+- [x] `app/api/coach-library/route.ts`
+- [x] `app/api/coaches/register/route.ts`
+- [x] `app/api/cybernuggets/sso/route.ts`
+- [x] `app/api/game-platform/competitors/[id]/route.ts`
+- [x] `app/api/game-platform/dashboard/route.ts`
+- [x] `app/api/game-platform/report-card/[competitorId]/route.ts`
+- [x] `app/api/game-platform/teams/[id]/sync/route.ts`
+- [x] `app/api/internal/sync/route.ts`
+- [x] `app/api/metactf/sso/route.ts`
+- [x] `app/api/releases/paged/route.ts`
+- [x] `app/api/users/admins/route.ts`
+- [x] `app/api/users/coaches/route.ts`
+- [x] `app/api/users/directory/route.ts`
+- [x] `app/api/zoho/cancel/route.ts`
+- [x] `app/api/zoho/send/route.ts`
+- [x] `app/api/zoho/upload-manual/route.ts`
 - [ ] `app/auth/callback/route.ts` ⚠️ **separate commit, manual review**
 
 ### Batch E — Server Component pages (11 files, `createServerComponentClient` → `createServerClient()`)
@@ -296,3 +296,4 @@ _(none yet)_
 | 2026-05-03 | Batch A (admin, 34 files) | 79 | `pnpm build` ✅; tsc 237 errors (down from 268 baseline as ReadonlyRequestCookies errors disappeared) | subagent migration; cookies import preserved in `context/route.ts` and `releases/route.ts` for non-Supabase admin_coach_id reads |
 | 2026-05-03 | Batch B (messaging, 29 files) | 50 | tsc 199 errors (down from 237) | zero variations — fully canonical pattern; 9 files had multiple-handler swaps |
 | 2026-05-03 | Batch C (competitors+teams, 19 files) | 31 | tsc 180 errors (down from 199) | one variation: `competitors/[id]/update/route.ts` had `createRouteHandlerClient({ cookies })` raw form (no closure) — handled identically; 13 files retain cookieStore for `admin_coach_id` reads |
+| 2026-05-03 | Batch D-auto (mixed, 18 files) | 13 | tsc 164 errors (down from 180) | 7 files retain cookieStore for admin_coach_id; auth/callback excluded for manual migration |

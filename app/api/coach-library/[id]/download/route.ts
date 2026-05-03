@@ -1,7 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
 import { config } from '@/lib/config'
 
@@ -25,8 +24,7 @@ function contentDisposition(filename: string) {
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   try {
-    const cookieStore = cookies()
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const supabase = createServerClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

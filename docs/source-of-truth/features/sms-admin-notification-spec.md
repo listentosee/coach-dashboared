@@ -18,7 +18,7 @@
   - Message send is not blocked if enqueue fails (errors logged).
 
 ## Job/Processor
-- Job: `admin_alert_dispatch` (registered in job handlers)
+- Job: `admin_alert_dispatch` (registered in `lib/jobs/handlers/adminAlertDispatch.ts`)
   - Reads all rows from `admin_alert_queue`.
   - Groups by `recipient_id`, counts messages.
   - Fetches recipients from `profiles` with `email_alert_address`, `email`, `full_name`, `first_name`.
@@ -27,6 +27,7 @@
   - On success, deletes processed queue rows for that recipient/message_ids to avoid resends.
   - Summary output includes per-recipient results.
 - Scheduling: create a recurring job (`admin_alert_dispatch`) via Admin Tools → Job Queue; recommend every 5 minutes.
+- High-priority bypass: when `POST /api/messaging/conversations/[id]/messages` is called with `highPriority: true`, the route enqueues an immediate `admin_alert_dispatch` job (`force: true`, `windowMinutes: 5`, `allowSms: false`) in addition to writing to the queue, so latency-sensitive notifications do not wait for the recurring tick.
 
 ## Edge Functions
 - **send-email-alert**: same function used by coach flow; called with service-role bearer.
@@ -40,7 +41,7 @@
 ## Deployment/Config
 - Ensure migration `20251120180000_admin_alert_queue.sql` applied (table, index, RLS).
 - Admin alert job must be scheduled in the job queue.
-- Service-role env vars required for enqueue (message route) and job handler: `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`.
+- Service-role env vars required for enqueue (message route) and job handler: `SUPABASE_SECRET_KEY` (preferred, Phase A) with legacy `SUPABASE_SERVICE_ROLE_KEY` still honored as fallback via `lib/config`, plus `NEXT_PUBLIC_SUPABASE_URL`.
 - Edge function `send-email-alert` must be deployed and reachable by service-role.
 
 ## Flow Diagram (Messaging + Job Queue)
@@ -64,3 +65,8 @@ job_queue (admin_alert_dispatch)
           ↓
       job success
 ```
+
+---
+
+**Last verified:** 2026-05-03 against commit `e5b937b9`.
+**Notes:** Verified `admin_alert_queue` table + RLS, `admin_alert_dispatch` handler, send-email-alert Edge Function, and the `highPriority` immediate-enqueue path in the messages route. Refreshed env-var guidance to mention the new `SUPABASE_SECRET_KEY` (Phase A) with legacy fallback. Note: doc says "name is admin alert job — recommend every 5 minutes" — actual cadence is admin-configured and not enforced in code.

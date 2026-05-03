@@ -23,7 +23,7 @@
 | B | Task 6 Batch D: other route handlers (19) | ✅ 19 / 19 |
 | B | Task 6 Batch E: Server Components (11) | ✅ 11 / 11 |
 | B | Task 6 Batch F: client components (1 + 1 discovered) | ✅ 2 / 2 |
-| C | Task 7: Uninstall `@supabase/auth-helpers-nextjs` | ☐ |
+| C | Task 7: Uninstall `@supabase/auth-helpers-nextjs` | ✅ |
 | C | Task 8: PR + merge + production deploy | ☐ |
 | C | Task 9: Re-disable legacy Supabase keys + doc updates | ☐ |
 
@@ -242,12 +242,12 @@ Each file: replace `import ... from '@supabase/auth-helpers-nextjs'` with import
 
 ### Task 7 — Uninstall `@supabase/auth-helpers-nextjs`
 
-- [ ] Verify zero remaining imports: `grep -rln "@supabase/auth-helpers-nextjs" app/ lib/ --include="*.ts" --include="*.tsx"` returns empty
-- [ ] `npm uninstall @supabase/auth-helpers-nextjs`
-- [ ] `npm run build` — clean
-- [ ] `npm run test:unit`
-- [ ] (Optional) `npm run test:e2e`
-- [ ] Commit: `chore(deps): remove @supabase/auth-helpers-nextjs (migration complete)`
+- [x] Verify zero remaining imports: `grep -rln "@supabase/auth-helpers-nextjs" app/ lib/ --include="*.ts" --include="*.tsx"` returns empty
+- [x] `npm uninstall @supabase/auth-helpers-nextjs`
+- [x] `npm run build` — clean
+- [x] `npm run test:unit`
+- [x] (Optional) `npm run test:e2e`
+- [x] Commit: `chore(deps): remove @supabase/auth-helpers-nextjs (migration complete)`
 
 ### Task 8 — PR + merge + deploy
 
@@ -281,7 +281,7 @@ Each file: replace `import ... from '@supabase/auth-helpers-nextjs'` with import
 
 > Things noticed during migration that are NOT this work — file them here so they're not lost. Don't fix them inline.
 
-_(none yet)_
+- **Stale `package-lock.json`** — the project uses pnpm (`packageManager` field), but a `package-lock.json` from Apr 13 is still tracked. After uninstalling `@supabase/auth-helpers-nextjs` via pnpm, the npm lockfile still references the package. The pnpm-lock.yaml (source of truth) is clean. Suggest deleting `package-lock.json` in a follow-up cleanup task — it's misleading and could confuse tools like Renovate.
 
 ---
 
@@ -301,3 +301,4 @@ _(none yet)_
 | 2026-05-03 | Batch D-manual (auth/callback) | 12 | `pnpm build` ✅; tsc 164 errors (stable) | manual swap of OAuth/email-link callback handler — exchangeCodeForSession + setSession both write cookies via wrapper's setAll, redirect response inherits via Next.js cookie store merging |
 | 2026-05-03 | Batch E (server components, 11 files) | 2 | tsc 155 errors (down from 164) | createServerComponentClient → createServerClient (same wrapper); 2 files had `cookies as any` cast removed cleanly |
 | 2026-05-03 | Batch F (client components, 2 files) | 0 ✅ | `pnpm build` ✅; tsc 155 errors (unchanged from Batch E) | `app/dashboard/teams/page.tsx` had stale dynamic import — replaced with the singleton already imported at top of file; `challenges-table.tsx` switched to singleton from `@/lib/supabase/client` |
+| 2026-05-03 | Task 7 (uninstall) | 0 ✅ | `pnpm build` ✅; 10/10 vitest pass | package.json + pnpm-lock.yaml clean of auth-helpers; stale package-lock.json still references it (separate issue, logged out-of-scope) |

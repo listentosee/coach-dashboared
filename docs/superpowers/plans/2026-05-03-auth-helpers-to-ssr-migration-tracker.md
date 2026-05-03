@@ -21,7 +21,7 @@
 | B | Task 6 Batch B: `app/api/messaging/**` (29) | ✅ 29 / 29 |
 | B | Task 6 Batch C: `app/api/{competitors,teams}/**` (19) | ✅ 19 / 19 |
 | B | Task 6 Batch D: other route handlers (19) | ✅ 19 / 19 |
-| B | Task 6 Batch E: Server Components (11) | 0 / 11 |
+| B | Task 6 Batch E: Server Components (11) | ✅ 11 / 11 |
 | B | Task 6 Batch F: client component (1) | 0 / 1 |
 | C | Task 7: Uninstall `@supabase/auth-helpers-nextjs` | ☐ |
 | C | Task 8: PR + merge + production deploy | ☐ |
@@ -29,7 +29,7 @@
 
 **Consumer file totals:** 113 in Task 6 (115 total − `middleware.ts` in Task 5 − `lib/supabase/client.ts` in Task 4).
 
-**Done counter:** 101 / 113
+**Done counter:** 112 / 113
 
 ---
 
@@ -217,17 +217,17 @@ Each file: replace `import ... from '@supabase/auth-helpers-nextjs'` with import
 
 ### Batch E — Server Component pages (11 files, `createServerComponentClient` → `createServerClient()`)
 
-- [ ] `app/dashboard/admin-tools/activity-logs/page.tsx`
-- [ ] `app/dashboard/admin-tools/analytics/page.tsx`
-- [ ] `app/dashboard/admin-tools/assist-coach/page.tsx`
-- [ ] `app/dashboard/admin-tools/certificates/page.tsx`
-- [ ] `app/dashboard/admin-tools/coach-library/page.tsx`
-- [ ] `app/dashboard/admin-tools/game-platform-roster/page.tsx`
-- [ ] `app/dashboard/admin-tools/jobs/page.tsx`
-- [ ] `app/dashboard/admin-tools/mailer/page.tsx`
-- [ ] `app/dashboard/admin-tools/page.tsx`
-- [ ] `app/dashboard/admin-tools/school-geo/page.tsx`
-- [ ] `app/dashboard/admin-tools/team-image-generator/page.tsx`
+- [x] `app/dashboard/admin-tools/activity-logs/page.tsx`
+- [x] `app/dashboard/admin-tools/analytics/page.tsx`
+- [x] `app/dashboard/admin-tools/assist-coach/page.tsx`
+- [x] `app/dashboard/admin-tools/certificates/page.tsx`
+- [x] `app/dashboard/admin-tools/coach-library/page.tsx`
+- [x] `app/dashboard/admin-tools/game-platform-roster/page.tsx`
+- [x] `app/dashboard/admin-tools/jobs/page.tsx`
+- [x] `app/dashboard/admin-tools/mailer/page.tsx`
+- [x] `app/dashboard/admin-tools/page.tsx`
+- [x] `app/dashboard/admin-tools/school-geo/page.tsx`
+- [x] `app/dashboard/admin-tools/team-image-generator/page.tsx`
 
 ### Batch F — Client component (1 file, `createClientComponentClient` → `createBrowserClient()`)
 
@@ -272,7 +272,7 @@ Each file: replace `import ... from '@supabase/auth-helpers-nextjs'` with import
 
 > If a new `@supabase/auth-helpers-nextjs` import appears mid-migration (e.g. due to a merge from `main` or a file that was missed by the original grep), add it here with date and the batch you absorbed it into.
 
-_(none yet)_
+- **`components/game-platform/report-card/challenges-table.tsx`** (uses `createClientComponentClient`) — discovered during Batch E by re-scanning the full repo (the original inventory grep only searched `app/ lib/ middleware.ts`, missing `components/`). Folding into Batch F. Adjusts Batch F count: 1 → 2. Total consumer count: 113 → 114 (still ≠ 115 because the wrapper-`client.ts` bridge in Task 4 and `middleware.ts` in Task 5 count toward the original 115 separately).
 
 ---
 
@@ -298,3 +298,4 @@ _(none yet)_
 | 2026-05-03 | Batch C (competitors+teams, 19 files) | 31 | tsc 180 errors (down from 199) | one variation: `competitors/[id]/update/route.ts` had `createRouteHandlerClient({ cookies })` raw form (no closure) — handled identically; 13 files retain cookieStore for `admin_coach_id` reads |
 | 2026-05-03 | Batch D-auto (mixed, 18 files) | 13 | tsc 164 errors (down from 180) | 7 files retain cookieStore for admin_coach_id; auth/callback excluded for manual migration |
 | 2026-05-03 | Batch D-manual (auth/callback) | 12 | `pnpm build` ✅; tsc 164 errors (stable) | manual swap of OAuth/email-link callback handler — exchangeCodeForSession + setSession both write cookies via wrapper's setAll, redirect response inherits via Next.js cookie store merging |
+| 2026-05-03 | Batch E (server components, 11 files) | 2 | tsc 155 errors (down from 164) | createServerComponentClient → createServerClient (same wrapper); 2 files had `cookies as any` cast removed cleanly |

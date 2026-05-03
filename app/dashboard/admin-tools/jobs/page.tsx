@@ -1,8 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@/lib/supabase/server';
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase';
 import { JobPlaybookDialog } from '@/components/dashboard/admin/job-playbook-dialog';
 import { JobProcessingToggle } from '@/components/dashboard/admin/job-processing-toggle';
@@ -33,8 +32,7 @@ function loadQuickStart(): string {
 }
 
 export default async function JobQueuePage({ searchParams }: { searchParams?: SearchParams }) {
-  const cookieStore = await cookies();
-  const supabase = createServerComponentClient({ cookies: () => cookieStore });
+  const supabase = createServerClient();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {

@@ -1,11 +1,9 @@
 import { redirect } from 'next/navigation'
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createServerClient } from '@/lib/supabase/server'
 import { CoachLibraryManager } from '@/components/dashboard/admin/CoachLibraryManager'
 
 export default async function CoachLibraryAdminPage() {
-  const cookieStore = await cookies()
-  const supabase = createServerComponentClient({ cookies: () => cookieStore })
+  const supabase = createServerClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {

@@ -1,6 +1,5 @@
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@/lib/supabase/server';
 import { SchoolGeoManager } from '@/components/dashboard/admin/school-geo-manager';
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase';
 import { normalizeSchoolGeo } from '@/lib/analytics/school-geo';
@@ -8,8 +7,7 @@ import { normalizeSchoolGeo } from '@/lib/analytics/school-geo';
 export const dynamic = 'force-dynamic';
 
 export default async function SchoolGeoAdminPage() {
-  const cookieStore = await cookies();
-  const supabase = createServerComponentClient({ cookies: () => cookieStore as any });
+  const supabase = createServerClient();
 
   const {
     data: { user },

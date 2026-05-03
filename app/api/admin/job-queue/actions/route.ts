@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@/lib/supabase/server';
 
 interface ActionPayload {
   jobId?: string;
@@ -8,8 +7,7 @@ interface ActionPayload {
 }
 
 async function requireAdmin() {
-  const cookieStore = await cookies();
-  const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+  const supabase = createServerClient();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {

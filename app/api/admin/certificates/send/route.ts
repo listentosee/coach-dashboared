@@ -1,7 +1,6 @@
 import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
 import { marked } from 'marked';
@@ -188,8 +187,7 @@ async function sendCoachInAppMessages({
 
 export async function POST(req: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore as any });
+    const supabase = createServerClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {

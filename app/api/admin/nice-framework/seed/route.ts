@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { config } from '@/lib/config';
 
@@ -16,8 +15,7 @@ interface NiceFrameworkData {
 }
 
 export async function POST() {
-  const cookieStore = await cookies();
-  const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+  const supabase = createServerClient();
 
   // Check authentication and admin role using regular client
   const { data: { user }, error: userError } = await supabase.auth.getUser();

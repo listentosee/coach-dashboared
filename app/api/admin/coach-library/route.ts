@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient } from '@/lib/supabase/server'
 import { isUserAdmin } from '@/lib/utils/admin-check'
 
 export const dynamic = 'force-dynamic'
@@ -27,8 +26,7 @@ function sanitizeFileName(name: string) {
 
 export async function POST(req: Request) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const supabase = createServerClient()
     const {
       data: { user },
     } = await supabase.auth.getUser()

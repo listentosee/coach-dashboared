@@ -17,7 +17,7 @@
 | A | Task 3: `lib/supabase/server.ts` wrapper + tests | ✅ |
 | A | Task 4: `lib/supabase/browser.ts` wrapper + tests + `client.ts` bridge re-export | ✅ |
 | A | Task 5: `lib/supabase/middleware.ts` + migrate `middleware.ts` | ✅ |
-| B | Task 6 Batch A: `app/api/admin/**` (34) | 0 / 34 |
+| B | Task 6 Batch A: `app/api/admin/**` (34) | ✅ 34 / 34 |
 | B | Task 6 Batch B: `app/api/messaging/**` (29) | 0 / 29 |
 | B | Task 6 Batch C: `app/api/{competitors,teams}/**` (19) | 0 / 19 |
 | B | Task 6 Batch D: other route handlers (19) | 0 / 19 |
@@ -29,7 +29,7 @@
 
 **Consumer file totals:** 113 in Task 6 (115 total − `middleware.ts` in Task 5 − `lib/supabase/client.ts` in Task 4).
 
-**Done counter:** 0 / 113
+**Done counter:** 34 / 113
 
 ---
 
@@ -102,40 +102,40 @@ Each file: replace `import ... from '@supabase/auth-helpers-nextjs'` with import
 
 ### Batch A — `app/api/admin/**` (34 files, `createRouteHandlerClient` → `createServerClient()`)
 
-- [ ] `app/api/admin/activity-logs/route.ts`
-- [ ] `app/api/admin/analytics/route.ts`
-- [ ] `app/api/admin/analytics/share/route.ts`
-- [ ] `app/api/admin/certificates/generate/route.ts`
-- [ ] `app/api/admin/certificates/send/route.ts`
-- [ ] `app/api/admin/certificates/submissions/export/route.ts`
-- [ ] `app/api/admin/certificates/submissions/route.ts`
-- [ ] `app/api/admin/coach-library/[id]/route.ts`
-- [ ] `app/api/admin/coach-library/route.ts`
-- [ ] `app/api/admin/context/route.ts`
-- [ ] `app/api/admin/cron-jobs/create/route.ts`
-- [ ] `app/api/admin/cron-jobs/route.ts`
-- [ ] `app/api/admin/cron-jobs/schedule/route.ts`
-- [ ] `app/api/admin/cron-jobs/toggle/route.ts`
-- [ ] `app/api/admin/job-queue/actions/route.ts`
-- [ ] `app/api/admin/job-queue/health/route.ts`
-- [ ] `app/api/admin/job-queue/toggle/route.ts`
-- [ ] `app/api/admin/jobs/create/route.ts`
-- [ ] `app/api/admin/jobs/run-worker/route.ts`
-- [ ] `app/api/admin/jobs/trigger-sync/route.ts`
-- [ ] `app/api/admin/jobs/trigger-totals-sweep/route.ts`
-- [ ] `app/api/admin/nice-framework/seed/route.ts`
-- [ ] `app/api/admin/nice-framework/stats/route.ts`
-- [ ] `app/api/admin/releases/route.ts`
-- [ ] `app/api/admin/reset-coach-password/route.ts`
-- [ ] `app/api/admin/school-geo/[id]/route.ts`
-- [ ] `app/api/admin/team-images/[candidateId]/accept/route.ts`
-- [ ] `app/api/admin/team-images/[candidateId]/regen/route.ts`
-- [ ] `app/api/admin/team-images/[candidateId]/reject/route.ts`
-- [ ] `app/api/admin/team-images/bulk-generate/route.ts`
-- [ ] `app/api/admin/team-images/candidates/route.ts`
-- [ ] `app/api/admin/team-images/generate-for-team/route.ts`
-- [ ] `app/api/admin/team-images/preload/route.ts`
-- [ ] `app/api/admin/team-images/status/route.ts`
+- [x] `app/api/admin/activity-logs/route.ts`
+- [x] `app/api/admin/analytics/route.ts`
+- [x] `app/api/admin/analytics/share/route.ts`
+- [x] `app/api/admin/certificates/generate/route.ts`
+- [x] `app/api/admin/certificates/send/route.ts`
+- [x] `app/api/admin/certificates/submissions/export/route.ts`
+- [x] `app/api/admin/certificates/submissions/route.ts`
+- [x] `app/api/admin/coach-library/[id]/route.ts`
+- [x] `app/api/admin/coach-library/route.ts`
+- [x] `app/api/admin/context/route.ts`
+- [x] `app/api/admin/cron-jobs/create/route.ts`
+- [x] `app/api/admin/cron-jobs/route.ts`
+- [x] `app/api/admin/cron-jobs/schedule/route.ts`
+- [x] `app/api/admin/cron-jobs/toggle/route.ts`
+- [x] `app/api/admin/job-queue/actions/route.ts`
+- [x] `app/api/admin/job-queue/health/route.ts`
+- [x] `app/api/admin/job-queue/toggle/route.ts`
+- [x] `app/api/admin/jobs/create/route.ts`
+- [x] `app/api/admin/jobs/run-worker/route.ts`
+- [x] `app/api/admin/jobs/trigger-sync/route.ts`
+- [x] `app/api/admin/jobs/trigger-totals-sweep/route.ts`
+- [x] `app/api/admin/nice-framework/seed/route.ts`
+- [x] `app/api/admin/nice-framework/stats/route.ts`
+- [x] `app/api/admin/releases/route.ts`
+- [x] `app/api/admin/reset-coach-password/route.ts`
+- [x] `app/api/admin/school-geo/[id]/route.ts`
+- [x] `app/api/admin/team-images/[candidateId]/accept/route.ts`
+- [x] `app/api/admin/team-images/[candidateId]/regen/route.ts`
+- [x] `app/api/admin/team-images/[candidateId]/reject/route.ts`
+- [x] `app/api/admin/team-images/bulk-generate/route.ts`
+- [x] `app/api/admin/team-images/candidates/route.ts`
+- [x] `app/api/admin/team-images/generate-for-team/route.ts`
+- [x] `app/api/admin/team-images/preload/route.ts`
+- [x] `app/api/admin/team-images/status/route.ts`
 
 ### Batch B — `app/api/messaging/**` (29 files, `createRouteHandlerClient` → `createServerClient()`)
 
@@ -293,3 +293,4 @@ _(none yet)_
 | 2026-05-03 | Task 3 (server wrapper) | 115 | 8/8 vitest pass (config + server.test) | async-cookie pattern adopted for Next 15.5 |
 | 2026-05-03 | Task 4 (browser + bridge) | 114 (precise) | 10/10 vitest pass | switched to precise grep; original loose grep had false positives from docstring mentions |
 | 2026-05-03 | Task 5 (middleware) | 113 (precise) | dev smoke: redirects 307 correctly, no errors | new wrapper exposes `{supabase, response(), redirect(url)}`; cookie-preserving redirect helper handles session refresh |
+| 2026-05-03 | Batch A (admin, 34 files) | 79 | `pnpm build` ✅; tsc 237 errors (down from 268 baseline as ReadonlyRequestCookies errors disappeared) | subagent migration; cookies import preserved in `context/route.ts` and `releases/route.ts` for non-Supabase admin_coach_id reads |

@@ -1,5 +1,7 @@
 # Manual Completion (Upload + Recall/Delete in Zoho + Local Manual Flag)
 
+> **Status (2026-05-03):** Shipped. Implementation lives at [`app/api/zoho/upload-manual/route.ts`](../../../app/api/zoho/upload-manual/route.ts). The `agreements` table includes the `completion_source` enum, `manual_completion_reason`, `manual_uploaded_path`, `manual_completed_at`, and `zoho_request_status` columns plus a CHECK constraint enforcing manual-completion invariants. The recall+delete cleanup and the orphaned-file cleanup described in §6 are both in production.
+
 ## Overview
 
 This spec outlines a **manual completion workflow** for agreements when a finalized, hand‑signed PDF is uploaded. Instead of relying on Zoho’s signer flow, we will:
@@ -187,3 +189,7 @@ await supabase.from('agreements').update({
 - Zoho **Document management operations summary**
     
 - Supabase **Storage RLS and encryption**
+---
+
+**Last verified:** 2026-05-03 against commit `5b49f3ef`.
+**Notes:** Verified the `agreements` table additions (`completion_source` enum, `manual_completion_reason`, `manual_uploaded_path`, `manual_completed_at`, `zoho_request_status`) plus the `agreements_manual_completion_check` CHECK constraint in `data/db_schema_20260208.sql`. The shipped route uses `completed_manual` as the `agreements.status` value (matches §4) and writes to the private `signatures` Storage bucket under `manual/`. Recall + delete cleanup behavior matches the spec.

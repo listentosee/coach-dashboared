@@ -1,5 +1,11 @@
 ## Partner Integration Notes
 
+> **Status (2026-05-03):** Shipped. Two SSO surfaces ship today:
+> - **Outbound to CyberNuggets** (this doc) — minted at [`app/api/cybernuggets/sso/route.ts`](../../../app/api/cybernuggets/sso/route.ts).
+> - **Outbound to MetaCTF** (HS256 JWT, separate scheme — *not yet documented in this SOT bucket*) — minted at [`app/api/metactf/sso/route.ts`](../../../app/api/metactf/sso/route.ts).
+>
+> The notes below describe the **CyberNuggets** flow only. If a partner needs to integrate inbound SSO with the Coach Dashboard (the reverse direction described under "Implementing the Request"), partners receive their own app ID + shared secret out-of-band — **never reuse the values listed here** as live credentials.
+
 **Overview**
 
 - SSO entry point: `https://nuggets.cyber-guild.org/auth/partner-sso`
@@ -9,9 +15,7 @@
 
 ### **Implementing the Request**
 
-1. Obtain partner app ID and shared secret from CyberNuggets admin (rotate via SSO Management UI).
-	- ID: iemc
-	- Secret: Z4HLRyQlvdqnN6cNhXYsEWJ4-CGvpxbNSdHrN6WDvfw
+1. Obtain partner app ID and shared secret from CyberNuggets admin (rotate via SSO Management UI). Credentials are issued per partner and must not be checked into source control or shared in docs — the live values for each partner live in the CyberNuggets SSO Management UI and the partner's own secret store.
 2. Generate payload, normalising email to lowercase, trimming inputs, ensuring `ts` is current unix timestamp (within ±5 minutes).
 3. Construct canonical string in the exact order, using `''` when redirect omitted.
 4. Compute `sig = base64urlencode(hmac_sha256(canonicalString, secret))`.
@@ -19,9 +23,7 @@
 
 ### **Application Configuration (Coaches Dashboard)**
 
-- Set `CYBERNUGGETS_PARTNER_APP_ID` and `CYBERNUGGETS_PARTNER_SECRET` in the runtime environment; these are required for `/api/cybernuggets/sso` to mint signed URLs.
-	- Current app ID: `iemc`
-	- Current shared secret: `Z4HLRyQlvdqnN6cNhXYsEWJ4-CGvpxbNSdHrN6WDvfw`
+- Set `CYBERNUGGETS_PARTNER_APP_ID` and `CYBERNUGGETS_PARTNER_SECRET` in the runtime environment; these are required for `/api/cybernuggets/sso` to mint signed URLs. The live values are issued to this app via CyberNuggets SSO Management — do not commit them.
 - Optional overrides:
 	- `CYBERNUGGETS_SSO_BASE_URL` (defaults to `https://nuggets.cyber-guild.org`).
 	- `CYBERNUGGETS_ALLOWED_REDIRECT_ORIGINS` (comma-delimited list; required before allowing absolute `redirect` values).
@@ -109,3 +111,8 @@ def build_partner_sso_url(host, email, name, partner_app_id, secret, redirect=No
 - `400` errors indicate malformed payloads (missing params, invalid signature encoding, invalid redirect).
 - `401` errors mean the partner app ID is not recognised or the signature doesn’t match (possibly skewed timestamp or rotated secret).
 - Include server-side logs on the partner app to capture the exact URL sent; compare against CyberNuggets `system_log` entries (`partner_sso.*` events) to troubleshoot.
+
+---
+
+**Last verified:** 2026-05-03 against commit `5b49f3ef`.
+**Notes:** Verified that `/api/cybernuggets/sso` reads `CYBERNUGGETS_PARTNER_APP_ID`, `CYBERNUGGETS_PARTNER_SECRET`, optional `CYBERNUGGETS_SSO_BASE_URL`, and optional `CYBERNUGGETS_ALLOWED_REDIRECT_ORIGINS`, then signs the canonical string with HMAC-SHA256 and Base64URL-encodes (no padding). Auth is via `createServerClient().auth.getUser()` — matches Authentication Standards. **Security cleanup:** redacted the previously checked-in CyberNuggets shared secret from the doc; rotate that secret and notify any partner that received the prior value. Open concern: the MetaCTF outbound SSO route (`app/api/metactf/sso/route.ts`) ships but has no doc in this SOT bucket; consider a follow-up to add one or fold it into this file.

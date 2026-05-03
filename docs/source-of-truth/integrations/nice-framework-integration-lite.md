@@ -1,8 +1,10 @@
-# NIST NICE Framework Integration - LITE Version
+# NIST NICE Framework Integration
 
-**Status:** Design Phase - Minimal Scope
-**Last Updated:** 2025-10-12
+**Status:** Shipped (2026-05-03) — this is the canonical NICE integration spec.
+**Last Updated:** 2026-05-03
 **Owner:** Platform Team
+
+> **Reconciliation note:** A more elaborate design (extra `nice_framework_tasks` and `nice_work_role_tasks` reference tables, a `nice_work_roles text[]` column on `game_platform_challenge_solves`, a `NiceFrameworkService` class with team-coverage analytics) was drafted but never built. That design is preserved at [`docs/game-platform/historical-nice-full-design.md`](../../game-platform/historical-nice-full-design.md) for future reference, not as source of truth.
 
 ## Goal
 
@@ -92,11 +94,14 @@ export default function NiceFrameworkPage() {
 }
 ```
 
-**Simple API endpoint:**
+**Simple API endpoint** (as-built — see [`app/api/admin/nice-framework/seed/route.ts`](../../../app/api/admin/nice-framework/seed/route.ts)):
 ```typescript
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server';
+
 export async function POST() {
-  // 1. Verify admin
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = createServerClient();
+
+  // 1. Verify admin via getUser() + profiles.role
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -111,7 +116,10 @@ export async function POST() {
   }
 
   // 2. Fetch NIST data
-  const response = await fetch('https://csrc.nist.gov/csrc/media/Projects/cprt/documents/nice/v2_nf_components.json');
+  const response = await fetch(
+    'https://csrc.nist.gov/csrc/media/Projects/cprt/documents/nice/v2_nf_components.json',
+    { cache: 'no-store' }
+  );
   const data = await response.json();
 
   // 3. Parse work roles
@@ -124,8 +132,9 @@ export async function POST() {
       category: e.element_identifier.split('-')[0],
     }));
 
-  // 4. Upsert
-  await supabase
+  // 4. Upsert via service-role client (bypasses RLS)
+  const supabaseAdmin = getServiceRoleSupabaseClient();
+  await supabaseAdmin
     .from('nice_framework_work_roles')
     .upsert(workRoles, { onConflict: 'work_role_id' });
 
@@ -239,5 +248,9 @@ export function WorkRoleBadge({ workRoleId }: { workRoleId: string }) {
 
 ---
 
-**Status:** Ready to implement
-**Estimated Effort:** 4-8 hours
+**Status:** Shipped — see `nice_framework_work_roles` table, admin tool at `/dashboard/admin-tools/nice-framework`, seed route at `app/api/admin/nice-framework/seed/`, and stats route at `app/api/admin/nice-framework/stats/`. Lookup is consumed by the report-card route at `app/api/game-platform/report-card/[competitorId]/route.ts`.
+
+---
+
+**Last verified:** 2026-05-03 against commit `5b49f3ef`.
+**Notes:** Confirmed only `nice_framework_work_roles` exists in `data/db_schema_20260208.sql` (no tasks or junction tables — the full design's extra tables were never built). Updated the seed-route example to match the as-built `createServerClient` + `getServiceRoleSupabaseClient` pattern (the original `createRouteHandlerClient({ cookies })` pattern is from `@supabase/auth-helpers`, which is being phased out). The admin page also exposes a `/api/admin/nice-framework/stats` route used to display counts. Designated this LITE doc as the canonical SOT and pointed to the historical full-design doc for analytics aspirations.

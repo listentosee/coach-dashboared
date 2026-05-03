@@ -87,3 +87,8 @@ Never log a service-role key value. Direct reads of `SUPABASE_SERVICE_ROLE_KEY` 
 - Forced reset flow: temp password → force reset → set new password → proceed to dashboard; middleware no longer forces reset.
 - API routes return 401 when unauthenticated and behave as expected when authenticated.
 - Service-role-backed admin endpoints (certificates, team-images, jobs queue, cron-jobs) succeed without `Legacy API keys are disabled` errors — proves `SUPABASE_SECRET_KEY` is in play.
+
+---
+
+**Last verified:** 2026-05-03 against commit `1c60208a`.
+**Notes:** No edits required — doc accurately reflects the current `@supabase/ssr` wrapper layer (`lib/supabase/{server,browser,middleware,client}.ts`), service-role helper (`getServiceRoleSupabaseClient`), key-rotation status (legacy keys revoked 2026-05-03), and middleware gating. Confirmed `auth.getSession()` is lint-banned in `app/api/**`, `app/**/route.ts`, and `middleware.ts`.

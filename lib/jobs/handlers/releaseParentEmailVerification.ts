@@ -65,7 +65,12 @@ export const handleReleaseParentEmailVerification: JobHandler<'release_parent_em
     }
 
     const supabaseUrl = readEnv('SUPABASE_URL') ?? readEnv('NEXT_PUBLIC_SUPABASE_URL');
-    const serviceRoleKey = readEnv('SUPABASE_SERVICE_ROLE_KEY') ?? readEnv('SERVICE_ROLE_KEY');
+    // Modern sb_secret_* preferred; legacy service_role JWT remains as a no-op
+    // safety net (revoked in Supabase 2026-05-03).
+    const serviceRoleKey =
+      readEnv('SUPABASE_SECRET_KEY') ??
+      readEnv('SUPABASE_SERVICE_ROLE_KEY') ??
+      readEnv('SERVICE_ROLE_KEY');
     if (!supabaseUrl || !serviceRoleKey) {
       throw new Error('Missing Supabase service role configuration for SendGrid verification email');
     }

@@ -1,5 +1,7 @@
 # Game Platform Report Card - Feature Specification
 
+> **Status (2026-05-03):** Shipped. Backend lives at `app/api/game-platform/report-card/[competitorId]/route.ts` (GET) plus a `pdf/route.ts` sibling for PDF export. Components live in `components/game-platform/report-card/`. The page renders at `/dashboard/game-platform/report-card/[competitorId]`. NICE work-role lookups join against `nice_framework_work_roles` (see `nice-framework-integration-lite.md`).
+
 ## Overview
 
 A comprehensive performance dashboard for coaches to view detailed competitor activity, strengths, weaknesses, and progress in the MetaCTF Game Platform.
@@ -327,19 +329,21 @@ ORDER BY date;
 app/dashboard/game-platform/report-card/[competitorId]/
   page.tsx                          // Main page component
 
-components/game-platform/report-card/
+components/game-platform/report-card/   // as-built (2026-05-03)
+  report-card-content.tsx           // Top-level layout
   report-card-header.tsx            // Summary card
   performance-overview.tsx          // Stat cards
   domain-strength-chart.tsx         // Bar chart
-  domain-category-cards.tsx         // Top/bottom domains
-  activity-timeline.tsx             // Calendar heatmap
-  activity-chart.tsx                // Line chart
+  domain-spider-chart.tsx           // Radar/spider variant
+  activity-heatmap.tsx              // Calendar heatmap
+  activity-timeline.tsx             // Activity timeline
+  cumulative-points-chart.tsx       // Points over time
   challenges-table.tsx              // Detailed table
   flash-ctf-events.tsx              // Event cards
-  nist-coverage.tsx                 // Work role tags
   insights-panel.tsx                // Auto-generated insights
-  export-menu.tsx                   // Export options
 ```
+
+> **Component delta vs original spec:** The shipped tree omits `domain-category-cards.tsx`, `activity-chart.tsx`, `nist-coverage.tsx`, and `export-menu.tsx`. NIST role coverage is rendered inline by the report-card content / challenges table rather than as a dedicated component. Export is implemented via a separate `pdf/route.ts` PDF route rather than a client export menu.
 
 ## Insights Generation Logic
 
@@ -511,3 +515,8 @@ async function canViewReportCard(userId: string, competitorId: string) {
 - **Engagement:** Average time on page >2 minutes
 - **Utility:** >4.0/5.0 coach satisfaction rating
 - **Performance:** Page load time <2 seconds (p95)
+
+---
+
+**Last verified:** 2026-05-03 against commit `5b49f3ef`.
+**Notes:** Verified API route, page, and component structure against the live tree. The route reads from `game_platform_challenge_solves`, `game_platform_flash_ctf_events`, and `nice_framework_work_roles` and computes domains/insights server-side. Updated component list to match the as-built tree. Open concern: the "Caching Strategy" section still talks about Redis/in-memory cache, but the live route uses `dynamic = 'force-dynamic'; revalidate = 0` — there's no caching layer in front of it today.

@@ -19,7 +19,7 @@
 | A | Task 5: `lib/supabase/middleware.ts` + migrate `middleware.ts` | ✅ |
 | B | Task 6 Batch A: `app/api/admin/**` (34) | ✅ 34 / 34 |
 | B | Task 6 Batch B: `app/api/messaging/**` (29) | ✅ 29 / 29 |
-| B | Task 6 Batch C: `app/api/{competitors,teams}/**` (19) | 0 / 19 |
+| B | Task 6 Batch C: `app/api/{competitors,teams}/**` (19) | ✅ 19 / 19 |
 | B | Task 6 Batch D: other route handlers (19) | 0 / 19 |
 | B | Task 6 Batch E: Server Components (11) | 0 / 11 |
 | B | Task 6 Batch F: client component (1) | 0 / 1 |
@@ -29,7 +29,7 @@
 
 **Consumer file totals:** 113 in Task 6 (115 total − `middleware.ts` in Task 5 − `lib/supabase/client.ts` in Task 4).
 
-**Done counter:** 63 / 113
+**Done counter:** 82 / 113
 
 ---
 
@@ -171,25 +171,25 @@ Each file: replace `import ... from '@supabase/auth-helpers-nextjs'` with import
 
 ### Batch C — `app/api/competitors/**` + `app/api/teams/**` (19 files)
 
-- [ ] `app/api/competitors/[id]/disclosure-log/route.ts`
-- [ ] `app/api/competitors/[id]/regenerate-link/route.ts`
-- [ ] `app/api/competitors/[id]/toggle-active/route.ts`
-- [ ] `app/api/competitors/[id]/update/route.ts`
-- [ ] `app/api/competitors/bulk-import/check-duplicates/route.ts`
-- [ ] `app/api/competitors/bulk-import/route.ts`
-- [ ] `app/api/competitors/check-duplicates/route.ts`
-- [ ] `app/api/competitors/create/route.ts`
-- [ ] `app/api/competitors/maintenance/update-statuses/route.ts`
-- [ ] `app/api/competitors/paged/route.ts`
-- [ ] `app/api/competitors/route.ts`
-- [ ] `app/api/teams/[id]/members/[competitor_id]/route.ts`
-- [ ] `app/api/teams/[id]/members/add/route.ts`
-- [ ] `app/api/teams/[id]/members/route.ts`
-- [ ] `app/api/teams/[id]/route.ts`
-- [ ] `app/api/teams/[id]/update/route.ts`
-- [ ] `app/api/teams/[id]/upload-image/route.ts`
-- [ ] `app/api/teams/create/route.ts`
-- [ ] `app/api/teams/route.ts`
+- [x] `app/api/competitors/[id]/disclosure-log/route.ts`
+- [x] `app/api/competitors/[id]/regenerate-link/route.ts`
+- [x] `app/api/competitors/[id]/toggle-active/route.ts`
+- [x] `app/api/competitors/[id]/update/route.ts`
+- [x] `app/api/competitors/bulk-import/check-duplicates/route.ts`
+- [x] `app/api/competitors/bulk-import/route.ts`
+- [x] `app/api/competitors/check-duplicates/route.ts`
+- [x] `app/api/competitors/create/route.ts`
+- [x] `app/api/competitors/maintenance/update-statuses/route.ts`
+- [x] `app/api/competitors/paged/route.ts`
+- [x] `app/api/competitors/route.ts`
+- [x] `app/api/teams/[id]/members/[competitor_id]/route.ts`
+- [x] `app/api/teams/[id]/members/add/route.ts`
+- [x] `app/api/teams/[id]/members/route.ts`
+- [x] `app/api/teams/[id]/route.ts`
+- [x] `app/api/teams/[id]/update/route.ts`
+- [x] `app/api/teams/[id]/upload-image/route.ts`
+- [x] `app/api/teams/create/route.ts`
+- [x] `app/api/teams/route.ts`
 
 ### Batch D — Remaining route handlers (19 files)
 
@@ -295,3 +295,4 @@ _(none yet)_
 | 2026-05-03 | Task 5 (middleware) | 113 (precise) | dev smoke: redirects 307 correctly, no errors | new wrapper exposes `{supabase, response(), redirect(url)}`; cookie-preserving redirect helper handles session refresh |
 | 2026-05-03 | Batch A (admin, 34 files) | 79 | `pnpm build` ✅; tsc 237 errors (down from 268 baseline as ReadonlyRequestCookies errors disappeared) | subagent migration; cookies import preserved in `context/route.ts` and `releases/route.ts` for non-Supabase admin_coach_id reads |
 | 2026-05-03 | Batch B (messaging, 29 files) | 50 | tsc 199 errors (down from 237) | zero variations — fully canonical pattern; 9 files had multiple-handler swaps |
+| 2026-05-03 | Batch C (competitors+teams, 19 files) | 31 | tsc 180 errors (down from 199) | one variation: `competitors/[id]/update/route.ts` had `createRouteHandlerClient({ cookies })` raw form (no closure) — handled identically; 13 files retain cookieStore for `admin_coach_id` reads |

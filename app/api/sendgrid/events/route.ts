@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/logging/safe-logger';
-import { config } from '@/lib/config';
 
 type SendGridEventPayload = Record<string, unknown> & {
   event?: string;
@@ -45,12 +44,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!supabaseUrl) {
-    return NextResponse.json({ error: 'Missing Supabase service role configuration' }, { status: 500 });
-  }
-
-  const supabase = createClient(supabaseUrl, config.supabase.secretKey, { auth: { persistSession: false } });
+  const supabase = getServiceRoleSupabaseClient();
 
   let events: unknown;
   try {

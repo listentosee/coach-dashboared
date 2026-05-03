@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { config } from '@/lib/config'
+import { getServiceRoleSupabaseClient } from '@/lib/supabase/server'
 import { getZohoAccessToken } from '@/app/api/zoho/_lib/token'
 
 export async function POST(req: NextRequest, context: { params: Promise<{ token: string }> }) {
   const { token } = await context.params
   // Align with the profile GET route environment usage for consistency
-  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, config.supabase.secretKey)
+  const supabase = getServiceRoleSupabaseClient()
   try {
     // Lookup competitor by profile token
     const { data: competitor, error } = await supabase

@@ -299,10 +299,9 @@ export class AuthService {
   private mondayClient;
 
   constructor() {
-    this.supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    // Use the wrapper-layer factory; never call createClient from
+    // @supabase/supabase-js directly outside lib/supabase/.
+    this.supabase = createServerClient();
     this.mondayClient = new MondayClient();
   }
 
@@ -379,37 +378,44 @@ export class AuthService {
 
 ```typescript
 // /middleware.ts
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { createMiddlewareSupabase } from '@/lib/supabase/middleware';
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createMiddlewareClient({ req, res });
-  
-  const { data: { session } } = await supabase.auth.getSession();
+  const ms = createMiddlewareSupabase(req);
+  // Use getUser() — never getSession() — for authorization (auth-server-verified).
+  const { data: { user } } = await ms.supabase.auth.getUser();
 
   // Protect dashboard routes
   if (req.nextUrl.pathname.startsWith('/dashboard')) {
-    if (!session) {
-      return NextResponse.redirect(new URL('/login', req.url));
+    if (!user) {
+      return ms.redirect(new URL('/auth/login', req.url));
+    }
+
+    // Forced password reset
+    const mustChange = (user as any)?.app_metadata?.must_change_password;
+    if (mustChange) {
+      return ms.redirect(new URL('/auth/force-reset', req.url));
     }
 
     // Check user role for admin routes
     if (req.nextUrl.pathname.startsWith('/dashboard/admin')) {
-      const { data: profile } = await supabase
+      const { data: profile } = await ms.supabase
         .from('profiles')
         .select('role')
-        .eq('id', session.user.id)
+        .eq('id', user.id)
         .single();
 
       if (profile?.role !== 'admin') {
-        return NextResponse.redirect(new URL('/dashboard', req.url));
+        return ms.redirect(new URL('/dashboard', req.url));
       }
     }
   }
 
-  return res;
+  // ms.response() preserves any auth cookies set during session refresh;
+  // ms.redirect() copies those same cookies onto a redirect response.
+  return ms.response();
 }
 
 export const config = {
@@ -479,8 +485,7 @@ export const API_ROUTES = {
 ```typescript
 // /app/api/competitors/create/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createServerClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 
 const CompetitorSchema = z.object({
@@ -494,11 +499,11 @@ const CompetitorSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
-    
-    // Verify authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    const supabase = createServerClient();
+
+    // Verify authentication via getUser() — getSession() is lint-banned in route handlers.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -511,7 +516,7 @@ export async function POST(request: NextRequest) {
       .from('competitors')
       .insert({
         ...validatedData,
-        coach_id: session.user.id,
+        coach_id: user.id,
         status: 'pending'
       })
       .select()
@@ -528,7 +533,7 @@ export async function POST(request: NextRequest) {
     await supabase
       .from('activity_logs')
       .insert({
-        user_id: session.user.id,
+        user_id: user.id,
         action: 'competitor_created',
         entity_type: 'competitor',
         entity_id: competitor.id,
@@ -1083,7 +1088,7 @@ export class MonitoringService {
 ```typescript
 // /app/api/health/route.ts
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 
 export async function GET() {
   const checks = {
@@ -1097,10 +1102,9 @@ export async function GET() {
   };
 
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    // Service-role admin client — cached singleton. Reads SUPABASE_SECRET_KEY
+    // (modern) with legacy SUPABASE_SERVICE_ROLE_KEY fallback.
+    const supabase = getServiceRoleSupabaseClient();
 
     // Check database
     const { error: dbError } = await supabase
@@ -1199,10 +1203,14 @@ export const MAINTENANCE_TASKS = {
 
 ```bash
 # .env.local
-# Supabase
+# Supabase — modern keys (preferred). Legacy JWT keys
+# (NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_JWT_SECRET)
+# were revoked 2026-05-03. The wrapper layer accepts them as legacy fallbacks
+# but they're no-ops post-revoke; only the modern keys below are required.
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_publishable_key      # sb_publishable_*
+SUPABASE_URL=your_supabase_url                                 # server-side (mirror of NEXT_PUBLIC_)
+SUPABASE_SECRET_KEY=your_secret_key                            # sb_secret_* — service-role
 
 # Application
 NEXT_PUBLIC_APP_URL=http://localhost:3000
@@ -1248,7 +1256,7 @@ SMTP_PASS=your_sendgrid_api_key
     "@radix-ui/react-tabs": "^1.0.4",
     "@radix-ui/react-toast": "^1.1.5",
     "@sentry/nextjs": "^7.100.0",
-    "@supabase/auth-helpers-nextjs": "^0.9.0",
+    "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.39.0",
     "@tanstack/react-query": "^5.17.0",
     "@tanstack/react-table": "^8.11.0",

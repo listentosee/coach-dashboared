@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { config } from '@/lib/config';
 
 const INTERNAL_AUTOMATION_SECRET = process.env.INTERNAL_AUTOMATION_SECRET || process.env.INTERNAL_SYNC_SECRET;
@@ -169,9 +169,7 @@ async function processNotifications({
   allowSms: boolean;
 }) {
   ensureSupabaseConfig();
-  const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!, {
-    auth: { persistSession: false },
-  });
+  const supabase = getServiceRoleSupabaseClient();
 
   const { data: candidates, error } = await supabase.rpc('fetch_unread_alert_candidates', {
     p_window_minutes: windowMinutes,

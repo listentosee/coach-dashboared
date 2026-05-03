@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createClient } from '@supabase/supabase-js';
+import { getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
-import { config } from '@/lib/config';
 
 const PayloadSchema = z.object({
   emails: z.array(z.string().min(1)).min(1),
@@ -11,37 +10,13 @@ const PayloadSchema = z.object({
   coachScopeId: z.string().uuid().optional().nullable(),
 });
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-if (!supabaseUrl) {
-  throw new Error('NEXT_PUBLIC_SUPABASE_URL is not configured.');
-}
-
-const supabaseAdmin = createClient(
-  supabaseUrl,
-  config.supabase.secretKey,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-    global: {
-      headers: {
-        apikey: config.supabase.secretKey,
-        Authorization: `Bearer ${config.supabase.secretKey}`,
-      },
-    },
-  },
-);
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const payload = PayloadSchema.parse(body);
 
     await assertEmailsUnique({
-      supabase: supabaseAdmin,
+      supabase: getServiceRoleSupabaseClient(),
       emails: payload.emails,
       ignoreProfileIds: payload.ignoreProfileIds,
       ignoreCompetitorIds: payload.ignoreCompetitorIds,

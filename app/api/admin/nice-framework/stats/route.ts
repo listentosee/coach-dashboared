@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
-import { createClient } from '@supabase/supabase-js';
-import { config } from '@/lib/config';
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 
 export async function GET() {
   const supabase = createServerClient();
@@ -23,8 +21,7 @@ export async function GET() {
   }
 
   // Use service role client for reading
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseAdmin = createClient(supabaseUrl, config.supabase.secretKey);
+  const supabaseAdmin = getServiceRoleSupabaseClient();
 
   try {
     // Get count of work roles

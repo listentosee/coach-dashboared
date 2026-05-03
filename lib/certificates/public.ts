@@ -1,7 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-import { config } from '@/lib/config';
-
-const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+import { getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 
 export const CERTIFICATE_STORAGE_BUCKET =
   process.env.SUPABASE_CERTIFICATES_BUCKET || 'competition-certificates';
@@ -26,13 +23,7 @@ export type CertificateClaimRecord = {
 };
 
 export function createCertificateServiceClient() {
-  if (!supabaseUrl) {
-    throw new Error('Missing Supabase service role configuration');
-  }
-
-  return createClient(supabaseUrl, config.supabase.secretKey, {
-    auth: { persistSession: false },
-  });
+  return getServiceRoleSupabaseClient();
 }
 
 export async function getCertificateClaimByToken(token: string): Promise<CertificateClaimRecord | null> {

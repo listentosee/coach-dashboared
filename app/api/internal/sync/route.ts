@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { syncAllCompetitorGameStats, syncAllTeamsWithGamePlatform } from '@/lib/integrations/game-platform/service';
-import { config } from '@/lib/config';
 
 const INTERNAL_SYNC_SECRET = process.env.INTERNAL_SYNC_SECRET;
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = config.supabase.secretKey;
 
 function getHeaderSecret(request: NextRequest) {
   return (
@@ -18,12 +14,7 @@ function getHeaderSecret(request: NextRequest) {
 
 async function getSupabaseClient(isInternal: boolean) {
   if (isInternal) {
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      throw new Error('Missing Supabase service role configuration for sync');
-    }
-    return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { persistSession: false },
-    });
+    return getServiceRoleSupabaseClient();
   }
 
   return createServerClient();

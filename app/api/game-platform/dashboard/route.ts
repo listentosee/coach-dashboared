@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { isUserAdmin } from '@/lib/utils/admin-check';
-import { createClient } from '@supabase/supabase-js';
-import { config } from '@/lib/config';
 
 function toIsoOrNull(value?: string | null) {
   if (!value) return null;
@@ -58,11 +56,7 @@ export async function GET(request: NextRequest) {
     // Get time range from query params (7d, 30d, 90d, or custom)
     const range = request.nextUrl.searchParams.get('range') || '30d';
 
-    const serviceRoleKey = config.supabase.secretKey;
-    const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceClient = (serviceRoleKey && serviceUrl)
-      ? createClient(serviceUrl, serviceRoleKey, { auth: { persistSession: false } })
-      : null;
+    const serviceClient = getServiceRoleSupabaseClient();
 
     const isAdminUser = await isUserAdmin(supabase, user.id);
     const actingCoachCookie = cookieStore.get('admin_coach_id')?.value || null;
@@ -807,11 +801,7 @@ export async function GET(request: NextRequest) {
     const allSyncedIds = Array.from(syncedIdToCompetitor.keys());
 
     if (allSyncedIds.length > 0) {
-      const serviceRoleKey = config.supabase.secretKey;
-      const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const flashClient = (serviceRoleKey && serviceUrl)
-        ? createClient(serviceUrl, serviceRoleKey, { auth: { persistSession: false } })
-        : supabase;
+      const flashClient = getServiceRoleSupabaseClient();
 
       const { data: flashEvents } = await flashClient
           .from('game_platform_flash_ctf_events')

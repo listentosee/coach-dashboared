@@ -7,9 +7,9 @@
 // stays sync so consumer call shape is `const supabase = createServerClient()`
 // with no await.
 import { createServerClient as createSSRServerClient } from '@supabase/ssr'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
-import { config } from '@/lib/config'
+import { readEnv } from '@/lib/jobs/env'
 
 /**
  * Session-context Supabase client for Server Components and Route Handlers.
@@ -43,18 +43,42 @@ export function createServerClient() {
   )
 }
 
+type AnySupabaseClient = SupabaseClient<any, any, any>
+
+let cachedServiceClient: AnySupabaseClient | null = null
+
 /**
- * Service-role Supabase client for admin operations. Bypasses RLS — only use
- * after auth verification in admin routes.
+ * Service-role Supabase client. Bypasses RLS — only call after auth verification
+ * in admin routes, server-side jobs, or trusted internal flows. Never expose to
+ * client code.
  *
- * Reads config.supabase.secretKey: SUPABASE_SECRET_KEY (modern) preferred,
- * SUPABASE_SERVICE_ROLE_KEY (legacy) as fallback.
+ * Cached singleton: built once per function instance, reused across requests.
+ *
+ * Key resolution chain (modern preferred; legacy fallbacks become no-op safety
+ * nets after the 2026-05-03 legacy-JWT revoke):
+ *   SUPABASE_SECRET_KEY → SUPABASE_SERVICE_ROLE_KEY → SERVICE_ROLE_KEY
+ *
+ * Reads env via lib/jobs/env::readEnv so the helper is usable from both Node
+ * (Next.js routes / RSC) and Deno (Edge functions / job workers).
  */
-export function createServiceRoleClient() {
-  if (!config.supabase.secretKey) {
-    throw new Error('SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is not set')
+export function getServiceRoleSupabaseClient(): AnySupabaseClient {
+  if (cachedServiceClient) return cachedServiceClient
+
+  const url =
+    readEnv('SUPABASE_URL') ??
+    readEnv('NEXT_PUBLIC_SUPABASE_URL')
+  const key =
+    readEnv('SUPABASE_SECRET_KEY') ??
+    readEnv('SUPABASE_SERVICE_ROLE_KEY') ??
+    readEnv('SERVICE_ROLE_KEY')
+
+  if (!url || !key) {
+    throw new Error('Missing Supabase service role environment variables')
   }
-  return createClient(config.supabase.url, config.supabase.secretKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
+
+  cachedServiceClient = createClient(url, key, {
+    auth: { persistSession: false },
   })
+
+  return cachedServiceClient
 }

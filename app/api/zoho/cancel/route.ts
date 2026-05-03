@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { config } from '@/lib/config';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { getZohoAccessToken } from '../_lib/token';
 import { logger } from '@/lib/logging/safe-logger';
@@ -43,10 +41,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    config.supabase.secretKey,
-  );
+  const supabase = getServiceRoleSupabaseClient();
 
   try {
     const cookieStore = await cookies();

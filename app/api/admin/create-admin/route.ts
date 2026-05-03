@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { createHash } from 'crypto';
-import { config } from '@/lib/config';
 import { assertEmailsUnique, EmailConflictError } from '@/lib/validation/email-uniqueness';
 
 export async function POST(request: NextRequest) {
@@ -25,10 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create Supabase client with service role
-    const supabase = createClient(
-      process.env.SUPABASE_URL!,
-      config.supabase.secretKey
-    );
+    const supabase = getServiceRoleSupabaseClient();
 
     try {
       await assertEmailsUnique({

@@ -45,23 +45,23 @@ describe('lib/supabase/server', () => {
     expect(client).toBeDefined()
   })
 
-  it('createServiceRoleClient returns a service-role client', async () => {
+  it('getServiceRoleSupabaseClient returns a service-role client', async () => {
     process.env.SUPABASE_SECRET_KEY = 'sb_secret_test'
-    const { createServiceRoleClient } = await import('./server')
-    const client = createServiceRoleClient()
+    const { getServiceRoleSupabaseClient } = await import('./server')
+    const client = getServiceRoleSupabaseClient()
     expect(client).toBeDefined()
     expect(client.auth.admin).toBeDefined()
   })
 
-  it('createServiceRoleClient falls back to legacy SUPABASE_SERVICE_ROLE_KEY', async () => {
+  it('getServiceRoleSupabaseClient falls back to legacy SUPABASE_SERVICE_ROLE_KEY', async () => {
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'eyJlegacysvc'
-    const { createServiceRoleClient } = await import('./server')
-    const client = createServiceRoleClient()
+    const { getServiceRoleSupabaseClient } = await import('./server')
+    const client = getServiceRoleSupabaseClient()
     expect(client).toBeDefined()
   })
 
-  it('createServiceRoleClient throws when no secret key is set', async () => {
-    const { createServiceRoleClient } = await import('./server')
-    expect(() => createServiceRoleClient()).toThrow(/SUPABASE_SECRET_KEY/)
+  it('getServiceRoleSupabaseClient throws when no secret key is set', async () => {
+    const { getServiceRoleSupabaseClient } = await import('./server')
+    expect(() => getServiceRoleSupabaseClient()).toThrow(/Missing Supabase service role/)
   })
 })

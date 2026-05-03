@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 import { marked } from 'marked';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { resolveRecipients } from '@/lib/messaging/competitor-announcement';
 import { enqueueJob } from '@/lib/jobs/queue';
-import { config } from '@/lib/config';
 
 // ---------------------------------------------------------------------------
 // Request body schema
@@ -61,17 +59,7 @@ export async function POST(req: NextRequest) {
     const bodyHtml = await marked.parse(markdownBody);
 
     // ----- Service role client (reads across all coaches' competitors) -----
-    const serviceRoleKey = config.supabase.secretKey;
-    const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-    if (!serviceUrl) {
-      console.error('[competitor-announcement] Missing service role environment variables');
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
-    }
-
-    const serviceClient = createClient(serviceUrl, serviceRoleKey, {
-      auth: { persistSession: false },
-    });
+    const serviceClient = getServiceRoleSupabaseClient();
 
     // ----- Resolve recipients -----
     const { recipients, skipped } = await resolveRecipients(serviceClient, { coachId, audience });

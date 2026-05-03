@@ -29,15 +29,21 @@ Background Sync (cron/job) -> Next.js route or Edge Function -> GamePlatformClie
 
 ## 5. API Surface Mapping
 - https://api.metactf.com/integrations/syned/v1/e87feecf8513a3cd34496c9a37aba5fe/docs#/
-| Domain                | Game Platform Endpoint                                       | Notes |
-|----------------------|---------------------------------------------------------------|-------|
-| Create competitor    | `POST /users` (body: `UserCreate`)                            | Requires role, email, optional `syned_user_id` for idempotency. |
-| Reset password       | `POST /auth/send_password_reset_email`                        | Trigger via coach actions (optional). |
-| Create team          | `POST /teams` (body: `TeamCreate`)                            | Needs `syned_coach_user_id` and team metadata. |
-| Delete team          | `POST /teams/delete` (body: `{ syned_team_id }`)              | Only callable when team has no members. |
-| Assign member        | `POST /users/assign_team`                                     | Body includes `syned_team_id`, `syned_user_id`. |
-| List assignments     | `GET /users/get_team_assignments` (body with `syned_team_id`) | Verify GET+body expectation with vendor. |
-| Fetch scores         | `GET /scores/get_odl_scores` (body optional)                  | Returns solved challenge metrics per user. |
+
+The current `GamePlatformClient` ([lib/integrations/game-platform/client.ts](../../../lib/integrations/game-platform/client.ts)) implements **10 methods** against the following endpoints:
+
+| Domain                | Game Platform Endpoint                                       | Client method | Notes |
+|----------------------|---------------------------------------------------------------|---------------|-------|
+| Lookup user          | `GET /users` (query: `syned_user_id`)                         | `getUser` | Idempotency check before creation; returns `metactf_user_status`, `metactf_username`. |
+| Create competitor    | `POST /users` (body: `UserCreate`)                            | `createUser` | Requires role, email, `syned_user_id` for idempotency. |
+| Reset password       | `POST /auth/send_password_reset_email`                        | `sendPasswordReset` | Trigger via coach actions (optional). |
+| Create team          | `POST /teams` (body: `TeamCreate`)                            | `createTeam` | Needs `syned_coach_user_id`, `syned_team_id`, `division`, `affiliation`. |
+| Delete team          | `POST /teams/delete` (body: `{ syned_team_id }`)              | `deleteTeam` | Only callable when team has no members. |
+| Assign member        | `POST /users/assign_team`                                     | `assignMemberToTeam` | Body includes `syned_team_id`, `syned_user_id`. |
+| Unassign member      | `POST /users/delete_assignment`                               | `unassignMemberFromTeam` | Removes a single roster assignment. |
+| List assignments     | `GET /users/get_team_assignments` (query: `syned_team_id`)    | `getTeamAssignments` | Returns `{ assignments, total_count }`. |
+| Fetch ODL scores     | `GET /scores/get_odl_scores` (query: optional `syned_user_id`, `after_time_unix`) | `getScores` | `after_time_unix` enables incremental sync. |
+| Fetch Flash CTF      | `GET /scores/get_flash_ctf_progress` (query: `syned_user_id`) | `getFlashCtfProgress` | Per-user Flash CTF events; no time filter (see sentinel optimization §22). |
 
 ### Request/Response Handling
 - All calls include `Authorization: Bearer ${GAME_PLATFORM_API_TOKEN}` (assume bearer until confirmed).
@@ -67,11 +73,14 @@ Background Sync (cron/job) -> Next.js route or Edge Function -> GamePlatformClie
 - Migration scripts should backfill existing `game_platform_id` where known, seed sync-state rows for current competitors, and add indexes on all new ID columns.
 
 ## 7. Backend Integration Plan
-1. **Client Wrapper (`lib/game-platform/client.ts`)**
+
+> **As-built note (2026-05-03):** This integration shipped. Files live under `lib/integrations/game-platform/` (not `lib/game-platform/`). The client implements 10 methods (see §5). Service layer is split across `service.ts`, `repository.ts`, `auto-onboard.ts`, plus job handlers in `lib/jobs/handlers/gamePlatform*.ts`.
+
+1. **Client Wrapper (`lib/integrations/game-platform/client.ts`)**
    - Generic `request<T>(config)` handling retries (exponential backoff up to 3 attempts for 5xx/timeouts).
-   - Methods: `createUser`, `sendPasswordReset`, `createTeam`, `deleteTeam`, `assignMember`, `getTeamAssignments`, `getOdlScores`.
-   - Accept AbortSignal for cancellation and support structured logging.
-2. **Service Layer (`lib/game-platform/service.ts`)**
+   - Methods: `getUser`, `createUser`, `sendPasswordReset`, `createTeam`, `deleteTeam`, `assignMemberToTeam`, `unassignMemberFromTeam`, `getTeamAssignments`, `getScores`, `getFlashCtfProgress`.
+   - Accepts AbortSignal for cancellation and supports structured logging via `logger` option.
+2. **Service Layer (`lib/integrations/game-platform/service.ts`)**
    - `onboardCompetitor(competitorId)` orchestrates user creation, Supabase update, status recompute.
    - `syncTeam(teamId)` ensures remote team exists, creates/updates metadata, syncs roster.
    - `deleteTeamFromGamePlatform(teamId)` calls MetaCTF API to delete team, skips if not synced, logs errors but doesn't block local deletion.
@@ -334,7 +343,7 @@ Admins can manually trigger syncs via Admin Tools:
 
 ## 20. Production Scaling: Batched Sync Architecture
 
-> **Note**: Flash CTF sentinel optimization (Section 22) has been implemented and reduces Flash CTF API calls by 95%. This batching plan focuses on ODL sync distribution.
+> **Status (2026-05-03): NOT YET IMPLEMENTED.** Flash CTF sentinel optimization (Section 22) and incremental ODL sync (Section 21) have shipped, but the rotating batch sync described below is still a forward-looking plan. There is no `lib/integrations/game-platform/batching.ts` in the tree, and `game_platform_sync_runs` does not include `batch_number`/`batch_size`/`total_batches` columns. Treat this section as design-future, not as-built.
 
 ### 20.1 Problem Statement
 
@@ -778,3 +787,8 @@ This optimization is **complementary** to the batching architecture (Section 20)
 - **ODL calls**: 300 incremental syncs (filtered by `after_time_unix`)
 - **Flash CTF calls**: 48 sentinel checks + 0-300 full syncs (only when new event)
 - **Total API calls/day**: ~350 (vs 14,400 without optimizations) = **97.6% reduction**
+
+---
+
+**Last verified:** 2026-05-03 against commit `5b49f3ef`.
+**Notes:** Verified client surface (10 methods), retry config (3 attempts), env vars (`GAME_PLATFORM_API_TOKEN`, `GAME_PLATFORM_API_BASE_URL`), and sync-job structure against `lib/integrations/game-platform/*` and `lib/jobs/handlers/gamePlatform*`. Updated §5 API surface to include `getUser`, `unassignMemberFromTeam`, `getFlashCtfProgress`. Added as-built note in §7 (paths live under `lib/integrations/game-platform/`, not `lib/game-platform/`). Flagged §20 (batched sync) as design-future — no `batching.ts` exists yet and `game_platform_sync_runs` lacks the proposed batch columns. Open concern: `lib/integrations/game-platform/service.ts` still uses raw `createClient` with the service-role key in several places (lines 503, 1157, 1629, 1735) rather than `getServiceRoleSupabaseClient()`; route handlers have migrated, services have not.

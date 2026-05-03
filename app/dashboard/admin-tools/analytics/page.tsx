@@ -1,5 +1,4 @@
-import { cookies } from 'next/headers'
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient } from '@/lib/supabase/server'
 import { DemographicCharts, DemographicChartConfig } from '@/components/dashboard/admin/demographic-charts'
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase'
 import { CoachSummaryTable, CoachSummaryRow } from '@/components/dashboard/admin/coach-summary-table'
@@ -207,8 +206,7 @@ function MetricBarList({
 }
 
 export default async function AdminAnalyticsPage({ searchParams }: { searchParams?: Promise<{ coach_id?: string }> }) {
-  const cookieStore = await cookies()
-  const supabase = createServerComponentClient({ cookies: () => cookieStore })
+  const supabase = createServerClient()
   const serviceSupabase = getServiceRoleSupabaseClient()
 
   const resolvedParams = searchParams ? await searchParams : undefined

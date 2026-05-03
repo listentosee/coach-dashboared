@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createServerClient } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 import { config } from '@/lib/config'
@@ -13,8 +12,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify caller is an authenticated admin using cookie-bound client
-    const cookieStore = await cookies()
-    const authed = createRouteHandlerClient({ cookies: () => cookieStore })
+    const authed = createServerClient()
     const { data: { user } } = await authed.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

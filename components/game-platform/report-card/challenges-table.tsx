@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { supabase } from '@/lib/supabase/client';
 
 interface Challenge {
   id: string;
@@ -45,7 +45,6 @@ type SortField = 'solvedAt' | 'points' | 'title' | 'category';
 type SortDirection = 'asc' | 'desc';
 
 export default function ChallengesTable({ challenges }: Props) {
-  const supabase = createClientComponentClient();
   const [sortField, setSortField] = useState<SortField>('solvedAt');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');

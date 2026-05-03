@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 
 const COOKIE_NAME = 'admin_coach_id'
 
-async function assertAdmin(supabase: ReturnType<typeof createRouteHandlerClient>) {
+async function assertAdmin(supabase: ReturnType<typeof createServerClient>) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false as const, status: 401, error: 'Unauthorized' }
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
@@ -15,7 +15,7 @@ async function assertAdmin(supabase: ReturnType<typeof createRouteHandlerClient>
 export async function GET(_req: NextRequest) {
   try {
     const cookieStore = await cookies()
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const supabase = createServerClient()
     const admin = await assertAdmin(supabase)
     if (!admin.ok) return NextResponse.json({ error: admin.error }, { status: admin.status })
 
@@ -43,8 +43,7 @@ export async function GET(_req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const supabase = createServerClient()
     const admin = await assertAdmin(supabase)
     if (!admin.ok) return NextResponse.json({ error: admin.error }, { status: admin.status })
 

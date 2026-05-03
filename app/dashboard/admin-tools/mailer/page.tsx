@@ -1,6 +1,5 @@
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@/lib/supabase/server';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase';
 import { type CampaignRow } from '@/components/dashboard/admin/campaign-status-table';
@@ -9,8 +8,7 @@ import { MailerDashboardClient } from './mailer-dashboard-client';
 export const dynamic = 'force-dynamic';
 
 export default async function MailerDashboardPage() {
-  const cookieStore = await cookies();
-  const supabase = createServerComponentClient({ cookies: () => cookieStore });
+  const supabase = createServerClient();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@/lib/supabase/server';
 import { isUserAdmin } from '@/lib/utils/admin-check';
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase';
 import { normalizeSchoolGeo } from '@/lib/analytics/school-geo';
@@ -8,8 +7,7 @@ import { normalizeSchoolGeo } from '@/lib/analytics/school-geo';
 export const dynamic = 'force-dynamic';
 
 async function requireAdmin() {
-  const cookieStore = await cookies();
-  const supabase = createRouteHandlerClient({ cookies: () => cookieStore as any });
+  const supabase = createServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

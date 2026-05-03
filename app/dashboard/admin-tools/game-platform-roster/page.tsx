@@ -1,6 +1,5 @@
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@/lib/supabase/server';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { GamePlatformRosterTable, type GamePlatformRosterRow } from '@/components/dashboard/admin/game-platform-roster-table';
 import { getServiceRoleSupabaseClient } from '@/lib/jobs/supabase';
@@ -54,8 +53,7 @@ export default async function GamePlatformRosterPage({
 }: {
   searchParams?: SearchParams | Promise<SearchParams>;
 }) {
-  const cookieStore = await cookies();
-  const supabase = createServerComponentClient({ cookies: () => cookieStore });
+  const supabase = createServerClient();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {

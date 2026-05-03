@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { logger } from '@/lib/logging/safe-logger';
@@ -14,8 +14,8 @@ export async function PUT(
 ) {
   try {
     const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-    
+    const supabase = createServerClient();
+
     // Verify authentication (validated with Auth server)
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {

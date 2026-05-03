@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createServerClient } from '@/lib/supabase/server';
 import { GamePlatformClient } from '@/lib/integrations/game-platform/client';
 import { logger } from '@/lib/logging/safe-logger';
 import { MondayClient } from '@/lib/integrations/monday';
@@ -21,8 +20,7 @@ const FEATURE_ENABLED = process.env.GAME_PLATFORM_INTEGRATION_ENABLED === 'true'
  */
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createServerClient();
 
     const {
       data: { user },

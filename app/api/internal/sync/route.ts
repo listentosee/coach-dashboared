@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { syncAllCompetitorGameStats, syncAllTeamsWithGamePlatform } from '@/lib/integrations/game-platform/service';
 import { config } from '@/lib/config';
@@ -27,8 +26,7 @@ async function getSupabaseClient(isInternal: boolean) {
     });
   }
 
-  const cookieStore = await cookies();
-  return createRouteHandlerClient({ cookies: () => cookieStore });
+  return createServerClient();
 }
 
 async function handleSync({

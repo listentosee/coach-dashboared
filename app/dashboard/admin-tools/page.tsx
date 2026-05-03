@@ -1,10 +1,8 @@
 import { redirect } from 'next/navigation';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createServerClient } from '@/lib/supabase/server';
 
 export default async function AdminToolsPage() {
-  const cookieStore = await cookies();
-  const supabase = createServerComponentClient({ cookies: () => cookieStore });
+  const supabase = createServerClient();
   
   // Check if user is authenticated (verified by Supabase Auth)
   const { data: { user } } = await supabase.auth.getUser();

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { config } from '@/lib/config';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { getZohoAccessToken } from '../_lib/token';
 import { logger } from '@/lib/logging/safe-logger';
@@ -50,9 +50,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const cookieStore = await cookies();
-    const authed = createRouteHandlerClient({
-      cookies: () => cookieStore,
-    });
+    const authed = createServerClient();
 
     const {
       data: { user },

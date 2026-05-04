@@ -1,4 +1,14 @@
-# Supabase Cron & Edge Function Implementation Plan
+# Supabase Cron & Edge Function Implementation Plan — HISTORICAL (Era 2)
+
+> **Status (2026-05-03): HISTORICAL — Era 2 design, never fully shipped.** This doc captures the original four-phase plan for running scheduled work via Supabase `pg_cron` + an edge function (`sync`). It is the second of three eras of the job processor and is preserved here as a historical record. **For the current system, see [`docs/source-of-truth/operations/job-processor.md`](../source-of-truth/operations/job-processor.md).**
+>
+> What didn't land:
+>
+> - The `pg_cron` extension was never installed in the production project (`ejoplrkrqvddiklwsfoj`); only `pg_net` is present.
+> - The `sync` edge function was deployed but is no longer the primary execution path.
+> - The cron-management RPCs (`get_cron_jobs`, `toggle_cron_job`, `update_cron_schedule`, `create_cron_job`) and API routes under `app/api/admin/cron-jobs/` exist as scaffolding but return empty results without `pg_cron`. There is **no** `app/dashboard/admin-tools/cron-jobs/` page on disk despite Phase 4's description of one.
+>
+> What replaced it (Era 3 — current): Vercel Cron triggers `/api/jobs/run` every 5 minutes; that endpoint claims pending rows from `public.job_queue` (Supabase Postgres) and runs each handler within the Vercel cron window. Recurring jobs re-pend themselves on a per-row `recurrence_interval_minutes`. See [`docs/source-of-truth/operations/job-processor.md`](../source-of-truth/operations/job-processor.md) for the full architectural spec, [`docs/source-of-truth/operations/job-queue-playbook.md`](../source-of-truth/operations/job-queue-playbook.md) for operational procedures.
 
 ## Phase 1 – Supabase CLI Setup & Verification
 
@@ -237,33 +247,24 @@ Created REST endpoints for cron operations:
 **Navigation:**
 Added link to Admin Tools menu in `components/dashboard/admin-tools-link.tsx`
 
-### Cron Job Types
+### Cron Job Types (historical — see callout at top of doc)
 
-The application currently uses two cron jobs for Game Platform integration:
+> The four named `pg_cron` schedules described below were the original design, but `pg_cron` is **not installed in production today**. The current production scheduler is `public.job_queue` rows with `is_recurring = true` and `recurrence_interval_minutes`, woken every 5 minutes by Vercel Cron via `/api/jobs/run`.
 
-1. **`game_platform_sync_incremental`** (every 30 minutes)
-   - Enqueues `game_platform_sync` job type
-   - Uses `after_time_unix` for incremental data fetch
-   - Sets `needs_totals_refresh` flags when activity detected
+The handler shapes themselves are unchanged and still in production:
 
-2. **`game_platform_totals_sweep_hourly`** (every hour)
-   - Enqueues `game_platform_totals_sweep` job type
-   - Processes competitors with `needs_totals_refresh = true`
-   - Fetches fresh totals from MetaCTF source of truth
-
-3. **`job_queue_cleanup_daily`** (daily at 03:15 UTC)
-   - Deletes succeeded jobs older than 14 days
-   - Keeps queue table manageable
-
-4. **`release_parent_email_verification`** (every 60 minutes)
-   - Enqueues `release_parent_email_verification` job type
-   - Finds minor (`template_kind = 'minor'`) Zoho agreements in `sent` status older than 4 hours with no verification probe sent
+1. **`game_platform_sync`** — incremental data fetch from MetaCTF; sets `needs_totals_refresh` flags. Currently a recurring `job_queue` row with 15-minute cadence.
+2. **`game_platform_totals_sweep`** — processes competitors with `needs_totals_refresh = true` and fetches fresh totals from MetaCTF. Currently 15-minute cadence.
+3. **Legacy `job_queue_cleanup_daily`** — the SQL function `job_queue_cleanup(interval)` still exists but is not actively scheduled; one-time jobs auto-delete on success, so manual cleanup is rarely needed (see `job-queue-playbook.md`).
+4. **`release_parent_email_verification`** — verifies parent emails for minor Zoho agreements stuck in `sent` longer than the configured staleness window.
+   - Finds minor (`template_kind = 'minor'`) Zoho agreements in `sent` status older than ~4 hours with no verification probe sent
    - Sends a lightweight probe email via SendGrid (through the `send-email-alert` Supabase Edge Function) to the parent email
    - SendGrid delivery events (`bounce`, `dropped`, `blocked`) are received at `/api/sendgrid/events` and mark `competitors.parent_email_is_valid = false`
-   - This is a **fallback** for the primary real-time validation at profile save time (see [`../integrations/zoho-sign-integration.md`](../integrations/zoho-sign-integration.md) § 6)
+   - **Fallback** for the primary real-time validation at profile save time (see [`../integrations/zoho-sign-integration.md`](../integrations/zoho-sign-integration.md) § 6)
    - Handler: `lib/jobs/handlers/releaseParentEmailVerification.ts`
    - Payload options: `{ staleHours?: number, limit?: number, dryRun?: boolean }`
    - Default: `staleHours = 4`, `limit = 50`
+   - Currently a recurring `job_queue` row with 60-minute cadence.
 
 ### Usage
 
@@ -335,3 +336,9 @@ Click on any execution in the history table to view:
 - [x] Supabase Community Insights – posts by Supabase staff (Jan 2024 office hours) advocate Vault-backed secrets and service-role isolation for cron triggers.
 - [x] Deno Deploy Guides – emphasize ESM-only modules, `import_map.json`, and environment shimming when sharing code with Node runtimes.
 - [x] Internal integration history – `game-platform/service.ts` already encapsulates API contracts; reusing this library avoids duplicated HTTP clients and aligns with prior sync behavior.
+
+---
+
+**Last verified:** 2026-05-03 against commit `84d367e8`.
+**Notes:** Added a status callout at the top of the doc — production does not run `pg_cron` (only `pg_net` is installed); recurring work is `job_queue` rows with `is_recurring = true` woken by Vercel Cron `*/5 * * * *` hitting `/api/jobs/run`. The `app/dashboard/admin-tools/cron-jobs/` page described in Phase 4 does not exist on disk; the cron-management RPCs and API routes still exist but return empty without `pg_cron`. Recommend archiving Phases 1–4 (or splitting them out) and replacing this file with a thin pointer to `vercel-job-processing-setup.md` plus the live recurring-job table — flagging for SME review rather than rewriting in this pass.
+

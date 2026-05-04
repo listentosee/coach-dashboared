@@ -8,6 +8,7 @@ This playbook documents how to monitor, manage, and troubleshoot the background 
 |-----------|---------|---------------|
 | `game_platform_sync` | Sync competitors and teams with MetaCTF | Recurring or manual trigger |
 | `game_platform_totals_sweep` | Batch compute cumulative scores | Recurring |
+| `game_platform_flash_ctf_sync` | Sync Flash CTF event participation/results | Recurring (daily) |
 | `game_platform_profile_refresh` | Update competitor profiles from game platform | Recurring or manual trigger |
 | `game_platform_onboard_competitors` | Bulk add competitors to game platform | One-time (bulk import) |
 | `game_platform_onboard_coaches` | Bulk add coaches to game platform | One-time (manual/backfill) |
@@ -16,6 +17,10 @@ This playbook documents how to monitor, manage, and troubleshoot the background 
 | `release_parent_email_verification` | Verify parent emails for release forms | Recurring |
 | `message_read_receipts_backfill` | Populate missing read receipts | One-time |
 | `competitor_announcement_dispatch` | Send bulk email campaign via SendGrid | One-time (from Mailer Dashboard) |
+| `team_image_bulk_generate` | Enqueue per-team image-generation jobs | One-time (admin batch) |
+| `team_image_generate` | Generate one team image (Gemini Nano Banana Pro) | One-time / regen |
+
+The canonical task-type list lives in `JobTaskType` in `lib/jobs/types.ts`; handler registrations are in `lib/jobs/handlers/index.ts`.
 
 ## Recurring vs One-Time Jobs
 
@@ -80,3 +85,9 @@ Navigate to **Admin Tools → Job Queue** to see:
 2. Inspect the **Cron Health** modal for recent errors or stalled HTTP responses.
 3. Pause **Automatic Processing** if the failure is widespread or caused by an external dependency.
 4. Resolve the root cause, retry affected jobs, re-enable processing, and monitor until stable.
+
+---
+
+**Last verified:** 2026-05-03 against commit `84d367e8`.
+**Notes:** Added `game_platform_flash_ctf_sync`, `team_image_bulk_generate`, and `team_image_generate` to the task-type table (the codebase had grown past the doc); added a pointer to `lib/jobs/types.ts` and `lib/jobs/handlers/index.ts` as the canonical registries.
+

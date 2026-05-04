@@ -2,6 +2,8 @@
 
 This guide covers the lightweight workflow we use now that production (prod) and preview share the same Supabase project lineage. Keep these steps in source control so we can resume safely even after a long quiet period.
 
+> **Canonical workflow:** per `CLAUDE.md`, the user applies SQL **manually in the Supabase Dashboard SQL Editor** for both preview and production — the Supabase CLI is **not** used to push migrations. The `psql` commands shown below are an alternative (still supported) but are not the day-to-day path. Migration files in `supabase/migrations/` are kept primarily as a historical record; preview branches re-run them automatically when a PR is opened.
+
 ---
 
 ## 0. Prerequisites
@@ -9,7 +11,7 @@ This guide covers the lightweight workflow we use now that production (prod) and
   - **Preview branch** (`devPreview`):
     - `DB_HOST`, `DB_NAME`, `DB_USER` (usually `postgres`), `DB_PASSWORD` or service-role key.
   - **Production** (main branch): same set of credentials.
-- `psql` is installed locally.
+- `psql` is installed locally (only needed for the `psql` path; the dashboard path requires nothing).
 - Every schema/data change is stored as a standalone SQL file in `supabase/migrations/` with a timestamp prefix.
 
 ---
@@ -111,8 +113,8 @@ To ensure the preview “stack” works end-to-end:
 
 ### 2. Configure Vercel
 - In **Vercel → Project → Settings → Environment Variables**:
-  - **Production** mode: add `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and any app-specific keys (`THIRD_PARTY_API_KEY`, etc.). Vercel automatically injects these into serverless functions and frontend builds.
-  - **Preview** mode: mirror the same keys (or their preview equivalents). Vercel will expose them to every preview build (e.g., `SUPABASE_URL` pointing at the Supabase preview branch).
+  - **Production** mode: add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` (the modern post-2026-05-02 keys), plus any app-specific keys (`SENDGRID_API_KEY`, `JOB_QUEUE_RUNNER_SECRET`, `INTERNAL_AUTOMATION_SECRET`, etc.). Legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` were retired during the 2026-05-02 rotation and should no longer be set. The Vercel-Supabase Native Integration auto-injects `POSTGRES_*` direct-connection vars.
+  - **Preview** mode: mirror the same keys (or their preview equivalents). Vercel exposes them to every preview build (e.g., `NEXT_PUBLIC_SUPABASE_URL` pointing at the Supabase preview branch).
 - Tip: when you baseline-reset migrations, double-check preview env vars still match the new database (URL/keys).
 
 ### 3. Configure Supabase
@@ -148,4 +150,10 @@ To ensure the preview “stack” works end-to-end:
 3. Preview branch opened → CI copies secrets to Supabase preview; Vercel Preview env already has the matching keys.
 4. Run migrations (preview DB first, production last) per the earlier steps.
 
-That’s it—no Supabase CLI required, just versioned SQL and clear steps. Update this document whenever our process changes. 
+That’s it—no Supabase CLI required, just versioned SQL and clear steps. Update this document whenever our process changes.
+
+---
+
+**Last verified:** 2026-05-03 against commit `84d367e8`.
+**Notes:** Added top-of-doc note clarifying that production migrations are run manually via the Supabase Dashboard SQL Editor (per CLAUDE.md); refreshed Vercel env-var list to reflect the post-2026-05-02 modern Supabase key names.
+

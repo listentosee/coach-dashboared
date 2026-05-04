@@ -1,6 +1,8 @@
 # GitHub Change Management Workflow Guide
 ## Production-Level Development with Preview Environments
 
+> **Current practice (2026-05):** the team’s default workflow is feature branch → PR → Vercel preview deploy + Supabase preview DB branch → squash-merge to `main`. The local-Supabase-via-Docker workflow described under PREREQUISITES is documented for completeness but is **not** how schema changes ship today. Per `CLAUDE.md`, migration SQL is applied manually in the Supabase Dashboard SQL Editor for production; preview branches re-apply files in `supabase/migrations/` automatically when a PR is opened. See [`db-migration-runbook.md`](./db-migration-runbook.md) for the canonical migration workflow.
+
 ---
 
 ## PREREQUISITES
@@ -30,34 +32,38 @@ supabase db pull
 This creates migration files from your current production state
 
 **5. Create `.env.local` file** (add to `.gitignore`)
-Use the output from `supabase -status -o env` to get the values for the local environment variables.
+Use the output from `supabase status -o env` to populate your local-dev env file. The block below shows the SHAPE of the output — actual values are well-known Supabase local-dev defaults and have been redacted to placeholders here so this doc doesn't trip GitHub secret scanning. The real values you'll see locally are the standard Supabase demo issuer JWTs and are safe ONLY against your local Docker stack — never paste them into any remote env.
+
 ```bash
-supabase -status -o env
+supabase status -o env
 
 Stopped services: [supabase_imgproxy_coach-dashboared supabase_pooler_coach-dashboared]
-ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0"
+ANON_KEY="<local-dev anon JWT (issuer: supabase-demo)>"
 API_URL="http://127.0.0.1:54321"
 DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 GRAPHQL_URL="http://127.0.0.1:54321/graphql/v1"
 INBUCKET_URL="http://127.0.0.1:54324"
-JWT_SECRET="super-secret-jwt-token-with-at-least-32-characters-long"
+JWT_SECRET="<local-dev jwt secret>"
 MAILPIT_URL="http://127.0.0.1:54324"
 MCP_URL="http://127.0.0.1:54321/mcp"
-PUBLISHABLE_KEY="sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH"
-S3_PROTOCOL_ACCESS_KEY_ID="625729a08b95bf1b7ff351a663f3a23c"
-S3_PROTOCOL_ACCESS_KEY_SECRET="850181e4652dd023b7a98c58ae0d2d34bd487ee0cc3254aed6eda37307425907"
+PUBLISHABLE_KEY="<sb_publishable_LOCAL-DEV-PLACEHOLDER>"
+S3_PROTOCOL_ACCESS_KEY_ID="<local-dev S3 access key id>"
+S3_PROTOCOL_ACCESS_KEY_SECRET="<local-dev S3 access key secret>"
 S3_PROTOCOL_REGION="local"
-SECRET_KEY="sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz"
-SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU"
+SECRET_KEY="<sb_secret_LOCAL-DEV-PLACEHOLDER>"
+SERVICE_ROLE_KEY="<local-dev service-role JWT (issuer: supabase-demo)>"
 STORAGE_S3_URL="http://127.0.0.1:54321/storage/v1/s3"
 STUDIO_URL="http://127.0.0.1:54323"
 ```
 
 **6. Keep `.env` file for production** (committed to Git, used by Vercel)
+
+> **Note (2026-05):** the legacy JWT keys `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` were revoked during the 2026-05-02 rotation. Use the modern names below.
+
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<production-key>
-SUPABASE_SERVICE_ROLE_KEY=<production-key>
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<sb_publishable_…>
+SUPABASE_SECRET_KEY=<sb_secret_…>
 ```
 
 ### B. GitHub/Vercel/Supabase Integrations
@@ -118,13 +124,15 @@ git push origin feature-branch-name
 - Repeat steps 3-5 as needed
 
 ### 8. Merge Pull Request
-**In GitHub:** Click "Merge pull request" button
+**In GitHub:** Use **"Squash and merge"** (project convention; keeps `main` history linear).
 
 **What happens automatically:**
-- **GitHub** merges feature branch into main
-- **Supabase** runs migrations against production database
-- **Vercel** deploys main branch to production environment
-- Supabase preview branch is deleted/paused
+- **GitHub** squash-merges the feature branch into `main`.
+- **Vercel** deploys `main` to production (`coach.cyber-guild.org`).
+- **Supabase** preview branch is torn down.
+
+**What does NOT happen automatically:**
+- **Supabase does not auto-apply new migrations to production.** Per `CLAUDE.md`, migration SQL is run manually in the Supabase Dashboard SQL Editor against production after the PR merges (see [`db-migration-runbook.md`](./db-migration-runbook.md)). The migration files in `supabase/migrations/` are preserved as historical record and as the source of truth for preview-branch re-runs.
 
 ### 9. Update Local Repository
 ```bash
@@ -206,3 +214,9 @@ They provide an identical production environment for testing without risking liv
 - Check Supabase migration logs in dashboard
 - Verify migrations ran successfully during preview testing
 - Check for migration timestamp conflicts with other merged PRs
+
+---
+
+**Last verified:** 2026-05-03 against commit `84d367e8`.
+**Notes:** Added a top-of-doc clarifier that the local-Supabase-via-Docker workflow is documented but not the team’s default path; updated env-var examples to use the post-2026-05-02 modern Supabase key names (`SUPABASE_SECRET_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`); corrected the "merge PR" section — production migrations are run manually in the Supabase Dashboard, not auto-applied; called out squash-merge as the project convention.
+

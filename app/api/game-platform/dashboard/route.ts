@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { isUserAdmin } from '@/lib/utils/admin-check';
+import { summarizeStatsBreakdown } from '@/lib/integrations/game-platform/challenge-breakdown';
 
 function toIsoOrNull(value?: string | null) {
   if (!value) return null;
@@ -892,6 +893,15 @@ export async function GET(request: NextRequest) {
       flashCtfMomentum = { students };
     }
 
+    const challengeBreakdown = summarizeStatsBreakdown(
+      Array.from(competitorMap.values())
+        .filter((entry) => entry?.game_platform_id)
+        .map((entry) => ({
+          challenges_completed: entry.challenges_completed ?? 0,
+          monthly_ctf_challenges: entry.monthly_ctf_challenges ?? 0,
+        })),
+    );
+
     const response = {
       global: {
         totalCompetitors: competitors?.length ?? 0,
@@ -901,6 +911,8 @@ export async function GET(request: NextRequest) {
         }).length,
         activeRecently,
         totalChallenges,
+        totalOdlChallenges: challengeBreakdown.odl,
+        totalCtfChallenges: challengeBreakdown.ctf,
         monthlyCtfParticipants: monthlyCtfParticipantsFromEvents,
         lastSyncedAt: lastSyncRunAt ?? lastSyncedAt,
       },

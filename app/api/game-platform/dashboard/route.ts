@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createServerClient, getServiceRoleSupabaseClient } from '@/lib/supabase/server';
 import { isUserAdmin } from '@/lib/utils/admin-check';
-import { summarizeChallengeBreakdown } from '@/lib/integrations/game-platform/challenge-breakdown';
 
 function toIsoOrNull(value?: string | null) {
   if (!value) return null;
@@ -122,7 +121,6 @@ export async function GET(request: NextRequest) {
       .filter((id): id is string => Boolean(id));
 
     let challengeSolves: any[] = [];
-    let challengeBreakdown = { odl: 0, ctf: 0, total: 0 };
     let flashCtfEvents: any[] = [];
     let syncStates: any[] = [];
     let stats: any[] = [];
@@ -172,13 +170,6 @@ export async function GET(request: NextRequest) {
         } else {
           challengeSolves = solvesData || [];
         }
-
-        const breakdownSummary = summarizeChallengeBreakdown(challengeSolves);
-        challengeBreakdown = {
-          odl: breakdownSummary.odl,
-          ctf: breakdownSummary.ctf,
-          total: breakdownSummary.total,
-        };
 
         const { data: categoryData, error: categoryError } = await statsClient
           .rpc('get_dashboard_category_totals', { p_synced_user_ids: gamePlatformIds });
@@ -910,8 +901,6 @@ export async function GET(request: NextRequest) {
         }).length,
         activeRecently,
         totalChallenges,
-        totalOdlChallenges: challengeBreakdown.odl,
-        totalCtfChallenges: challengeBreakdown.ctf,
         monthlyCtfParticipants: monthlyCtfParticipantsFromEvents,
         lastSyncedAt: lastSyncRunAt ?? lastSyncedAt,
       },

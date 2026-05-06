@@ -86,8 +86,6 @@ interface DashboardData {
     syncedCompetitors: number;
     activeRecently: number;
     totalChallenges: number;
-    totalOdlChallenges: number;
-    totalCtfChallenges: number;
     monthlyCtfParticipants: number;
     lastSyncedAt: string | null;
   };
@@ -120,7 +118,6 @@ interface StatCard {
   value: string;
   hint?: string;
   accent: string;
-  secondary?: { label: string; value: string };
 }
 
 const rosterStatusStyles: Record<TeamMemberRosterEntry['status'], string> = {
@@ -236,13 +233,9 @@ export default function GamePlatformDashboard() {
         accent: 'from-emerald-500/40 via-emerald-400/10 to-transparent',
       },
       {
-        label: 'Challenges Solved',
-        value: formatNumber(dashboard.global.totalOdlChallenges),
+        label: 'Total Challenges Solved',
+        value: formatNumber(dashboard.global.totalChallenges),
         accent: 'from-fuchsia-500/40 via-fuchsia-400/10 to-transparent',
-        secondary: {
-          label: 'CTF Challenges',
-          value: formatNumber(dashboard.global.totalCtfChallenges),
-        },
       },
       {
         label: `CTF Participants (${rangeLabel})`,
@@ -763,12 +756,6 @@ export default function GamePlatformDashboard() {
               <div className={cn('relative p-4 space-y-3 bg-meta-card/80 backdrop-blur', 'bg-gradient-to-br', stat.accent)}>
                 <div className="text-xs uppercase tracking-wide text-meta-muted">{stat.label}</div>
                 <div className="text-3xl font-semibold text-meta-light">{stat.value}</div>
-                {stat.secondary && (
-                  <div className="space-y-1 border-t border-meta-border/60 pt-2">
-                    <div className="text-xs uppercase tracking-wide text-meta-muted">{stat.secondary.label}</div>
-                    <div className="text-2xl font-semibold text-meta-light">{stat.secondary.value}</div>
-                  </div>
-                )}
                 {stat.hint && <div className="text-xs text-meta-muted">{stat.hint}</div>}
                 <div className="flex gap-1">
                   {Array.from({ length: 7 }).map((_, idx) => (

@@ -639,6 +639,12 @@ git commit -m "docs: SOT updates for analytics non-CTF/CTF split + activity char
 
 ---
 
+## Final Review — ✅ READY TO MERGE
+
+All 6 tasks passed orchestrator audit + spec/quality/audit reviewer gates. Final whole-branch review verdict: READY TO MERGE. Post-review cleanup commit `cbf2d576` removed the orphaned inline `classifyPacificActivity`/`pacificActivityFormatter`/`ActivityBucket` from `page.tsx` (completing the extraction). Accepted minor deviation: the RPC is plain `LANGUAGE sql` (not `SECURITY DEFINER` as the historical spec suggested) — deliberately matching the established repo convention (`get_dashboard_category_totals`); only caller is the service-role client, so functionally equivalent. The living SOT doc reflects the actual implementation.
+
+Branch commits: f4978c95, 07eb7e06, 936d9381, 01064580, ba06f45c, 410a355e, cbf2d576 (+ plan/spec tracking commits). tsc: only the 4 known pre-existing supabase/competitor-cast errors. Helper tests 10/10.
+
 ## Execution Grouping / Handoff Notes
 
 - Tasks 1–3 are independent and can be done in any order (pure helper, RPC migration, chart component).

@@ -5,10 +5,10 @@ import { CoachSummaryTable, CoachSummaryRow } from '@/components/dashboard/admin
 import { TeamSummaryTable, TeamSummaryRow } from '@/components/dashboard/admin/team-summary-table'
 import { SchoolDistributionMap } from '@/components/dashboard/admin/school-distribution-map'
 import { AnalyticsSharePanel } from '@/components/dashboard/admin/analytics-share-panel'
+import { summarizeActivityBreakdown } from '@/lib/analytics/activity-buckets'
+import { ChallengeActivityChart, ChallengeActivityPoint } from '@/components/dashboard/admin/challenge-activity-chart'
 
 export const dynamic = 'force-dynamic'
-
-type ActivityBucket = 'school_day' | 'weekday_before_school' | 'weekday_after_school' | 'weekend' | 'unknown'
 
 interface MetricRow {
   label: string
@@ -36,12 +36,6 @@ interface ServiceSupabaseLike {
 }
 
 const numberFormatter = new Intl.NumberFormat('en-US')
-const pacificActivityFormatter = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/Los_Angeles',
-  weekday: 'short',
-  hour: '2-digit',
-  hourCycle: 'h23',
-})
 
 function formatNumber(value: number) {
   return numberFormatter.format(value)
@@ -140,26 +134,6 @@ function normalizeChallengeCategoryLabel(raw?: string | null) {
     default:
       return cleaned.replace(/\b\w/g, (match) => match.toUpperCase())
   }
-}
-
-function classifyPacificActivity(timestamp?: string | null): ActivityBucket {
-  if (!timestamp) return 'unknown'
-
-  const date = new Date(timestamp)
-  if (Number.isNaN(date.getTime())) return 'unknown'
-
-  const parts = pacificActivityFormatter.formatToParts(date)
-  const weekday = parts.find((part) => part.type === 'weekday')?.value
-  const hourPart = parts.find((part) => part.type === 'hour')?.value
-  const hour = hourPart ? Number.parseInt(hourPart, 10) : Number.NaN
-
-  if (!weekday || Number.isNaN(hour)) return 'unknown'
-
-  const isWeekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)
-  if (!isWeekday) return 'weekend'
-  if (hour < 9) return 'weekday_before_school'
-  if (hour >= 15) return 'weekday_after_school'
-  return 'school_day'
 }
 
 function MetricBarList({
@@ -601,6 +575,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
     challenge_category: string | null
     challenge_points: number | null
     solved_at: string | null
+    source: string | null
   }> = []
   let platformFlashEvents: Array<{
     synced_user_id: string
@@ -613,7 +588,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
       fetchAllRowsByIds<typeof platformChallengeSolves[number]>({
         client: serviceSupabase as ServiceSupabaseLike,
         table: 'game_platform_challenge_solves',
-        columns: 'synced_user_id, challenge_category, challenge_points, solved_at',
+        columns: 'synced_user_id, challenge_category, challenge_points, solved_at, source',
         idColumn: 'synced_user_id',
         ids: syncedUserIds,
       }),
@@ -638,29 +613,6 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   const solveCountBySyncedUserId = new Map<string, number>()
   const topicCounts = new Map<string, number>()
 
-  const activityCounts = {
-    total: 0,
-    schoolDay: 0,
-    outsideSchool: 0,
-    weekdayBeforeSchool: 0,
-    weekdayAfterSchool: 0,
-    weekend: 0,
-  }
-
-  const recordActivity = (timestamp?: string | null) => {
-    const bucket = classifyPacificActivity(timestamp)
-    if (bucket === 'unknown') return
-    activityCounts.total += 1
-    if (bucket === 'school_day') {
-      activityCounts.schoolDay += 1
-      return
-    }
-    activityCounts.outsideSchool += 1
-    if (bucket === 'weekday_before_school') activityCounts.weekdayBeforeSchool += 1
-    if (bucket === 'weekday_after_school') activityCounts.weekdayAfterSchool += 1
-    if (bucket === 'weekend') activityCounts.weekend += 1
-  }
-
   for (const competitor of competitorScope) {
     divisionSolveTotals.set(competitor.divisionLabel, divisionSolveTotals.get(competitor.divisionLabel) ?? 0)
     ctfEntriesByDivision.set(competitor.divisionLabel, ctfEntriesByDivision.get(competitor.divisionLabel) ?? 0)
@@ -683,11 +635,9 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
     )
     const topic = normalizeChallengeCategoryLabel(solve.challenge_category)
     topicCounts.set(topic, (topicCounts.get(topic) ?? 0) + 1)
-    recordActivity(solve.solved_at)
   }
 
   for (const event of platformFlashEvents) {
-    recordActivity(event.started_at)
     const scope = scopeBySyncedUserId.get(event.synced_user_id)
     if (!scope) continue
     ctfEntriesByDivision.set(scope.divisionLabel, (ctfEntriesByDivision.get(scope.divisionLabel) ?? 0) + 1)
@@ -696,13 +646,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
     ctfParticipantsByDivision.set(scope.divisionLabel, participants)
   }
 
-  let totalChallengesSolved = 0
-  let linkedPlatformCompetitors = 0
-
   for (const competitor of competitorScope) {
-    if (competitor.syncedUserId) {
-      linkedPlatformCompetitors += 1
-    }
     const challengesSolved = statsByCompetitorId.get(competitor.competitorId)
       ?? (competitor.syncedUserId ? solveCountBySyncedUserId.get(competitor.syncedUserId) : undefined)
       ?? 0
@@ -710,13 +654,23 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
       competitor.divisionLabel,
       (divisionSolveTotals.get(competitor.divisionLabel) ?? 0) + challengesSolved,
     )
-    totalChallengesSolved += challengesSolved
   }
 
-  const outsideSchoolPct = activityCounts.total === 0
-    ? 0
-    : Math.round((activityCounts.outsideSchool / activityCounts.total) * 100)
-  const recordedActivityCount = activityCounts.total
+  // Non-CTF vs CTF split from the per-solve table (coach-scoped, source-grouped).
+  const nonCtfSolves = platformChallengeSolves.filter((s) => s.source !== 'flash_ctf')
+  const ctfSolves = platformChallengeSolves.filter((s) => s.source === 'flash_ctf')
+
+  const nonCtfTotal = nonCtfSolves.length
+  const ctfTotal = ctfSolves.length
+
+  const nonCtfActivity = summarizeActivityBreakdown(nonCtfSolves.map((s) => s.solved_at))
+  const ctfActivity = summarizeActivityBreakdown(ctfSolves.map((s) => s.solved_at))
+
+  // Challenges solved by students who have never entered a CTF.
+  const ctfParticipantSyncedIds = new Set(ctfSolves.map((s) => s.synced_user_id))
+  const nonCtfSolvesByNonParticipants = nonCtfSolves.filter(
+    (s) => !ctfParticipantSyncedIds.has(s.synced_user_id),
+  ).length
 
   const ctfParticipationRows: MetricRow[] = Array.from(ctfParticipantsByDivision.entries())
     .map(([label, participants]) => {
@@ -843,6 +797,32 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
       total_challenge_points: teamPoints,
     })
   }
+
+  // Org-wide challenge activity (Nov 2025 – May 2026). Ignores the coach filter by design.
+  const ACTIVITY_MONTHS: Array<{ key: string; label: string }> = [
+    { key: '2025-11', label: 'Nov 2025' },
+    { key: '2025-12', label: 'Dec 2025' },
+    { key: '2026-01', label: 'Jan 2026' },
+    { key: '2026-02', label: 'Feb 2026' },
+    { key: '2026-03', label: 'Mar 2026' },
+    { key: '2026-04', label: 'Apr 2026' },
+    { key: '2026-05', label: 'May 2026' },
+  ]
+  const { data: activityRpcRows } = await serviceSupabase.rpc('get_analytics_challenge_activity_monthly')
+  const activityByKey = new Map<string, { nonCtf: number; ctf: number }>()
+  for (const m of ACTIVITY_MONTHS) activityByKey.set(m.key, { nonCtf: 0, ctf: 0 })
+  for (const row of (activityRpcRows || []) as Array<{ month: string; source: string; solves: number }>) {
+    const key = String(row.month).slice(0, 7) // 'YYYY-MM-DD' -> 'YYYY-MM'
+    const bucket = activityByKey.get(key)
+    if (!bucket) continue
+    if (row.source === 'flash_ctf') bucket.ctf += Number(row.solves) || 0
+    else bucket.nonCtf += Number(row.solves) || 0
+  }
+  const challengeActivityData: ChallengeActivityPoint[] = ACTIVITY_MONTHS.map((m) => ({
+    month: m.label,
+    nonCtf: activityByKey.get(m.key)?.nonCtf ?? 0,
+    ctf: activityByKey.get(m.key)?.ctf ?? 0,
+  }))
 
   return (
     <div className="relative p-6">
@@ -994,51 +974,47 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
             <div className="text-sm text-meta-muted">Game Platform</div>
             <div className="text-meta-light text-lg font-semibold">Challenge & Activity Analytics</div>
             <p className="mt-1 text-sm text-meta-muted">
-              Total challenges solved comes from synced aggregate stats. School-day activity is calculated from timestamped solve and Flash CTF records in Pacific time, Monday-Friday, 9am-3pm.
+              Challenges solved are split into non-CTF (ODL) and Flash CTF from timestamped solve records. Each group&apos;s outside-school-day percentage uses that group&apos;s own solve count as the denominator (Pacific time, Monday–Friday, 9am–3pm is &ldquo;school day&rdquo;).
             </p>
           </div>
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <div className="rounded border border-meta-border/50 bg-meta-dark/50 p-4">
-              <div className="text-sm text-meta-muted">Total Challenges Solved</div>
-              <div className="mt-2 text-4xl font-extrabold tracking-wider text-meta-light">{formatNumber(totalChallengesSolved)}</div>
-              <div className="mt-2 text-sm text-meta-muted">
-                Across {formatNumber(linkedPlatformCompetitors)} linked competitors in the current scope.
-              </div>
-            </div>
-
-            <div className="rounded border border-meta-border/50 bg-meta-dark/50 p-4">
-              <div className="text-sm text-meta-muted">Outside School Day Activity</div>
-              <div className="mt-2 flex items-end gap-3">
-                <div className="text-4xl font-extrabold tracking-wider text-meta-light">{formatNumber(activityCounts.outsideSchool)}</div>
-                <div className="pb-1 text-sm text-meta-muted">
-                  {outsideSchoolPct}% of {formatNumber(recordedActivityCount)} timestamped events
+            {([
+              { title: 'Non-CTF Challenges Solved', total: nonCtfTotal, act: nonCtfActivity },
+              { title: 'CTF Challenges Solved', total: ctfTotal, act: ctfActivity },
+            ] as const).map((group) => (
+              <div key={group.title} className="rounded border border-meta-border/50 bg-meta-dark/50 p-4">
+                <div className="text-sm text-meta-muted">{group.title}</div>
+                <div className="mt-2 text-4xl font-extrabold tracking-wider text-meta-light">{formatNumber(group.total)}</div>
+                <div className="mt-4 text-sm text-meta-muted">Outside School Day</div>
+                <div className="mt-1 flex items-end gap-3">
+                  <div className="text-2xl font-bold tracking-wide text-meta-light">{formatNumber(group.act.outsideSchool)}</div>
+                  <div className="pb-1 text-xs text-meta-muted">
+                    {group.act.outsidePct}% of {formatNumber(group.act.total)} timestamped solves
+                  </div>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-meta-dark">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-300"
+                    style={{ width: `${group.act.outsidePct}%` }}
+                  />
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-meta-muted">
+                  <div className="rounded border border-meta-border/40 bg-meta-card/40 p-2">
+                    <div>Before 9am</div>
+                    <div className="mt-1 text-sm font-semibold text-meta-light">{formatNumber(group.act.before9)}</div>
+                  </div>
+                  <div className="rounded border border-meta-border/40 bg-meta-card/40 p-2">
+                    <div>After 3pm</div>
+                    <div className="mt-1 text-sm font-semibold text-meta-light">{formatNumber(group.act.after3)}</div>
+                  </div>
+                  <div className="rounded border border-meta-border/40 bg-meta-card/40 p-2">
+                    <div>Weekend</div>
+                    <div className="mt-1 text-sm font-semibold text-meta-light">{formatNumber(group.act.weekend)}</div>
+                  </div>
                 </div>
               </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-meta-dark">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-300"
-                  style={{ width: `${outsideSchoolPct}%` }}
-                />
-              </div>
-              <div className="mt-2 text-xs text-meta-muted">
-                Separate denominator from total challenges solved.
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-meta-muted">
-                <div className="rounded border border-meta-border/40 bg-meta-card/40 p-2">
-                  <div>Before 9am</div>
-                  <div className="mt-1 text-sm font-semibold text-meta-light">{formatNumber(activityCounts.weekdayBeforeSchool)}</div>
-                </div>
-                <div className="rounded border border-meta-border/40 bg-meta-card/40 p-2">
-                  <div>After 3pm</div>
-                  <div className="mt-1 text-sm font-semibold text-meta-light">{formatNumber(activityCounts.weekdayAfterSchool)}</div>
-                </div>
-                <div className="rounded border border-meta-border/40 bg-meta-card/40 p-2">
-                  <div>Weekend</div>
-                  <div className="mt-1 text-sm font-semibold text-meta-light">{formatNumber(activityCounts.weekend)}</div>
-                </div>
-              </div>
-            </div>
+            ))}
 
             <div className="rounded border border-meta-border/50 bg-meta-dark/50 p-4">
               <div className="text-sm text-meta-muted">Flash CTF Participation</div>
@@ -1051,6 +1027,13 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
               <div className="mt-3 text-sm text-meta-muted">
                 {formatNumber(platformFlashEvents.length)} total event {platformFlashEvents.length === 1 ? 'entry' : 'entries'}
               </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded border border-meta-border/50 bg-meta-dark/30 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm text-meta-muted">Challenges solved by students who have never entered a CTF</div>
+              <div className="text-2xl font-bold tracking-wide text-meta-light">{formatNumber(nonCtfSolvesByNonParticipants)}</div>
             </div>
           </div>
 
@@ -1090,6 +1073,17 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
               rows={topicClusterRows}
               emptyMessage="No challenge solve topics found for the current scope."
             />
+          </div>
+
+          <div className="mt-6 rounded border border-meta-border/50 bg-meta-dark/30 p-4">
+            <div className="mb-3">
+              <div className="text-sm text-meta-muted">Trend</div>
+              <div className="text-base font-semibold text-meta-light">Challenge Activity Over Time (Nov 2025 – May 2026)</div>
+              <p className="mt-1 text-sm text-meta-muted">
+                Org-wide non-CTF vs Flash CTF solves by month. This chart always reflects all coaches and ignores the coach filter above.
+              </p>
+            </div>
+            <ChallengeActivityChart data={challengeActivityData} />
           </div>
         </div>
       </div>

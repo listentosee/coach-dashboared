@@ -25,7 +25,7 @@
 
 ---
 
-## Task 1: Extract the activity-bucket helper (pure, TDD)
+## Task 1: Extract the activity-bucket helper (pure, TDD) — ✅ DONE _(commit: f4978c95; +DST/boundary hardening tests, 10/10 pass)_
 
 The page currently inlines Pacific-time classification (`classifyPacificActivity`, `page.tsx:145-163`, plus formatter `page.tsx:39-44` and the `ActivityBucket` type `page.tsx:11`) and a combined accumulator block (`page.tsx:641-697`). We extract the classifier plus a new pure summarizer so it can run three times (non-CTF, CTF, and to replace the old combined card).
 

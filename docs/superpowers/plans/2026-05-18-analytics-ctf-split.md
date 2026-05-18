@@ -594,7 +594,7 @@ git commit -m "feat(analytics): render split tiles, no-CTF-student line, activit
 
 ---
 
-## Task 6: Source-of-truth documentation updates
+## Task 6: Source-of-truth documentation updates — ✅ DONE _(commit: 410a355e; all doc claims grep-verified)_
 
 **Why:** The preceding tasks change the admin analytics dashboard's behavior (challenge totals split by source, per-group school-day denominators, a new no-CTF-student metric, a new RPC, a new chart component). `docs/source-of-truth/features/analytics-implementation.md` is the canonical SOT doc for this surface and drifts the moment code lands without it.
 

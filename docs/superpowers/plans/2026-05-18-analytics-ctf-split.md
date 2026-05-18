@@ -339,7 +339,7 @@ git commit -m "feat(analytics): challenge activity dual-line chart component"
 
 ---
 
-## Task 4: Wire the page — add `source`, compute per-group splits + #3 line
+## Task 4: Wire the page — add `source`, compute per-group splits + #3 line — ✅ DONE _(commit: 01064580; additive only, no new TS errors)_
 
 Reuse the existing paginated solves fetch. `platformChallengeSolves` is declared at `app/dashboard/admin-tools/analytics/page.tsx:599-604` and fetched at `page.tsx:611-631` selecting `'synced_user_id, challenge_category, challenge_points, solved_at'`.
 

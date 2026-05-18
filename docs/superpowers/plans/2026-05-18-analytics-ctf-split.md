@@ -415,7 +415,7 @@ git commit -m "feat(analytics): compute non-CTF/CTF split + no-CTF-student line"
 
 ---
 
-## Task 5: Wire the page — fetch chart data + render the new UI
+## Task 5: Wire the page — fetch chart data + render the new UI — ✅ DONE _(commit: ba06f45c; next build compiles, dead code removed, live RPC verified)_
 
 **Files:**
 - Modify: `app/dashboard/admin-tools/analytics/page.tsx`

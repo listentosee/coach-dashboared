@@ -192,7 +192,7 @@ git commit -m "feat(analytics): extract pure activity-bucket helper"
 
 ---
 
-## Task 2: Add the monthly activity aggregation RPC
+## Task 2: Add the monthly activity aggregation RPC — ✅ DONE _(commit: 07eb7e06; applied to cmcc-coach-dashboard, both grants verified, 11 rows returned)_
 
 Org-wide, ignores the coach filter. Mirrors the established repo pattern in `supabase/migrations/20260204000000_dashboard_category_totals.sql` (`LANGUAGE sql`, granted to `authenticated` + `service_role`; the page calls it with the service-role client which bypasses RLS).
 

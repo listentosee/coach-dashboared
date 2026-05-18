@@ -5,6 +5,8 @@ import { CoachSummaryTable, CoachSummaryRow } from '@/components/dashboard/admin
 import { TeamSummaryTable, TeamSummaryRow } from '@/components/dashboard/admin/team-summary-table'
 import { SchoolDistributionMap } from '@/components/dashboard/admin/school-distribution-map'
 import { AnalyticsSharePanel } from '@/components/dashboard/admin/analytics-share-panel'
+import { summarizeActivityBreakdown } from '@/lib/analytics/activity-buckets'
+import { ChallengeActivityChart, ChallengeActivityPoint } from '@/components/dashboard/admin/challenge-activity-chart'
 
 export const dynamic = 'force-dynamic'
 
@@ -601,6 +603,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
     challenge_category: string | null
     challenge_points: number | null
     solved_at: string | null
+    source: string | null
   }> = []
   let platformFlashEvents: Array<{
     synced_user_id: string
@@ -613,7 +616,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
       fetchAllRowsByIds<typeof platformChallengeSolves[number]>({
         client: serviceSupabase as ServiceSupabaseLike,
         table: 'game_platform_challenge_solves',
-        columns: 'synced_user_id, challenge_category, challenge_points, solved_at',
+        columns: 'synced_user_id, challenge_category, challenge_points, solved_at, source',
         idColumn: 'synced_user_id',
         ids: syncedUserIds,
       }),
@@ -712,6 +715,22 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
     )
     totalChallengesSolved += challengesSolved
   }
+
+  // Non-CTF vs CTF split from the per-solve table (coach-scoped, source-grouped).
+  const nonCtfSolves = platformChallengeSolves.filter((s) => s.source !== 'flash_ctf')
+  const ctfSolves = platformChallengeSolves.filter((s) => s.source === 'flash_ctf')
+
+  const nonCtfTotal = nonCtfSolves.length
+  const ctfTotal = ctfSolves.length
+
+  const nonCtfActivity = summarizeActivityBreakdown(nonCtfSolves.map((s) => s.solved_at))
+  const ctfActivity = summarizeActivityBreakdown(ctfSolves.map((s) => s.solved_at))
+
+  // Challenges solved by students who have never entered a CTF.
+  const ctfParticipantSyncedIds = new Set(ctfSolves.map((s) => s.synced_user_id))
+  const nonCtfSolvesByNonParticipants = nonCtfSolves.filter(
+    (s) => !ctfParticipantSyncedIds.has(s.synced_user_id),
+  ).length
 
   const outsideSchoolPct = activityCounts.total === 0
     ? 0

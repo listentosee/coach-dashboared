@@ -257,7 +257,7 @@ git commit -m "feat(analytics): monthly challenge-activity aggregation RPC"
 
 ---
 
-## Task 3: Build the activity line chart client component
+## Task 3: Build the activity line chart client component — ✅ DONE _(commit: 936d9381; typecheck clean, dataKeys verified)_
 
 **Files:**
 - Create: `components/dashboard/admin/challenge-activity-chart.tsx`

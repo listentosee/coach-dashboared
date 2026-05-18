@@ -85,8 +85,9 @@ analytics_challenge_activity_monthly()
 ```
 
 New migration file `supabase/migrations/<ts>_analytics_challenge_activity_monthly.sql`
-(kept for record; user applies SQL manually in the Supabase SQL editor per the
-project's deployment process). The page calls it with the service-role client,
+(kept for record), applied via the Supabase MCP connector tool
+(`apply_migration`) rather than manual SQL-editor entry. The page calls it
+with the service-role client,
 shapes the rows into 7 month buckets (missing months → 0 for both lines), and
 passes them to a new client component.
 

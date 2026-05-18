@@ -10,8 +10,6 @@ import { ChallengeActivityChart, ChallengeActivityPoint } from '@/components/das
 
 export const dynamic = 'force-dynamic'
 
-type ActivityBucket = 'school_day' | 'weekday_before_school' | 'weekday_after_school' | 'weekend' | 'unknown'
-
 interface MetricRow {
   label: string
   value: number
@@ -38,12 +36,6 @@ interface ServiceSupabaseLike {
 }
 
 const numberFormatter = new Intl.NumberFormat('en-US')
-const pacificActivityFormatter = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/Los_Angeles',
-  weekday: 'short',
-  hour: '2-digit',
-  hourCycle: 'h23',
-})
 
 function formatNumber(value: number) {
   return numberFormatter.format(value)
@@ -142,26 +134,6 @@ function normalizeChallengeCategoryLabel(raw?: string | null) {
     default:
       return cleaned.replace(/\b\w/g, (match) => match.toUpperCase())
   }
-}
-
-function classifyPacificActivity(timestamp?: string | null): ActivityBucket {
-  if (!timestamp) return 'unknown'
-
-  const date = new Date(timestamp)
-  if (Number.isNaN(date.getTime())) return 'unknown'
-
-  const parts = pacificActivityFormatter.formatToParts(date)
-  const weekday = parts.find((part) => part.type === 'weekday')?.value
-  const hourPart = parts.find((part) => part.type === 'hour')?.value
-  const hour = hourPart ? Number.parseInt(hourPart, 10) : Number.NaN
-
-  if (!weekday || Number.isNaN(hour)) return 'unknown'
-
-  const isWeekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)
-  if (!isWeekday) return 'weekend'
-  if (hour < 9) return 'weekday_before_school'
-  if (hour >= 15) return 'weekday_after_school'
-  return 'school_day'
 }
 
 function MetricBarList({

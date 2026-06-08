@@ -12,6 +12,7 @@ import {
   updateGamePlatformTeam,
 } from './repository';
 import type { GamePlatformSyncStatus } from './repository';
+import { dedupeSolveRowsByChallengeSolveId } from './dedupe';
 
 export type AnySupabaseClient = SupabaseClient<any, any, any>;
 
@@ -1462,19 +1463,26 @@ export async function syncCompetitorGameStats({
     })
     .filter(Boolean) as any[];
 
-  if (!ctfOnly && odlSolveRows.length) {
+  // MetaCTF challenge_solve_id collides across events, so a single payload can
+  // contain the same (synced_user_id, challenge_solve_id) twice. De-dupe before
+  // upserting or Postgres rejects the batch ("ON CONFLICT DO UPDATE command
+  // cannot affect row a second time"). See ./dedupe.
+  const dedupedOdlSolveRows = dedupeSolveRowsByChallengeSolveId(odlSolveRows);
+  const dedupedFlashSolveRows = dedupeSolveRowsByChallengeSolveId(flashSolveRows);
+
+  if (!ctfOnly && dedupedOdlSolveRows.length) {
     const { error: upsertOdlError } = await statsClient
       .from('game_platform_challenge_solves')
-      .upsert(odlSolveRows, { onConflict: 'synced_user_id,challenge_solve_id' });
+      .upsert(dedupedOdlSolveRows, { onConflict: 'synced_user_id,challenge_solve_id' });
     if (upsertOdlError) {
       throw new Error(`Failed to upsert ODL challenge solves: ${upsertOdlError.message}`);
     }
   }
 
-  if (flashSolveRows.length) {
+  if (dedupedFlashSolveRows.length) {
     const { error: upsertFlashSolveError } = await statsClient
       .from('game_platform_challenge_solves')
-      .upsert(flashSolveRows, { onConflict: 'synced_user_id,challenge_solve_id' });
+      .upsert(dedupedFlashSolveRows, { onConflict: 'synced_user_id,challenge_solve_id' });
     if (upsertFlashSolveError) {
       throw new Error(`Failed to upsert Flash CTF challenge solves: ${upsertFlashSolveError.message}`);
     }
@@ -2176,18 +2184,27 @@ export async function syncAllCompetitorGameStats({
   for (const competitor of competitors || []) {
     // Sync Flash CTF if: new event detected globally, or this specific competitor is missing events
     const shouldSyncFlash = hasNewFlashCtfEvent || competitorsNeedingFlashSync.has(competitor.id);
-    const result = await syncCompetitorGameStats({
-      supabase,
-      client,
-      competitorId: competitor.id,
-      dryRun,
-      logger,
-      globalAfterTimeUnix: globalAfterTime,
-      ctfOnly,
-      forceFlashCtfSync,
-      skipFlashCtfSync: !shouldSyncFlash,
-    });
-    results.push(result);
+    // Isolate per-competitor failures: a single competitor throwing must not
+    // abort the whole wave, or the run never completes and the wave cursor
+    // never advances — wedging every future run on the same poisoned batch.
+    try {
+      const result = await syncCompetitorGameStats({
+        supabase,
+        client,
+        competitorId: competitor.id,
+        dryRun,
+        logger,
+        globalAfterTimeUnix: globalAfterTime,
+        ctfOnly,
+        forceFlashCtfSync,
+        skipFlashCtfSync: !shouldSyncFlash,
+      });
+      results.push(result);
+    } catch (err: any) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger?.error?.(`Stats sync failed for competitor ${competitor.id}`, { error: message });
+      results.push({ competitorId: competitor.id, status: 'error', message });
+    }
   }
 
   const synced = results.filter((r) => r.status === 'synced').length;

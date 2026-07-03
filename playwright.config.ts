@@ -40,6 +40,11 @@ export default defineConfig({
       testMatch: /messaging\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'work-based-learning-hours',
+      testMatch: /work-based-learning-hours\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
 
   reporter: [

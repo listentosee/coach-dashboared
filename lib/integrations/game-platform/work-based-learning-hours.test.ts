@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  groupWblRows, summarizeWbl, divisionLabel,
+  groupWblRows, summarizeWbl, divisionLabel, segmentLabel,
   type WblRpcRow, type RosterEntry,
 } from './work-based-learning-hours';
 
@@ -65,5 +65,12 @@ describe('divisionLabel', () => {
     expect(divisionLabel('high_school')).toBe('High School');
     expect(divisionLabel('college')).toBe('College');
     expect(divisionLabel(null)).toBe('Unassigned');
+  });
+});
+
+describe('segmentLabel', () => {
+  it('surfaces On-Demand as ODL and leaves Flash CTF unchanged', () => {
+    expect(segmentLabel('On-Demand')).toBe('ODL');
+    expect(segmentLabel('Flash CTF')).toBe('Flash CTF');
   });
 });

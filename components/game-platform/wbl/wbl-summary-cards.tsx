@@ -7,7 +7,7 @@ const h = (m: number) => (Math.round((m / 60) * 10) / 10).toFixed(1);
 export function WblSummaryCards({ summary }: { summary: WblSummary }) {
   const items = [
     { label: 'Total Hours', value: h(summary.totalMinutes) },
-    { label: 'On-Demand Hours', value: h(summary.odlMinutes) },
+    { label: 'ODL Hours', value: h(summary.odlMinutes) },
     { label: 'Flash CTF Hours', value: h(summary.ctfMinutes) },
     { label: 'Avg Hours / Student', value: h(summary.avgMinutes) },
     { label: 'Students', value: String(summary.studentCount) },

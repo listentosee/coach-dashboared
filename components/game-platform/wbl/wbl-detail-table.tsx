@@ -2,9 +2,13 @@
 import { Fragment, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { divisionLabel, type WblStudent } from '@/lib/integrations/game-platform/work-based-learning-hours';
+import { divisionLabel, segmentLabel, type WblStudent } from '@/lib/integrations/game-platform/work-based-learning-hours';
 
 const h = (m: number) => (Math.round((m / 60) * 10) / 10).toFixed(1);
+
+// Tight vertical padding (overrides the default roomy p-4 on TableCell).
+const TOTAL_CELL = 'py-2';
+const DETAIL_CELL = 'py-1';
 
 export function WblDetailTable({ students }: { students: WblStudent[] }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -59,7 +63,7 @@ export function WblDetailTable({ students }: { students: WblStudent[] }) {
                     : undefined
                 }
               >
-                <TableCell>
+                <TableCell className={TOTAL_CELL}>
                   <span className="inline-flex items-center gap-1.5">
                     {hasActivity ? (
                       isOpen ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />
@@ -69,29 +73,29 @@ export function WblDetailTable({ students }: { students: WblStudent[] }) {
                     {s.name}
                   </span>
                 </TableCell>
-                <TableCell>{divisionLabel(s.division)}</TableCell>
-                <TableCell />
-                <TableCell className="text-slate-400">
+                <TableCell className={TOTAL_CELL}>{divisionLabel(s.division)}</TableCell>
+                <TableCell className={TOTAL_CELL} />
+                <TableCell className={`${TOTAL_CELL} text-slate-400`}>
                   {hasActivity
                     ? `Total — all activity (${rows.length} ${rows.length === 1 ? 'item' : 'items'})`
                     : 'No activity this period'}
                 </TableCell>
-                <TableCell className="text-right">{rows.reduce((n, r) => n + r.solves, 0)}</TableCell>
-                <TableCell />
-                <TableCell className="text-right">{h(s.totalMinutes)}</TableCell>
+                <TableCell className={`${TOTAL_CELL} text-right`}>{rows.reduce((n, r) => n + r.solves, 0)}</TableCell>
+                <TableCell className={TOTAL_CELL} />
+                <TableCell className={`${TOTAL_CELL} text-right`}>{h(s.totalMinutes)}</TableCell>
               </TableRow>
 
-              {/* Collapsible detail rows */}
+              {/* Collapsible detail rows (tight) */}
               {isOpen &&
                 rows.map((r, i) => (
                   <TableRow key={`${s.competitorId}-${i}`} className="bg-slate-900/40">
-                    <TableCell />
-                    <TableCell />
-                    <TableCell className="pl-6 text-slate-300">{r.segment}</TableCell>
-                    <TableCell className="text-slate-300">{r.activity}</TableCell>
-                    <TableCell className="text-right text-slate-300">{r.solves}</TableCell>
-                    <TableCell className="text-right text-slate-300">{r.sessions}</TableCell>
-                    <TableCell className="text-right text-slate-300">{h(r.minutes)}</TableCell>
+                    <TableCell className={DETAIL_CELL} />
+                    <TableCell className={DETAIL_CELL} />
+                    <TableCell className={`${DETAIL_CELL} pl-6 text-slate-300`}>{segmentLabel(r.segment)}</TableCell>
+                    <TableCell className={`${DETAIL_CELL} text-slate-300`}>{r.activity}</TableCell>
+                    <TableCell className={`${DETAIL_CELL} text-right text-slate-300`}>{r.solves}</TableCell>
+                    <TableCell className={`${DETAIL_CELL} text-right text-slate-300`}>{r.sessions}</TableCell>
+                    <TableCell className={`${DETAIL_CELL} text-right text-slate-300`}>{h(r.minutes)}</TableCell>
                   </TableRow>
                 ))}
             </Fragment>

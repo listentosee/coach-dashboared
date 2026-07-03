@@ -693,6 +693,8 @@ git commit -m "feat(wbl): shared report loader (roster resolution + RPC orchestr
 
 ## Task 5: Excel workbook builder (`wbl-workbook.ts`)
 
+> ✅ **Complete** — 3/3 tests pass (4 sheets incl. Methodology with exact params; zero-activity student on Detail). Implemented directly after a process restart killed the T5 background agent.
+
 **Files:**
 - Create: `lib/reports/wbl-workbook.ts`
 - Test: `lib/reports/wbl-workbook.test.ts`
@@ -901,6 +903,8 @@ git commit -m "feat(wbl): ExcelJS workbook builder with required Methodology she
 
 ## Task 6: Online JSON API route
 
+> ✅ **Complete** — commit `efa553ab`. Imports verified present in `@/lib/supabase/server` + `@/lib/utils/admin-check`; typecheck clean on the route.
+
 **Files:**
 - Create: `app/api/coach-reports/work-based-learning-hours/route.ts`
 
@@ -963,6 +967,8 @@ git commit -m "feat(wbl): coach-scoped JSON report route"
 ---
 
 ## Task 7: Excel export API route
+
+> ✅ **Complete** — commit `1dffc311`. Reuses `loadWblReport` + `buildWblWorkbook`; attachment headers per repo precedent; typecheck clean.
 
 **Files:**
 - Create: `app/api/coach-reports/work-based-learning-hours/export/route.ts`

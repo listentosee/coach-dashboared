@@ -47,6 +47,8 @@
 
 ## Task 1: Period presets (`wbl-periods.ts`)
 
+> ✅ **Complete** — commit `622b4061`. Verified: 5/5 tests pass in isolation; exact exports + ISO bounds; pre-existing unrelated suite failures (mailer) noted, out of scope.
+
 **Files:**
 - Create: `lib/reports/wbl-periods.ts`
 - Test: `lib/reports/wbl-periods.test.ts`

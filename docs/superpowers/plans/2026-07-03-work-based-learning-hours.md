@@ -1048,6 +1048,8 @@ git commit -m "feat(wbl): coach-scoped Excel export route"
 
 ## Task 8: UI — page + components
 
+> ✅ **Complete** — commit `e4716170`. All shadcn deps present (select/tabs/table/card/button); ActingAsBanner default-imported; lint + typecheck clean. Division tabs + period select are the ONLY filters (no county).
+
 **Files:**
 - Create: `components/game-platform/wbl/wbl-summary-cards.tsx`
 - Create: `components/game-platform/wbl/wbl-detail-table.tsx`
@@ -1299,6 +1301,8 @@ git commit -m "feat(wbl): Coach Tools page, report view, and nav link"
 ---
 
 ## Task 9: E2E smoke test
+
+> ✅ **Complete (with repo caveat)** — Playwright uses per-spec `projects` with explicit `testMatch` (no catch-all), so I added a `work-based-learning-hours` project entry (committed in `playwright.config.ts`, `3ac34251`) and confirmed the spec is discovered (`--list` shows it). **`/tests/` is gitignored in this repo — all e2e specs (incl. `messaging.spec.ts`) are untracked/local-only**, so `tests/e2e/work-based-learning-hours.spec.ts` lives locally like the others (not force-added, per convention). Running it needs `E2E_COACH_EMAIL/PASSWORD` + a live server.
 
 **Files:**
 - Create: `e2e/work-based-learning-hours.spec.ts` (place in the `testDir` configured in `playwright.config.ts`; adjust the path to match)

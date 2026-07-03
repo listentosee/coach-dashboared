@@ -221,6 +221,11 @@ function DashboardLayoutInner({
                         Profile & Settings
                       </Button>
                     </Link>
+                    <Link href="/dashboard/work-based-learning-hours">
+                      <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">
+                        Work Based Learning Hours
+                      </Button>
+                    </Link>
                     {profile?.role !== 'admin' && (
                       <Link href="/dashboard/bulk-import">
                         <Button variant="ghost" size="sm" className="w-full justify-start text-meta-muted hover:bg-meta-accent hover:text-white text-sm">

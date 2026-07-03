@@ -140,6 +140,8 @@ git commit -m "feat(wbl): school-year period presets + resolver"
 
 ## Task 2: Types + pure helpers (`work-based-learning-hours.ts`)
 
+> ✅ **Complete** — commit `125d08d8`. Verified: 7/7 tests pass in isolation; correct imports; zero-fill + off-roster handling + no DB/env in module.
+
 **Files:**
 - Create: `lib/integrations/game-platform/work-based-learning-hours.ts`
 - Test: `lib/integrations/game-platform/work-based-learning-hours.test.ts`
@@ -393,6 +395,10 @@ git commit -m "feat(wbl): types + pure grouping/summary helpers + RPC caller"
 ---
 
 ## Task 3: SQL RPC migration
+
+> ⏳ **Migration written + committed; logic verified; DB apply pending (manual, per repo convention).**
+> Reconciliation (2026-07-03, live data): On-Demand **80,287 min (1,338.1 h)** — byte-identical to the approved spreadsheet. Flash CTF **60,420 min (1,007.0 h)** and TOTAL **140,707 min (2,345.1 h)** — +120 min (one 2 h Flash CTF participation) above the July-2 snapshot because one participation synced in since; **not** an algorithm difference (both scoping semantics agree at 331 participations; 0 shared synced-ids). The RPC body matches an independent inline run exactly. Anchor gate for future runs: **ODL must equal 80,287 min**; CTF/total may drift upward as live syncs land.
+> The function is NOT yet created in the DB (repo convention: user applies SQL in the Supabase SQL Editor). Live routes (T6/T7) and e2e (T9) return real data only after it is applied.
 
 **Files:**
 - Create: `supabase/migrations/20260703000000_work_based_learning_hours_rpc.sql`

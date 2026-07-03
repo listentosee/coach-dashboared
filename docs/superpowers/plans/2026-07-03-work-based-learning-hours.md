@@ -567,6 +567,8 @@ git commit -m "feat(wbl): get_work_based_learning_hours RPC (sessionization + CT
 
 ## Task 4: Shared report loader (`loadWblReport`)
 
+> ✅ **Complete** — commit `174d0ca9`. Verified: 3 exports; roster via RLS userClient (coach_id filter), RPC via service statsClient; no broad-query/getSession/env anti-patterns.
+
 **Files:**
 - Create: `lib/reports/work-based-learning-hours.ts`
 

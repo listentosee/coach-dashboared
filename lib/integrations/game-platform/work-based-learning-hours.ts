@@ -76,6 +76,11 @@ export function divisionLabel(division: string | null): string {
   }
 }
 
+/** Display label for a segment. The RPC emits 'On-Demand'; we surface it as 'ODL'. */
+export function segmentLabel(segment: string): string {
+  return segment === 'On-Demand' ? 'ODL' : segment;
+}
+
 function toActivityRow(r: WblRpcRow): WblActivityRow {
   return { segment: r.segment, activity: r.activity, solves: r.solves, sessions: r.sessions, minutes: r.minutes };
 }

@@ -398,7 +398,7 @@ git commit -m "feat(wbl): types + pure grouping/summary helpers + RPC caller"
 
 > ✅ **Complete** — commit `ffdfd8af`; applied to prod DB via connector (user-authorized 2026-07-03) and verified against the live function.
 > Reconciliation (2026-07-03, live data): On-Demand **80,287 min (1,338.1 h)** — byte-identical to the approved spreadsheet. Flash CTF **60,420 min (1,007.0 h)** and TOTAL **140,707 min (2,345.1 h)** — +120 min (one 2 h Flash CTF participation) above the July-2 snapshot because one participation synced in since; **not** an algorithm difference (both scoping semantics agree at 331 participations; 0 shared synced-ids). The RPC body matches an independent inline run exactly. Anchor gate for future runs: **ODL must equal 80,287 min**; CTF/total may drift upward as live syncs land.
-> The function is NOT yet created in the DB (repo convention: user applies SQL in the Supabase SQL Editor). Live routes (T6/T7) and e2e (T9) return real data only after it is applied.
+> **County is NOT part of the feature.** The RPC takes an explicit `p_synced_user_ids` array and the loader scopes by `coach_id` only — no county/`school_geo` logic anywhere in shipped code. County appears solely in the reconciliation *anchor query below* to reproduce the old two-county spreadsheet's population for comparison; it is a verification convenience, not report behavior. Each coach's report is their own roster, period.
 
 **Files:**
 - Create: `supabase/migrations/20260703000000_work_based_learning_hours_rpc.sql`
